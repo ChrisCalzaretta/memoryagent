@@ -30,7 +30,7 @@ services:
         limits:
           memory: 8G
     networks:
-      - memory-net
+      - agent-net
     restart: unless-stopped
 
   qdrant:
@@ -46,7 +46,7 @@ services:
         limits:
           memory: 8G
     networks:
-      - memory-net
+      - agent-net
     restart: unless-stopped
 
   neo4j:
@@ -71,7 +71,7 @@ services:
         limits:
           memory: 8G
     networks:
-      - memory-net
+      - agent-net
     restart: unless-stopped
 
   ollama:
@@ -97,10 +97,10 @@ services:
               count: all
               capabilities: [gpu]
     networks:
-      - memory-net
+      - agent-net
     restart: unless-stopped
 
 networks:
-  memory-net:
+  agent-net:
     name: ${PROJECT_NAME:-memory}-net
     driver: bridge
