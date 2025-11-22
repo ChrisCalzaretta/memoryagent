@@ -109,20 +109,21 @@ if ($OllamaUrl) {
     Write-Host "Using external Ollama: $OllamaUrl" -ForegroundColor Yellow
 }
 
-# Ensure storage directory exists
+# Ensure storage directory exists - always create/verify
 $storageRoot = "d:\Memory\$ProjectName"
-if (-not (Test-Path $storageRoot)) {
-    Write-Host "Creating storage directory: $storageRoot" -ForegroundColor Cyan
-    New-Item -ItemType Directory -Path "$storageRoot\memory" -Force | Out-Null
-    New-Item -ItemType Directory -Path "$storageRoot\logs" -Force | Out-Null
-    New-Item -ItemType Directory -Path "$storageRoot\qdrant" -Force | Out-Null
-    New-Item -ItemType Directory -Path "$storageRoot\neo4j\data" -Force | Out-Null
-    New-Item -ItemType Directory -Path "$storageRoot\neo4j\logs" -Force | Out-Null
-    New-Item -ItemType Directory -Path "$storageRoot\neo4j\import" -Force | Out-Null
-    New-Item -ItemType Directory -Path "$storageRoot\neo4j\plugins" -Force | Out-Null
-    New-Item -ItemType Directory -Path "$storageRoot\ollama" -Force | Out-Null
-    Write-Host "Storage directories created" -ForegroundColor Green
-}
+Write-Host "Ensuring storage directories exist: $storageRoot" -ForegroundColor Cyan
+
+# Create all required directories (Force will create if missing, no error if exists)
+New-Item -ItemType Directory -Path "$storageRoot\memory" -Force | Out-Null
+New-Item -ItemType Directory -Path "$storageRoot\logs" -Force | Out-Null
+New-Item -ItemType Directory -Path "$storageRoot\qdrant" -Force | Out-Null
+New-Item -ItemType Directory -Path "$storageRoot\neo4j\data" -Force | Out-Null
+New-Item -ItemType Directory -Path "$storageRoot\neo4j\logs" -Force | Out-Null
+New-Item -ItemType Directory -Path "$storageRoot\neo4j\import" -Force | Out-Null
+New-Item -ItemType Directory -Path "$storageRoot\neo4j\plugins" -Force | Out-Null
+New-Item -ItemType Directory -Path "$storageRoot\ollama" -Force | Out-Null
+
+Write-Host "Storage directories verified/created" -ForegroundColor Green
 
 # Check if containers are already running
 Write-Host "Checking container status..." -ForegroundColor Cyan

@@ -14,6 +14,12 @@ public class EmbeddingService : IEmbeddingService
     private readonly ILogger<EmbeddingService> _logger;
     private readonly string _model;
     private readonly AsyncRetryPolicy _retryPolicy;
+    
+    // mxbai-embed-large has a 512 token context window
+    // Real-world testing shows: 1800 chars ≈ 548 tokens (too high!)
+    // Using safer estimate: 1 token ≈ 3 chars, so 512 tokens ≈ 1536 chars
+    // We'll use 1400 chars to stay well under 512 token limit
+    private const int MaxCharacters = 1400;
 
     public EmbeddingService(
         IHttpClientFactory httpClientFactory,
@@ -42,12 +48,23 @@ public class EmbeddingService : IEmbeddingService
     {
         try
         {
+            // Truncate text if it exceeds model's context window
+            var originalLength = text.Length;
+            var processedText = TruncateText(text, MaxCharacters);
+            
+            if (processedText.Length < originalLength)
+            {
+                _logger.LogWarning(
+                    "Text truncated from {Original} to {Truncated} characters (model limit: ~512 tokens)",
+                    originalLength, processedText.Length);
+            }
+            
             return await _retryPolicy.ExecuteAsync(async () =>
             {
                 var request = new
                 {
                     model = _model,
-                    prompt = text
+                    prompt = processedText
                 };
 
                 var response = await _httpClient.PostAsJsonAsync("/api/embeddings", request, cancellationToken);
@@ -68,6 +85,25 @@ public class EmbeddingService : IEmbeddingService
             _logger.LogError(ex, "Error generating embedding for text (length: {Length})", text.Length);
             throw;
         }
+    }
+    
+    /// <summary>
+    /// Intelligently truncate text to fit within token limits while preserving important content
+    /// </summary>
+    private string TruncateText(string text, int maxChars)
+    {
+        if (text.Length <= maxChars)
+            return text;
+            
+        // Strategy: Take the beginning (method signature, class declaration) 
+        // and end (important logic) to preserve context
+        var headSize = (int)(maxChars * 0.6); // 60% from start
+        var tailSize = maxChars - headSize - 3; // 40% from end, -3 for "..."
+        
+        var head = text.Substring(0, headSize);
+        var tail = text.Substring(text.Length - tailSize);
+        
+        return $"{head}...{tail}";
     }
 
     public async Task<List<float[]>> GenerateEmbeddingsAsync(List<string> texts, CancellationToken cancellationToken = default)
