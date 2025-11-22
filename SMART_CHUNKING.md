@@ -14,6 +14,7 @@ The Memory Code Agent now supports **smart chunking** for multiple file types wi
 | `.cshtml` | RazorParser | Sections, code blocks, HTML sections, components | ✅ NEW |
 | `.razor` | RazorParser | Same as .cshtml | ✅ NEW |
 | `.py` | PythonParser | Classes, functions, decorators, imports | ✅ NEW |
+| `.md` | MarkdownParser | Headers, sections, code blocks, links | ✅ NEW |
 | `.json` | - | Not chunked (as requested) | ❌ Excluded |
 | `.sql` | - | Not chunked (as requested) | ❌ Excluded |
 | `.ps1` | - | Not chunked (as requested) | ❌ Excluded |
@@ -182,26 +183,146 @@ def process_data():
 
 ---
 
+## 📝 Markdown Smart Chunking
+
+### What Gets Chunked:
+
+#### 1. **Headers & Sections**
+```markdown
+# Main Title
+
+## Introduction
+Content for the introduction section...
+
+### Subsection 1
+More detailed content...
+
+### Subsection 2
+Additional details...
+```
+- **Stored as:** `Section: Introduction`, `Section: Subsection 1`, etc.
+- **Type:** Other
+- **Metadata:** `chunk_type: section`, `header_level`, `section_title`, `line_count`
+- **Chunking logic:** Each header starts a new section that includes all content until the next header of equal or higher level
+
+#### 2. **Front Matter** (YAML or TOML)
+```markdown
+---
+title: API Documentation
+author: Development Team
+date: 2025-11-22
+tags: [api, docs, reference]
+---
+
+# API Documentation
+...
+```
+- **Captured in metadata:** `fm_title`, `fm_author`, `fm_date`, `fm_tags`
+- **Metadata:** `has_front_matter: true`
+
+#### 3. **Code Blocks**
+````markdown
+Here's an example:
+
+```python
+def hello_world():
+    print("Hello, World!")
+```
+
+```csharp
+public class Example 
+{
+    public string Name { get; set; }
+}
+```
+````
+- **Stored as:** `CodeBlock_1_python`, `CodeBlock_2_csharp`
+- **Type:** Other
+- **Metadata:** `chunk_type: code_block`, `language`, `code_length`
+- **Creates DEFINES relationship:** `{FileName}` → `CodeBlock_N_{language}`
+
+#### 4. **Links & References**
+```markdown
+Check out the [API Guide](api-guide.md) for more details.
+
+Visit [our website](https://example.com) for updates.
+
+See [internal section](#architecture) below.
+```
+- **Creates USES relationship:** For `.md` file references: `README.md` → `api-guide.md`
+- **Metadata captured:**
+  - `link_count`: Total number of links
+  - `links_external`: Count of http/https links
+  - `links_markdown_reference`: Count of `.md` references
+  - `links_internal_anchor`: Count of `#` anchor links
+  - `links_relative`: Count of other relative links
+
+### Markdown Relationships:
+
+| Relationship | From | To | Example |
+|--------------|------|-----|---------|
+| **USES** (reference) | Markdown File | Referenced .md File | `README.md` → `CONTRIBUTING.md` |
+| **DEFINES** (code block) | Markdown File | Code Block | `Tutorial.md` → `CodeBlock_1_python` |
+
+### Markdown Metadata Captured:
+
+- **Front Matter:** All YAML/TOML key-value pairs prefixed with `fm_`
+- **Title:** First H1 header → `title`
+- **File Type:** `.md` → `file_type`, `is_markdown: true`
+- **Links:** Categorized by type with counts
+- **Code Blocks:** Language and count → `code_block_count`
+
+### Example Chunked Output:
+
+For a file `API_GUIDE.md`:
+```markdown
+---
+version: 2.0
+---
+
+# API Guide
+
+## Authentication
+Use Bearer tokens for all API calls...
+
+```python
+headers = {"Authorization": "Bearer TOKEN"}
+```
+
+## Endpoints
+See [endpoints reference](endpoints.md).
+```
+
+**Results in:**
+1. **File node:** `API_GUIDE.md` with metadata `fm_version: 2.0`, `title: API Guide`, `code_block_count: 1`, `link_count: 1`
+2. **Section chunk:** `Section: Authentication` (lines 5-11)
+3. **Code block chunk:** `CodeBlock_1_python`
+4. **Section chunk:** `Section: Endpoints` (lines 13-14)
+5. **Relationship:** `API_GUIDE.md` → USES → `endpoints.md`
+6. **Relationship:** `API_GUIDE.md` → DEFINES → `CodeBlock_1_python`
+
+---
+
 ## 📊 Enhanced Neo4j Relationships
 
 ### Relationship Summary (All Languages):
 
-| Type | C# | Razor | Python | Total Use Cases |
-|------|-----|-------|--------|-----------------|
-| **CALLS** | ✅ | ✅ | ✅ | Method calls across all languages |
-| **IMPORTS** | ✅ | - | ✅ | Using directives, import statements |
-| **INHERITS** | ✅ | - | ✅ | Class inheritance |
-| **IMPLEMENTS** | ✅ | - | - | Interface implementation |
-| **USES** | ✅ | ✅ | - | General usage, components |
-| **HASTYPE** | ✅ | - | - | Property types |
-| **RETURNSTYPE** | ✅ | - | ✅ | Method return types |
-| **ACCEPTSTYPE** | ✅ | - | - | Parameter types |
-| **INJECTS** | ✅ | - | - | Constructor injection (DI) |
-| **HASATTRIBUTE** | ✅ | - | ✅ | Attributes/decorators |
-| **USESGENERIC** | ✅ | - | - | Generic type parameters |
-| **THROWS** | ✅ | - | - | Exception declarations |
-| **CATCHES** | ✅ | - | - | Exception handling |
-| **DEFINES** | ✅ | ✅ | ✅ | Containment relationships |
+| Type | C# | Razor | Python | Markdown | Total Use Cases |
+|------|-----|-------|--------|----------|-----------------|
+| **CALLS** | ✅ | ✅ | ✅ | - | Method calls across all languages |
+| **IMPORTS** | ✅ | - | ✅ | - | Using directives, import statements |
+| **INHERITS** | ✅ | - | ✅ | - | Class inheritance |
+| **IMPLEMENTS** | ✅ | - | - | - | Interface implementation |
+| **USES** | ✅ | ✅ | - | ✅ | General usage, components, .md references |
+| **HASTYPE** | ✅ | - | - | - | Property types |
+| **RETURNSTYPE** | ✅ | - | ✅ | - | Method return types |
+| **ACCEPTSTYPE** | ✅ | - | - | - | Parameter types |
+| **INJECTS** | ✅ | - | - | - | Constructor injection (DI) |
+| **HASATTRIBUTE** | ✅ | - | ✅ | - | Attributes/decorators |
+| **USESGENERIC** | ✅ | - | - | - | Generic type parameters |
+| **THROWS** | ✅ | - | - | - | Exception declarations |
+| **CATCHES** | ✅ | - | - | - | Exception handling |
+| **DEFINES** | ✅ | ✅ | ✅ | ✅ | Containment relationships |
 
 ---
 
@@ -251,10 +372,10 @@ For a typical ASP.NET + Razor project like DataPrepPlatform:
 - 577 classes
 - 1,526 methods
 
-**After** (with Razor + Python):
-- **~705+ files** (536 .cs + 169 .cshtml/.razor + Python files)
+**After** (with Razor + Python + Markdown):
+- **~720+ files** (536 .cs + 169 .cshtml/.razor + Python files + .md files)
 - **~750+ classes** (C# classes + Razor @code blocks + Python classes)
-- **~2,500+ methods** (C# methods + Razor sections/functions + Python functions)
+- **~2,600+ methods** (C# methods + Razor sections/functions + Python functions + Markdown sections)
 - **50,000+ relationships** (all relationship types combined)
 
 ---
@@ -276,6 +397,7 @@ For a typical ASP.NET + Razor project like DataPrepPlatform:
 - C# authentication services
 - Razor login pages
 - Python auth decorators
+- Markdown documentation sections about authentication
 - All ranked by relevance
 
 ### Find Component Usage:
@@ -299,6 +421,16 @@ RETURN DISTINCT file.name
 
 **Returns all Python files that import Flask**
 
+### Find Markdown References:
+
+```cypher
+MATCH (md1:File)-[:USES {relationship_subtype: 'markdown_reference'}]->(md2)
+WHERE md1.file_type = '.md'
+RETURN md1.name, collect(md2.name) as references
+```
+
+**Returns all Markdown files and what other .md files they reference**
+
 ---
 
 ## 🎯 Best Practices
@@ -320,6 +452,13 @@ RETURN DISTINCT file.name
 1. **Use dependency injection** - Creates INJECTS relationships
 2. **Document exceptions** - Creates THROWS relationships
 3. **Use interfaces** - Creates IMPLEMENTS relationships
+
+### For Markdown:
+
+1. **Use clear header hierarchy** - Each header creates a searchable section
+2. **Link to other .md files** - Creates USES relationships for navigation
+3. **Use front matter** - Metadata gets indexed for better organization
+4. **Fence code blocks with language** - Helps with code block categorization
 
 ---
 
@@ -348,6 +487,7 @@ Each indexed element includes:
 ### Language-Specific:
 - **Razor:** `is_razor`, `model_type`, `page_route`, `element_type`
 - **Python:** `language`, `base_classes`, `parameters`, `return_type`, `is_top_level`
+- **Markdown:** `is_markdown`, `has_front_matter`, `fm_*` (front matter fields), `title`, `header_level`, `section_title`, `link_count`, `code_block_count`, `language` (for code blocks)
 - **C#:** (all Roslyn metadata from existing implementation)
 
 ---
@@ -355,13 +495,14 @@ Each indexed element includes:
 ## 🎉 Summary
 
 **Smart chunking now provides:**
-- ✅ Multi-language support (C#, Razor, Python)
-- ✅ Intelligent section detection
+- ✅ Multi-language support (C#, Razor, Python, **Markdown**)
+- ✅ Intelligent section detection (code sections + **documentation sections**)
 - ✅ 50,000+ relationships tracked
 - ✅ Better search relevance (0.5 threshold)
 - ✅ Component and decorator tracking
 - ✅ Cross-language dependency graphs
+- ✅ **Documentation indexing** (Markdown files with front matter, headers, code blocks, links)
 - ✅ Comprehensive metadata preservation
 
-**Next steps:** Start your project with `.\start-project.ps1 -ProjectPath "path" -AutoIndex` and watch it index **everything**! 🚀
+**Next steps:** Start your project with `.\start-project.ps1 -ProjectPath "path" -AutoIndex` and watch it index **everything** - code AND documentation! 🚀
 

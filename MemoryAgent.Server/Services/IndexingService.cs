@@ -124,9 +124,9 @@ public class IndexingService : IIndexingService
                 return result;
             }
 
-            // Find all supported code files (.cs, .cshtml, .razor, .py)
+            // Find all supported code files (.cs, .cshtml, .razor, .py, .md)
             var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            var patterns = new[] { "*.cs", "*.cshtml", "*.razor", "*.py" };
+            var patterns = new[] { "*.cs", "*.cshtml", "*.razor", "*.py", "*.md" };
             
             var codeFiles = patterns
                 .SelectMany(pattern => Directory.GetFiles(containerPath, pattern, searchOption))
@@ -134,11 +134,12 @@ public class IndexingService : IIndexingService
                 .Distinct()
                 .ToList();
 
-            _logger.LogInformation("Found {Count} code files to index ({CSharp} .cs, {Razor} .cshtml/.razor, {Python} .py)", 
+            _logger.LogInformation("Found {Count} code files to index ({CSharp} .cs, {Razor} .cshtml/.razor, {Python} .py, {Markdown} .md)", 
                 codeFiles.Count,
                 codeFiles.Count(f => f.EndsWith(".cs")),
                 codeFiles.Count(f => f.EndsWith(".cshtml") || f.EndsWith(".razor")),
-                codeFiles.Count(f => f.EndsWith(".py")));
+                codeFiles.Count(f => f.EndsWith(".py")),
+                codeFiles.Count(f => f.EndsWith(".md")));
 
             // Index files in parallel (but limit concurrency to avoid overwhelming services)
             var semaphore = new SemaphoreSlim(5); // Max 5 concurrent file indexes

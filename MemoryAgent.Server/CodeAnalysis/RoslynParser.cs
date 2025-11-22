@@ -11,10 +11,12 @@ namespace MemoryAgent.Server.CodeAnalysis;
 public class RoslynParser : ICodeParser
 {
     private readonly ILogger<RoslynParser> _logger;
+    private readonly ILoggerFactory _loggerFactory;
 
-    public RoslynParser(ILogger<RoslynParser> logger)
+    public RoslynParser(ILogger<RoslynParser> logger, ILoggerFactory loggerFactory)
     {
         _logger = logger;
+        _loggerFactory = loggerFactory;
     }
 
     public async Task<ParseResult> ParseFileAsync(string filePath, string? context = null, CancellationToken cancellationToken = default)
@@ -33,6 +35,7 @@ public class RoslynParser : ICodeParser
             {
                 ".cshtml" or ".razor" => await Task.Run(() => RazorParser.ParseRazorFile(filePath, context), cancellationToken),
                 ".py" => await Task.Run(() => PythonParser.ParsePythonFile(filePath, context), cancellationToken),
+                ".md" or ".markdown" => await new MarkdownParser(_loggerFactory.CreateLogger<MarkdownParser>()).ParseFileAsync(filePath, context, cancellationToken),
                 ".cs" => await ParseCSharpFileAsync(filePath, context, cancellationToken),
                 _ => new ParseResult { Errors = { $"Unsupported file type: {extension}" } }
             };
