@@ -8,7 +8,7 @@ The Memory Code Agent now has **comprehensive semantic understanding** of ASP.NE
 
 ## 📊 Relationship Types Tracked
 
-### Code Structure (48 Total Relationship Types)
+### Code Structure (55 Total Relationship Types)
 
 | Category | Relationship | Description |
 |----------|-------------|-------------|
@@ -35,8 +35,9 @@ The Memory Code Agent now has **comprehensive semantic understanding** of ASP.NE
 | **CORS** | `AllowsOrigin` | Cross-origin policies |
 | **Caching** | `Caches` | Response caching |
 | **Model Binding** | `Binds` | Custom model binders |
-| **Filters** | `Filters` | Action filters |
+| **Filters** | `Filters`, `HandlesException` | Action/Exception filters |
 | **Rate Limiting** | `RateLimits` | Rate limiting policies |
+| **Versioning** | `HasApiVersion` | API versioning |
 
 ---
 
@@ -289,6 +290,161 @@ public class DatabaseHealthCheck : IHealthCheck
 
 ---
 
+### 12. **API Versioning**
+
+```csharp
+[ApiVersion("1.0")]
+[ApiVersion("2.0")]
+public class UserController : ControllerBase
+{
+    [HttpGet]
+    [MapToApiVersion("1.0")]
+    public IActionResult GetV1() { }
+    
+    [HttpGet]
+    [MapToApiVersion("2.0")]
+    public IActionResult GetV2() { }
+}
+```
+
+**Creates:**
+- `HasApiVersion` → ApiVersion(1.0), ApiVersion(2.0)
+- Metadata: `version: "1.0"`, `mapped: true`
+
+---
+
+### 13. **Exception Filters**
+
+```csharp
+public class GlobalExceptionFilter : IExceptionFilter
+{
+    public void OnException(ExceptionContext context)
+    {
+        if (context.Exception is NotFoundException)
+        {
+            // Handle 404
+        }
+    }
+}
+```
+
+**Creates:**
+- `HandlesException` → NotFoundException
+- Metadata: `filter_type: ExceptionFilter`, `is_async: false`
+
+---
+
+### 14. **Swagger/OpenAPI Configuration**
+
+```csharp
+services.AddSwaggerGen(options =>
+{
+    options.OperationFilter<SecurityRequirementsOperationFilter>();
+    options.SchemaFilter<EnumSchemaFilter>();
+});
+```
+
+**Creates:**
+- `Documents` → API
+- `Filters` → SecurityRequirementsOperationFilter, EnumSchemaFilter
+- Metadata: `tool: Swagger/OpenAPI`
+
+---
+
+### 15. **CORS Policies**
+
+```csharp
+services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecific", policy =>
+        policy.WithOrigins("https://example.com", "https://app.example.com")
+              .AllowAnyHeader()
+              .AllowAnyMethod());
+});
+```
+
+**Creates:**
+- `AllowsOrigin` → https://example.com, https://app.example.com
+- Metadata: `policy_name: AllowSpecific`, `allow_any_origin: false`
+
+---
+
+### 16. **Response Caching**
+
+```csharp
+[ResponseCache(Duration = 300, CacheProfileName = "Default5Min")]
+public IActionResult GetProducts()
+{
+    // ...
+}
+```
+
+**Creates:**
+- `Caches` → Default5Min (or ResponseCache if no profile)
+- Metadata: `duration_seconds: 300`, `cache_profile: Default5Min`
+
+---
+
+### 17. **Model Binders**
+
+```csharp
+public class CustomDateTimeBinder : IModelBinder
+{
+    public Task BindModelAsync(ModelBindingContext bindingContext)
+    {
+        // Custom binding logic for DateTime
+    }
+}
+```
+
+**Creates:**
+- `Binds` → DateTime
+- Metadata: `binder_type: Custom`, `bound_type: DateTime`
+
+---
+
+### 18. **Action Filters**
+
+```csharp
+public class LoggingActionFilter : IAsyncActionFilter
+{
+    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        // Before action
+        await next();
+        // After action
+    }
+}
+```
+
+**Creates:**
+- `Filters` → LoggingActionFilter
+- Metadata: `filter_category: ActionFilter`, `is_async: true`
+
+---
+
+### 19. **Rate Limiting**
+
+```csharp
+services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("fixed", options =>
+    {
+        options.Window = TimeSpan.FromMinutes(1);
+        options.PermitLimit = 100;
+    });
+});
+
+[EnableRateLimiting("fixed")]
+public IActionResult GetData() { }
+```
+
+**Creates:**
+- `RateLimits` → RateLimitPolicy(fixed)
+- Metadata: `limiter_type: FixedWindow`, `applied_via: EnableRateLimiting`
+
+---
+
 ## 🏷️ Aggressive Metadata Tagging
 
 Every chunk now includes rich metadata:
@@ -367,15 +523,56 @@ AI finds:
 
 ---
 
+## 🎯 All 25 Semantic Patterns
+
+### Foundation (3)
+1. ✅ **API Endpoints** - Controllers & Razor Pages with routing
+2. ✅ **Entity Framework Queries** - LINQ with complexity analysis
+3. ✅ **Dependency Injection** - Service registration & resolution
+
+### Business Logic (2)
+4. ✅ **Validation Logic** - FluentValidation + DataAnnotations
+5. ✅ **Authorization** - Roles, policies, claims
+
+### Infrastructure (7)
+6. ✅ **Middleware Pipeline** - Request processing with execution order
+7. ✅ **Background Jobs** - Hangfire + IHostedService
+8. ✅ **Health Checks** - System monitoring
+9. ✅ **Configuration Binding** - IOptions pattern
+10. ✅ **Exception Filters** - Global error handling
+11. ✅ **Action Filters** - Cross-cutting concerns
+12. ✅ **Model Binders** - Custom request deserialization
+
+### Messaging & Mapping (2)
+13. ✅ **MediatR Handlers** - Commands, Queries, Events
+14. ✅ **AutoMapper Profiles** - Entity ↔ DTO mapping
+
+### API Infrastructure (6)
+15. ✅ **API Versioning** - [ApiVersion], MapToApiVersion
+16. ✅ **Swagger/OpenAPI** - API documentation & filters
+17. ✅ **CORS Policies** - Cross-origin resource sharing
+18. ✅ **Response Caching** - HTTP caching strategies
+19. ✅ **Rate Limiting** - Throttling & quotas
+20. ✅ **Repository Patterns** - Data access abstraction
+
+### Razor Pages (5)
+21. ✅ **@page Directive** - Route definition
+22. ✅ **@inject Directive** - DI in views
+23. ✅ **@attribute [Authorize]** - View-level auth
+24. ✅ **@code Blocks** - EF query analysis
+25. ✅ **Form Handlers** - OnGet/OnPost/OnPut/OnDelete
+
+---
+
 ## 📈 Statistics
 
 | Metric | Count |
 |--------|-------|
-| **Total Relationship Types** | 48 |
-| **Semantic Patterns** | 17 |
+| **Total Relationship Types** | 55 |
+| **Semantic Patterns** | 25 |
 | **Languages Supported** | 4 (C#, Razor, Python, Markdown) |
 | **Metadata Fields per Chunk** | 15+ |
-| **Lines of Code (RoslynParser)** | 2,432 |
+| **Lines of Code (RoslynParser)** | 3,080 |
 | **Lines of Code (RazorSemanticAnalyzer)** | 533 |
 
 ---
