@@ -175,6 +175,9 @@ public class RoslynParser : ICodeParser
         
         result.CodeElements.Add(classMemory);
 
+        // SEMANTIC CHUNKING: Extract validation logic (DataAnnotations + FluentValidation)
+        ExtractValidationLogic(classDecl, fullName, filePath, context, result);
+
         // Extract base classes and interfaces
         if (classDecl.BaseList != null)
         {
@@ -325,6 +328,9 @@ public class RoslynParser : ICodeParser
         
         // SEMANTIC CHUNKING: Enhance with EF query semantics
         EnhanceWithEFQuerySemantics(methodDecl, $"{fullClassName}.{methodName}", methodMemory, result, context);
+        
+        // SEMANTIC CHUNKING: Extract DI registrations (for Program.cs/Startup.cs)
+        ExtractDIRegistrations(methodDecl, filePath, context, result);
     }
 
     private void ExtractProperty(
@@ -1367,6 +1373,372 @@ public class RoslynParser : ICodeParser
         }
         
         return parts.FirstOrDefault() ?? "Default";
+    }
+
+    /// <summary>
+    /// Extract DI registrations from Program.cs or Startup.cs
+    /// Detects services.Add* patterns
+    /// </summary>
+    private void ExtractDIRegistrations(
+        MethodDeclarationSyntax methodDecl,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        // Only process if this looks like a configuration method (Program.cs/Startup.cs)
+        var fileName = Path.GetFileName(filePath);
+        if (!fileName.Contains("Program") && !fileName.Contains("Startup"))
+            return;
+        
+        if (methodDecl.Body == null)
+            return;
+        
+        var invocations = methodDecl.Body.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var invocation in invocations)
+        {
+            var methodName = ExtractMethodNameFromInvocation(invocation);
+            
+            // Detect DI registration methods
+            if (IsDIRegistrationMethod(methodName))
+            {
+                var (interfaceType, implementationType, lifetime) = ExtractDIRegistrationInfo(invocation, methodName);
+                
+                if (!string.IsNullOrEmpty(interfaceType))
+                {
+                    var lineNumber = invocation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    
+                    // Create a code chunk for this DI registration
+                    var registrationChunk = new CodeMemory
+                    {
+                        Type = CodeMemoryType.Other,
+                        Name = $"DI: {interfaceType}",
+                        Content = invocation.ToString(),
+                        FilePath = filePath,
+                        Context = context,
+                        LineNumber = lineNumber,
+                        Metadata = new Dictionary<string, object>
+                        {
+                            ["chunk_type"] = "di_registration",
+                            ["interface"] = interfaceType,
+                            ["implementation"] = implementationType ?? interfaceType,
+                            ["lifetime"] = lifetime,
+                            ["framework"] = "aspnet-core",
+                            ["layer"] = "Infra"
+                        }
+                    };
+                    result.CodeElements.Add(registrationChunk);
+                    
+                    // Create REGISTERS relationship
+                    result.Relationships.Add(new CodeRelationship
+                    {
+                        FromName = "Program",
+                        ToName = interfaceType,
+                        Type = RelationshipType.Registers,
+                        Context = context,
+                        Properties = new Dictionary<string, object>
+                        {
+                            ["lifetime"] = lifetime
+                        }
+                    });
+                    
+                    // Create IMPLEMENTS_REGISTRATION relationship if we have both interface and implementation
+                    if (!string.IsNullOrEmpty(implementationType) && interfaceType != implementationType)
+                    {
+                        result.Relationships.Add(new CodeRelationship
+                        {
+                            FromName = interfaceType,
+                            ToName = implementationType,
+                            Type = RelationshipType.ImplementsRegistration,
+                            Context = context,
+                            Properties = new Dictionary<string, object>
+                            {
+                                ["lifetime"] = lifetime
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Check if method is a DI registration method
+    /// </summary>
+    private bool IsDIRegistrationMethod(string methodName)
+    {
+        var registrationMethods = new[]
+        {
+            "AddScoped", "AddSingleton", "AddTransient",
+            "AddDbContext", "AddHttpClient", "AddAuthentication",
+            "AddAuthorization", "AddControllers", "AddRazorPages",
+            "AddMvc", "AddLogging", "AddOptions", "AddMemoryCache",
+            "AddDistributedMemoryCache", "AddStackExchangeRedisCache",
+            "AddCors", "AddSwaggerGen", "AddHealthChecks",
+            "AddHangfire", "AddMediatR", "AddAutoMapper", "AddFluentValidation"
+        };
+        
+        return registrationMethods.Contains(methodName);
+    }
+
+    /// <summary>
+    /// Extract DI registration info (interface, implementation, lifetime)
+    /// </summary>
+    private (string interfaceType, string implementationType, string lifetime) ExtractDIRegistrationInfo(
+        InvocationExpressionSyntax invocation,
+        string methodName)
+    {
+        string lifetime = methodName switch
+        {
+            "AddScoped" => "Scoped",
+            "AddSingleton" => "Singleton",
+            "AddTransient" => "Transient",
+            "AddDbContext" => "Scoped", // DbContext is typically scoped
+            "AddHttpClient" => "Transient", // HttpClient is typically transient
+            _ => "Singleton" // Default for infrastructure services
+        };
+        
+        // Try to extract generic type parameters: AddScoped<IUserService, UserService>()
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+            memberAccess.Name is GenericNameSyntax genericName)
+        {
+            var typeArgs = genericName.TypeArgumentList.Arguments;
+            
+            if (typeArgs.Count == 2)
+            {
+                // Interface and implementation
+                return (typeArgs[0].ToString(), typeArgs[1].ToString(), lifetime);
+            }
+            else if (typeArgs.Count == 1)
+            {
+                // Single type (concrete class or self-registration)
+                return (typeArgs[0].ToString(), typeArgs[0].ToString(), lifetime);
+            }
+        }
+        
+        // For non-generic registrations, try to extract from arguments
+        // AddDbContext(options => ...) - we won't get type info this way, so skip
+        
+        return (string.Empty, string.Empty, lifetime);
+    }
+
+    /// <summary>
+    /// Extract validation logic from classes
+    /// Detects DataAnnotations and FluentValidation
+    /// </summary>
+    private void ExtractValidationLogic(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        // Check if this is a FluentValidation validator
+        var isFluentValidator = classDecl.BaseList?.Types
+            .Any(t => t.Type.ToString().Contains("AbstractValidator")) ?? false;
+        
+        if (isFluentValidator)
+        {
+            ExtractFluentValidation(classDecl, fullClassName, filePath, context, result);
+        }
+        
+        // Check for DataAnnotations on properties
+        var properties = classDecl.Members.OfType<PropertyDeclarationSyntax>();
+        var hasDataAnnotations = properties.Any(p => p.AttributeLists.Any());
+        
+        if (hasDataAnnotations)
+        {
+            ExtractDataAnnotationValidation(classDecl, fullClassName, filePath, context, result);
+        }
+    }
+
+    /// <summary>
+    /// Extract FluentValidation rules
+    /// </summary>
+    private void ExtractFluentValidation(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        // Get the validated type from AbstractValidator<T>
+        var baseType = classDecl.BaseList?.Types.FirstOrDefault()?.Type.ToString();
+        var match = System.Text.RegularExpressions.Regex.Match(baseType ?? "", @"AbstractValidator<(\w+)>");
+        if (!match.Success)
+            return;
+        
+        var validatedType = match.Groups[1].Value;
+        var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        
+        // Create validation chunk
+        var validationChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"Validation: {validatedType}",
+            Content = classDecl.ToString(),
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "validation",
+                ["validator_name"] = fullClassName,
+                ["validated_type"] = validatedType,
+                ["validation_framework"] = "FluentValidation",
+                ["framework"] = "fluentvalidation",
+                ["layer"] = "Domain"
+            }
+        };
+        
+        // Extract RuleFor calls to get validated properties
+        var ruleForCalls = classDecl.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(i => ExtractMethodNameFromInvocation(i) == "RuleFor")
+            .ToList();
+        
+        var validatedProperties = new List<string>();
+        foreach (var ruleFor in ruleForCalls)
+        {
+            var property = ExtractRuleForProperty(ruleFor);
+            if (!string.IsNullOrEmpty(property))
+            {
+                validatedProperties.Add(property);
+            }
+        }
+        
+        if (validatedProperties.Any())
+        {
+            validationChunk.Metadata["properties_validated"] = validatedProperties;
+        }
+        
+        result.CodeElements.Add(validationChunk);
+        
+        // Create VALIDATES relationship
+        result.Relationships.Add(new CodeRelationship
+        {
+            FromName = fullClassName,
+            ToName = validatedType,
+            Type = RelationshipType.Validates,
+            Context = context,
+            Properties = new Dictionary<string, object>
+            {
+                ["framework"] = "FluentValidation"
+            }
+        });
+    }
+
+    /// <summary>
+    /// Extract property from RuleFor(x => x.PropertyName)
+    /// </summary>
+    private string ExtractRuleForProperty(InvocationExpressionSyntax invocation)
+    {
+        var args = invocation.ArgumentList?.Arguments;
+        if (args != null && args.Value.Count > 0)
+        {
+            var lambdaStr = args.Value[0].ToString();
+            var match = System.Text.RegularExpressions.Regex.Match(lambdaStr, @"\w+\s*=>\s*\w+\.(\w+)");
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Extract DataAnnotation validation from class properties
+    /// </summary>
+    private void ExtractDataAnnotationValidation(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var properties = classDecl.Members.OfType<PropertyDeclarationSyntax>();
+        var validationRules = new Dictionary<string, List<string>>();
+        
+        foreach (var property in properties)
+        {
+            var propertyName = property.Identifier.Text;
+            var rules = new List<string>();
+            
+            foreach (var attributeList in property.AttributeLists)
+            {
+                foreach (var attribute in attributeList.Attributes)
+                {
+                    var attrName = attribute.Name.ToString();
+                    
+                    // Common DataAnnotation attributes
+                    if (IsValidationAttribute(attrName))
+                    {
+                        rules.Add(attrName);
+                    }
+                }
+            }
+            
+            if (rules.Any())
+            {
+                validationRules[propertyName] = rules;
+            }
+        }
+        
+        if (!validationRules.Any())
+            return;
+        
+        var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        
+        // Create validation chunk
+        var validationChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"Validation: {fullClassName}",
+            Content = string.Join("\n", properties.Where(p => validationRules.ContainsKey(p.Identifier.Text)).Select(p => p.ToString())),
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "validation",
+                ["model"] = fullClassName,
+                ["validation_framework"] = "DataAnnotations",
+                ["framework"] = "aspnet-core",
+                ["layer"] = "Domain",
+                ["properties_validated"] = validationRules.Keys.ToList(),
+                ["validation_rules"] = validationRules
+            }
+        };
+        result.CodeElements.Add(validationChunk);
+        
+        // Create VALIDATES relationship (from model to itself for DataAnnotations)
+        result.Relationships.Add(new CodeRelationship
+        {
+            FromName = $"DataAnnotations({fullClassName})",
+            ToName = fullClassName,
+            Type = RelationshipType.Validates,
+            Context = context,
+            Properties = new Dictionary<string, object>
+            {
+                ["framework"] = "DataAnnotations"
+            }
+        });
+    }
+
+    /// <summary>
+    /// Check if attribute is a validation attribute
+    /// </summary>
+    private bool IsValidationAttribute(string attributeName)
+    {
+        var validationAttributes = new[]
+        {
+            "Required", "MaxLength", "MinLength", "StringLength", "Range",
+            "RegularExpression", "EmailAddress", "Phone", "Url", "CreditCard",
+            "Compare", "DataType", "DisplayFormat", "DisplayName", "EnumDataType",
+            "FileExtensions", "MaxLengthAttribute", "MinLengthAttribute"
+        };
+        
+        return validationAttributes.Contains(attributeName);
     }
 
     #endregion
