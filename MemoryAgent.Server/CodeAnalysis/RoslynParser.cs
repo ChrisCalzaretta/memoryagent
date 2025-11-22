@@ -157,6 +157,13 @@ public class RoslynParser : ICodeParser
         var fullName = $"{namespaceName}.{className}";
         var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
 
+        // Calculate class metrics
+        var linesOfCode = ComplexityAnalyzer.CalculateLinesOfCode(classDecl);
+        var methodCount = classDecl.Members.OfType<MethodDeclarationSyntax>().Count();
+        var propertyCount = classDecl.Members.OfType<PropertyDeclarationSyntax>().Count();
+        var fieldCount = classDecl.Members.OfType<FieldDeclarationSyntax>().Count();
+        var isPublicApi = ComplexityAnalyzer.IsPublicApi(classDecl);
+
         // Create class memory
         var classMemory = new CodeMemory
         {
@@ -175,7 +182,18 @@ public class RoslynParser : ICodeParser
                 ["access_modifier"] = GetAccessModifier(classDecl.Modifiers),
                 ["language"] = "csharp",
                 ["layer"] = DetermineLayer(className, namespaceName),
-                ["bounded_context"] = DetermineBoundedContext(namespaceName)
+                ["bounded_context"] = DetermineBoundedContext(namespaceName),
+                
+                // Class metrics
+                ["lines_of_code"] = linesOfCode,
+                ["method_count"] = methodCount,
+                ["property_count"] = propertyCount,
+                ["field_count"] = fieldCount,
+                ["is_god_class"] = linesOfCode > 1000, // God class smell
+                
+                // API visibility
+                ["is_public_api"] = isPublicApi,
+                ["is_internal"] = !isPublicApi
             }
         };
         
@@ -327,9 +345,27 @@ public class RoslynParser : ICodeParser
         var methodName = methodDecl.Identifier.Text;
         var lineNumber = methodDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
 
+        // Calculate complexity metrics
+        var cyclomaticComplexity = ComplexityAnalyzer.CalculateCyclomaticComplexity(methodDecl);
+        var cognitiveComplexity = ComplexityAnalyzer.CalculateCognitiveComplexity(methodDecl);
+        var linesOfCode = ComplexityAnalyzer.CalculateLinesOfCode(methodDecl);
+        var codeSmells = ComplexityAnalyzer.DetectCodeSmells(methodDecl);
+        var exceptionTypes = ComplexityAnalyzer.ExtractExceptionTypes(methodDecl);
+        var dbCallCount = ComplexityAnalyzer.CountDatabaseCalls(methodDecl);
+        var hasHttpCalls = ComplexityAnalyzer.HasHttpCalls(methodDecl);
+        var hasLogging = ComplexityAnalyzer.HasLogging(methodDecl);
+        var isPublicApi = ComplexityAnalyzer.IsPublicApi(methodDecl);
+        var isAsync = methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword));
+
+        // Detect if this is a test method
+        var testAttributes = new[] { "Test", "Fact", "Theory", "TestMethod", "TestCase" };
+        var isTestMethod = methodDecl.AttributeLists
+            .SelectMany(al => al.Attributes)
+            .Any(attr => testAttributes.Any(t => attr.Name.ToString().Contains(t)));
+
         var methodMemory = new CodeMemory
         {
-            Type = CodeMemoryType.Method,
+            Type = isTestMethod ? CodeMemoryType.Test : CodeMemoryType.Method,
             Name = $"{fullClassName}.{methodName}",
             Content = methodDecl.ToString(),
             FilePath = filePath,
@@ -339,14 +375,47 @@ public class RoslynParser : ICodeParser
             {
                 ["class_name"] = fullClassName,
                 ["return_type"] = methodDecl.ReturnType.ToString(),
-                ["is_async"] = methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)),
+                ["is_async"] = isAsync,
                 ["is_static"] = methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword)),
                 ["is_virtual"] = methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.VirtualKeyword)),
                 ["is_override"] = methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.OverrideKeyword)),
                 ["access_modifier"] = GetAccessModifier(methodDecl.Modifiers),
-                ["parameter_count"] = methodDecl.ParameterList.Parameters.Count
+                ["parameter_count"] = methodDecl.ParameterList.Parameters.Count,
+                
+                // Code quality metrics
+                ["cyclomatic_complexity"] = cyclomaticComplexity,
+                ["cognitive_complexity"] = cognitiveComplexity,
+                ["lines_of_code"] = linesOfCode,
+                ["code_smells"] = codeSmells,
+                ["code_smell_count"] = codeSmells.Count,
+                
+                // Exception handling
+                ["exception_types"] = exceptionTypes,
+                ["throws_exceptions"] = exceptionTypes.Any(),
+                
+                // External dependencies
+                ["database_calls"] = dbCallCount,
+                ["has_database_access"] = dbCallCount > 0,
+                ["has_http_calls"] = hasHttpCalls,
+                ["has_logging"] = hasLogging,
+                
+                // API visibility
+                ["is_public_api"] = isPublicApi,
+                ["is_internal"] = !isPublicApi,
+                
+                // Test metadata (if test)
+                ["is_test"] = isTestMethod
             }
         };
+
+        // Add test-specific metadata
+        if (isTestMethod)
+        {
+            methodMemory.Metadata["test_framework"] = DetectTestFramework(methodDecl);
+            methodMemory.Metadata["assertion_count"] = methodDecl.DescendantNodes()
+                .Count(n => n.ToString().Contains("Assert") || n.ToString().Contains("Should"));
+        }
+
         result.CodeElements.Add(methodMemory);
 
         // Create DEFINES relationship
@@ -512,6 +581,20 @@ public class RoslynParser : ICodeParser
         };
         
         return primitives.Contains(typeName.ToLowerInvariant());
+    }
+
+    private static string DetectTestFramework(MethodDeclarationSyntax methodDecl)
+    {
+        var attributes = methodDecl.AttributeLists.SelectMany(al => al.Attributes).Select(a => a.Name.ToString());
+        
+        if (attributes.Any(a => a.Contains("Fact") || a.Contains("Theory")))
+            return "xunit";
+        if (attributes.Any(a => a.Contains("Test") && !a.Contains("TestMethod")))
+            return "nunit";
+        if (attributes.Any(a => a.Contains("TestMethod")))
+            return "mstest";
+        
+        return "unknown";
     }
 
     private static string DetermineContext(string filePath)

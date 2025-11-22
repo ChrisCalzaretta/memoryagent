@@ -1,5 +1,6 @@
 using MemoryAgent.Server.CodeAnalysis;
 using MemoryAgent.Server.Services;
+using MemoryAgent.Server.FileWatcher;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +41,13 @@ builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();
 builder.Services.AddScoped<IMcpService, McpService>();  // Changed from Singleton to Scoped
 builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
+
+// TODO and Plan Management
+builder.Services.AddScoped<ITodoService, TodoService>();
+builder.Services.AddScoped<IPlanService, PlanService>();
+
+// Background Services
+builder.Services.AddHostedService<AutoReindexService>();
 
 // CORS for development
 builder.Services.AddCors(options =>

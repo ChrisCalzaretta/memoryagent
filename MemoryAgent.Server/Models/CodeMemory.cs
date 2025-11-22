@@ -24,6 +24,34 @@ public enum CodeMemoryType
     Method,
     Property,
     Interface,
-    Pattern
+    Pattern,
+    
+    // New types
+    Test,               // Unit/Integration tests
+    Enum,               // Enumerations
+    Record,             // C# records
+    Struct,             // Value types
+    Delegate,           // Delegates
+    Event,              // Events
+    Constant,           // Constants
+    
+    // Architecture patterns
+    Repository,         // Data access repositories
+    Service,            // Service layer
+    Controller,         // API controllers
+    Middleware,         // ASP.NET middleware
+    Filter,             // Action/Exception filters
+    
+    // Data access
+    DbContext,          // EF DbContext
+    Entity,             // Database entities
+    Migration,          // DB migrations
+    
+    // Frontend
+    Component,          // React/Vue/Angular components
+    Hook,               // React hooks
+    
+    // API
+    Endpoint           // API endpoints
 }
 

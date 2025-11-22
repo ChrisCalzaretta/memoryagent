@@ -291,9 +291,28 @@ public class PythonParser
                 var methodContent = string.Join("\n", methodLines);
                 var fullMethodName = $"{className}.{methodName}";
                 
+                // Calculate complexity metrics
+                var cyclomaticComplexity = PythonComplexityAnalyzer.CalculateCyclomaticComplexity(methodLines);
+                var cognitiveComplexity = PythonComplexityAnalyzer.CalculateCognitiveComplexity(methodLines);
+                var linesOfCode = PythonComplexityAnalyzer.CalculateLinesOfCode(methodLines);
+                var paramCount = parameters.Split(',').Length;
+                var codeSmells = PythonComplexityAnalyzer.DetectCodeSmells(methodLines, paramCount);
+                var exceptionTypes = PythonComplexityAnalyzer.ExtractExceptionTypes(methodLines);
+                var dbCallCount = PythonComplexityAnalyzer.CountDatabaseCalls(methodLines);
+                var hasHttpCalls = PythonComplexityAnalyzer.HasHttpCalls(methodLines);
+                var hasLogging = PythonComplexityAnalyzer.HasLogging(methodLines);
+                var isAsync = PythonComplexityAnalyzer.IsAsync(methodLines);
+                
+                // Check if this is a test method
+                var decorators = lines.Take(i).TakeLast(5)
+                    .Where(l => l.Trim().StartsWith("@"))
+                    .Select(l => l.Trim())
+                    .ToList();
+                var isTestMethod = PythonComplexityAnalyzer.IsTestMethod(methodName, decorators);
+                
                 var methodNode = new CodeMemory
                 {
-                    Type = CodeMemoryType.Method,
+                    Type = isTestMethod ? CodeMemoryType.Test : CodeMemoryType.Method,
                     Name = fullMethodName,
                     Content = methodContent,
                     FilePath = filePath,
@@ -304,12 +323,43 @@ public class PythonParser
                         ["language"] = "python",
                         ["class_name"] = className,
                         ["method_name"] = methodName,
-                        ["parameters"] = parameters
+                        ["parameters"] = parameters,
+                        ["parameter_count"] = paramCount,
+                        ["is_async"] = isAsync,
+                        
+                        // Code quality metrics
+                        ["cyclomatic_complexity"] = cyclomaticComplexity,
+                        ["cognitive_complexity"] = cognitiveComplexity,
+                        ["lines_of_code"] = linesOfCode,
+                        ["code_smells"] = codeSmells,
+                        ["code_smell_count"] = codeSmells.Count,
+                        
+                        // Exception handling
+                        ["exception_types"] = exceptionTypes,
+                        ["throws_exceptions"] = exceptionTypes.Any(),
+                        
+                        // External dependencies
+                        ["database_calls"] = dbCallCount,
+                        ["has_database_access"] = dbCallCount > 0,
+                        ["has_http_calls"] = hasHttpCalls,
+                        ["has_logging"] = hasLogging,
+                        
+                        // Test metadata
+                        ["is_test"] = isTestMethod
                     }
                 };
                 
                 if (returnType != null)
                     methodNode.Metadata["return_type"] = returnType;
+                
+                // Add test-specific metadata
+                if (isTestMethod)
+                {
+                    var fileContent = File.ReadAllText(filePath);
+                    var imports = fileContent.Split('\n').Where(l => l.StartsWith("import ") || l.StartsWith("from ")).ToList();
+                    methodNode.Metadata["test_framework"] = PythonComplexityAnalyzer.DetectTestFramework(decorators, imports);
+                    methodNode.Metadata["assertion_count"] = PythonComplexityAnalyzer.CountAssertions(methodLines);
+                }
                 
                 result.CodeElements.Add(methodNode);
                 

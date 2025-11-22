@@ -61,5 +61,19 @@ public interface IGraphService
     /// Health check for Neo4j
     /// </summary>
     Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default);
+
+    // TODO Management
+    Task StoreTodoAsync(TodoItem todo, CancellationToken cancellationToken = default);
+    Task UpdateTodoAsync(TodoItem todo, CancellationToken cancellationToken = default);
+    Task<bool> DeleteTodoAsync(string todoId, CancellationToken cancellationToken = default);
+    Task<TodoItem?> GetTodoAsync(string todoId, CancellationToken cancellationToken = default);
+    Task<List<TodoItem>> GetTodosAsync(string? context = null, TodoStatus? status = null, CancellationToken cancellationToken = default);
+
+    // Plan Management
+    Task StorePlanAsync(DevelopmentPlan plan, CancellationToken cancellationToken = default);
+    Task UpdatePlanAsync(DevelopmentPlan plan, CancellationToken cancellationToken = default);
+    Task<bool> DeletePlanAsync(string planId, CancellationToken cancellationToken = default);
+    Task<DevelopmentPlan?> GetPlanAsync(string planId, CancellationToken cancellationToken = default);
+    Task<List<DevelopmentPlan>> GetPlansAsync(string? context = null, PlanStatus? status = null, CancellationToken cancellationToken = default);
 }
 

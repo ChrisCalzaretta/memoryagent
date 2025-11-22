@@ -81,6 +81,10 @@ Write-Host "Context Name: $ContextName" -ForegroundColor Yellow
 Write-Host "MCP Port: $McpPort" -ForegroundColor Yellow
 Write-Host ""
 
+# Convert Windows path to container path (needed early for env vars)
+$folderName = Split-Path -Leaf $ProjectPath
+$containerPath = "/workspace/$folderName"
+
 # Set environment variables for docker-compose
 $env:PROJECT_NAME = $ProjectName
 $env:PROJECT_PATH = Split-Path -Parent $ProjectPath
@@ -91,6 +95,8 @@ $env:NEO4J_HTTP_PORT = $Neo4jHttpPort
 $env:NEO4J_BOLT_PORT = $Neo4jBoltPort
 $env:OLLAMA_PORT = $OllamaPort
 $env:NEO4J_PASSWORD = $Neo4jPassword
+$env:CONTEXT_NAME = $ContextName
+$env:CONTAINER_PATH = $containerPath
 
 # Set external service URLs if provided (otherwise defaults to containerized services)
 if ($QdrantUrl) {
@@ -163,10 +169,6 @@ if (-not $modelCheck) {
 Write-Host ""
 Write-Host "Service Status:" -ForegroundColor Green
 docker-compose ps
-
-# Convert Windows path to container path
-$folderName = Split-Path -Leaf $ProjectPath
-$containerPath = "/workspace/$folderName"
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
