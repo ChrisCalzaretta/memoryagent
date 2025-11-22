@@ -6,7 +6,7 @@
         "E:\\GitHub\\MemoryAgent\\mcp-stdio-wrapper.js"
       ],
       "env": {
-        "MCP_PORT": "5096"
+        "MCP_PORT": "5098"
       }
     }
   }

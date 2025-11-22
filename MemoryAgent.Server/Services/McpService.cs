@@ -79,6 +79,23 @@ public class McpService : IMcpService
             },
             new McpTool
             {
+                Name = "search",
+                Description = "Search code memory using semantic search (alias for query). Ask natural language questions about code.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string", description = "Natural language question (e.g., 'How do we handle errors?')" },
+                        context = new { type = "string", description = "Optional context to search within" },
+                        limit = new { type = "number", description = "Maximum results", @default = 5 },
+                        minimumScore = new { type = "number", description = "Minimum similarity score 0-1", @default = 0.7 }
+                    },
+                    required = new[] { "query" }
+                }
+            },
+            new McpTool
+            {
                 Name = "reindex",
                 Description = "Reindex code to update memory after changes. Detects new, modified, and deleted files.",
                 InputSchema = new
@@ -152,6 +169,7 @@ public class McpService : IMcpService
                 "index_file" => await IndexFileToolAsync(toolCall.Arguments, cancellationToken),
                 "index_directory" => await IndexDirectoryToolAsync(toolCall.Arguments, cancellationToken),
                 "query" => await QueryToolAsync(toolCall.Arguments, cancellationToken),
+                "search" => await QueryToolAsync(toolCall.Arguments, cancellationToken), // Alias for query
                 "reindex" => await ReindexToolAsync(toolCall.Arguments, cancellationToken),
                 "impact_analysis" => await ImpactAnalysisToolAsync(toolCall.Arguments, cancellationToken),
                 "dependency_chain" => await DependencyChainToolAsync(toolCall.Arguments, cancellationToken),

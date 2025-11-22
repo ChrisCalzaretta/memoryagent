@@ -8,7 +8,6 @@
 const http = require('http');
 
 const MCP_PORT = process.env.MCP_PORT || 5000;
-const MCP_SERVER_URL = `http://10.0.0.20:${MCP_PORT}/mcp`;
 
 // Function to send HTTP request to MCP server
 function sendToMcpServer(jsonRpcRequest) {
