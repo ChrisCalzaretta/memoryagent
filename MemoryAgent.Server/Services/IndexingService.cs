@@ -85,11 +85,12 @@ public class IndexingService : IIndexingService
             result.FilesIndexed = 1;
             result.ClassesFound = parseResult.CodeElements.Count(e => e.Type == CodeMemoryType.Class);
             result.MethodsFound = parseResult.CodeElements.Count(e => e.Type == CodeMemoryType.Method);
+            result.PatternsDetected = parseResult.CodeElements.Count(e => e.Type == CodeMemoryType.Pattern);
             result.Duration = stopwatch.Elapsed;
 
             _logger.LogInformation(
-                "Successfully indexed {FilePath}: {Classes} classes, {Methods} methods in {Duration}ms",
-                filePath, result.ClassesFound, result.MethodsFound, stopwatch.ElapsedMilliseconds);
+                "Successfully indexed {FilePath}: {Classes} classes, {Methods} methods, {Patterns} patterns in {Duration}ms",
+                filePath, result.ClassesFound, result.MethodsFound, result.PatternsDetected, stopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
@@ -164,6 +165,7 @@ public class IndexingService : IIndexingService
                 result.FilesIndexed += fileResult.FilesIndexed;
                 result.ClassesFound += fileResult.ClassesFound;
                 result.MethodsFound += fileResult.MethodsFound;
+                result.PatternsDetected += fileResult.PatternsDetected;
                 result.Errors.AddRange(fileResult.Errors);
             }
 
@@ -171,8 +173,8 @@ public class IndexingService : IIndexingService
             result.Duration = stopwatch.Elapsed;
 
             _logger.LogInformation(
-                "Directory indexing completed: {Files} files, {Classes} classes, {Methods} methods in {Duration}s",
-                result.FilesIndexed, result.ClassesFound, result.MethodsFound, stopwatch.Elapsed.TotalSeconds);
+                "Directory indexing completed: {Files} files, {Classes} classes, {Methods} methods, {Patterns} patterns in {Duration}s",
+                result.FilesIndexed, result.ClassesFound, result.MethodsFound, result.PatternsDetected, stopwatch.Elapsed.TotalSeconds);
         }
         catch (Exception ex)
         {
