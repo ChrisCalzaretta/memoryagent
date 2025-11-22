@@ -1,0 +1,20 @@
+{
+  "name": "memory-code-agent-mcp-wrapper",
+  "version": "1.0.0",
+  "description": "MCP wrapper for Memory Code Agent that auto-starts Docker containers",
+  "main": "mcp-wrapper.js",
+  "bin": {
+    "memory-code-agent": "./mcp-wrapper.js"
+  },
+  "scripts": {
+    "start": "node mcp-wrapper.js"
+  },
+  "dependencies": {
+    "eventsource": "^2.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
+

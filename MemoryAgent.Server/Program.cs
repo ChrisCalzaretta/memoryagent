@@ -1,0 +1,111 @@
+using MemoryAgent.Server.CodeAnalysis;
+using MemoryAgent.Server.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+    });
+builder.Services.AddEndpointsApiExplorer();
+
+// HTTP Clients
+builder.Services.AddHttpClient("Ollama", client =>
+{
+    var ollamaUrl = builder.Configuration["Ollama:Url"] ?? "http://localhost:11434";
+    client.BaseAddress = new Uri(ollamaUrl);
+    client.Timeout = TimeSpan.FromHours(2); // Indexing large projects can take a long time
+});
+
+// Core Services
+builder.Services.AddSingleton<IPathTranslationService, PathTranslationService>();
+builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
+builder.Services.AddSingleton<IVectorService, VectorService>();
+builder.Services.AddSingleton<IGraphService, GraphService>();
+builder.Services.AddSingleton<ICodeParser, RoslynParser>();
+builder.Services.AddScoped<IIndexingService, IndexingService>();
+builder.Services.AddScoped<IReindexService, ReindexService>();
+builder.Services.AddScoped<IMcpService, McpService>();  // Changed from Singleton to Scoped
+
+// CORS for development
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
+// Logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline
+app.UseCors();
+app.UseAuthorization();
+app.MapControllers();
+
+// Get logger
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+
+// Initialize databases on startup
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        logger.LogInformation("Initializing databases...");
+
+        var vectorService = scope.ServiceProvider.GetRequiredService<IVectorService>();
+        var graphService = scope.ServiceProvider.GetRequiredService<IGraphService>();
+        var embeddingService = scope.ServiceProvider.GetRequiredService<IEmbeddingService>();
+
+        // Health checks
+        var qdrantHealthy = await vectorService.HealthCheckAsync();
+        var neo4jHealthy = await graphService.HealthCheckAsync();
+        var ollamaHealthy = await embeddingService.HealthCheckAsync();
+
+        logger.LogInformation("Health checks - Qdrant: {Qdrant}, Neo4j: {Neo4j}, Ollama: {Ollama}",
+            qdrantHealthy ? "✓" : "✗",
+            neo4jHealthy ? "✓" : "✗",
+            ollamaHealthy ? "✓" : "✗");
+
+        if (!qdrantHealthy)
+        {
+            logger.LogWarning("Qdrant is not healthy. Vector search may not work.");
+        }
+
+        if (!neo4jHealthy)
+        {
+            logger.LogWarning("Neo4j is not healthy. Graph queries may not work.");
+        }
+
+        if (!ollamaHealthy)
+        {
+            logger.LogWarning("Ollama is not healthy or model not found. Run: docker exec memory-agent-ollama ollama pull mxbai-embed-large:latest");
+        }
+
+        // Initialize
+        await vectorService.InitializeCollectionsAsync();
+        await graphService.InitializeDatabaseAsync();
+
+        logger.LogInformation("Databases initialized successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error initializing databases");
+    }
+}
+
+logger.LogInformation("Memory Code Agent started on http://localhost:5000");
+logger.LogInformation("- Qdrant: {Qdrant}", builder.Configuration["Qdrant:Url"] ?? "http://qdrant:6333");
+logger.LogInformation("- Neo4j: {Neo4j}", builder.Configuration["Neo4j:Url"] ?? "bolt://neo4j:7687");
+logger.LogInformation("- Ollama: {Ollama}", builder.Configuration["Ollama:Url"] ?? "http://ollama:11434");
+
+app.Run();

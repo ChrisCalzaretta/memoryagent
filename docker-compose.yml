@@ -1,0 +1,106 @@
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: MemoryAgent.Server/Dockerfile
+    container_name: ${PROJECT_NAME:-memory}-agent-server
+    ports:
+      - "${MCP_PORT:-5000}:5000"
+    volumes:
+      - d:\Memory\${PROJECT_NAME:-default}\memory:/data/memory
+      - d:\Memory\${PROJECT_NAME:-default}\logs:/data/logs
+      - ${PROJECT_PATH:-E:\GitHub}:/workspace:ro
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - Qdrant__Url=${QDRANT_URL:-http://${PROJECT_NAME:-memory}-agent-qdrant:6334}
+      - Neo4j__Url=${NEO4J_URL:-bolt://${PROJECT_NAME:-memory}-agent-neo4j:7687}
+      - Neo4j__User=${NEO4J_USER:-neo4j}
+      - Neo4j__Password=${NEO4J_PASSWORD:-memoryagent}
+      - Ollama__Url=${OLLAMA_URL:-http://${PROJECT_NAME:-memory}-agent-ollama:11434}
+    depends_on:
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ${PROJECT_NAME:-memory}-agent-qdrant
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - d:\Memory\${PROJECT_NAME:-default}\qdrant:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: ${PROJECT_NAME:-memory}-agent-neo4j
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - d:\Memory\${PROJECT_NAME:-default}\neo4j\data:/data
+      - d:\Memory\${PROJECT_NAME:-default}\neo4j\logs:/logs
+      - d:\Memory\${PROJECT_NAME:-default}\neo4j\import:/var/lib/neo4j/import
+      - d:\Memory\${PROJECT_NAME:-default}\neo4j\plugins:/plugins
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-memoryagent}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_memory_heap_max__size=6G
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ${PROJECT_NAME:-memory}-agent-ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - d:\Memory\${PROJECT_NAME:-default}\ollama:/root/.ollama
+      - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/ollama-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "ollama list | grep -q mxbai-embed-large"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+networks:
+  memory-net:
+    name: ${PROJECT_NAME:-memory}-net
+    driver: bridge
