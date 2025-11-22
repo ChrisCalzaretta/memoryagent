@@ -1,0 +1,8 @@
+[2025-11-22T21:59:30.728Z] MCP Wrapper started
+[2025-11-22T22:01:09.174Z] MCP Wrapper started
+[2025-11-22T22:01:09.177Z] Received request: initialize (id: 0)
+[2025-11-22T22:01:09.220Z] Got response for initialize: success
+[2025-11-22T22:01:09.221Z] Received request: notifications/initialized (id: undefined)
+[2025-11-22T22:01:09.227Z] Received request: tools/list (id: 1)
+[2025-11-22T22:01:09.228Z] Got response for notifications/initialized: null (notification)
+[2025-11-22T22:01:09.238Z] Got response for tools/list: success
