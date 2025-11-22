@@ -124,17 +124,25 @@ public class IndexingService : IIndexingService
                 return result;
             }
 
-            // Find all .cs files
+            // Find all supported code files (.cs, .cshtml, .razor, .py)
             var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            var csFiles = Directory.GetFiles(containerPath, "*.cs", searchOption)
-                .Where(f => !f.Contains("\\obj\\") && !f.Contains("\\bin\\")) // Skip build output
+            var patterns = new[] { "*.cs", "*.cshtml", "*.razor", "*.py" };
+            
+            var codeFiles = patterns
+                .SelectMany(pattern => Directory.GetFiles(containerPath, pattern, searchOption))
+                .Where(f => !f.Contains("\\obj\\") && !f.Contains("\\bin\\") && !f.Contains("/obj/") && !f.Contains("/bin/"))
+                .Distinct()
                 .ToList();
 
-            _logger.LogInformation("Found {Count} C# files to index", csFiles.Count);
+            _logger.LogInformation("Found {Count} code files to index ({CSharp} .cs, {Razor} .cshtml/.razor, {Python} .py)", 
+                codeFiles.Count,
+                codeFiles.Count(f => f.EndsWith(".cs")),
+                codeFiles.Count(f => f.EndsWith(".cshtml") || f.EndsWith(".razor")),
+                codeFiles.Count(f => f.EndsWith(".py")));
 
             // Index files in parallel (but limit concurrency to avoid overwhelming services)
             var semaphore = new SemaphoreSlim(5); // Max 5 concurrent file indexes
-            var indexTasks = csFiles.Select(async file =>
+            var indexTasks = codeFiles.Select(async file =>
             {
                 await semaphore.WaitAsync(cancellationToken);
                 try
@@ -180,7 +188,7 @@ public class IndexingService : IIndexingService
         string query,
         string? context = null,
         int limit = 5,
-        float minimumScore = 0.7f,
+        float minimumScore = 0.5f,  // Lowered from 0.7 for better results
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();

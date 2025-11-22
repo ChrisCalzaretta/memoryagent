@@ -26,14 +26,28 @@ public class RoslynParser : ICodeParser
                 return new ParseResult { Errors = { $"File not found: {filePath}" } };
             }
 
-            var code = await File.ReadAllTextAsync(filePath, cancellationToken);
-            return await ParseCodeAsync(code, filePath, context, cancellationToken);
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            
+            // Route to appropriate parser based on file extension
+            return extension switch
+            {
+                ".cshtml" or ".razor" => await Task.Run(() => RazorParser.ParseRazorFile(filePath, context), cancellationToken),
+                ".py" => await Task.Run(() => PythonParser.ParsePythonFile(filePath, context), cancellationToken),
+                ".cs" => await ParseCSharpFileAsync(filePath, context, cancellationToken),
+                _ => new ParseResult { Errors = { $"Unsupported file type: {extension}" } }
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error parsing file: {FilePath}", filePath);
             return new ParseResult { Errors = { $"Error parsing file: {ex.Message}" } };
         }
+    }
+    
+    private async Task<ParseResult> ParseCSharpFileAsync(string filePath, string? context, CancellationToken cancellationToken)
+    {
+        var code = await File.ReadAllTextAsync(filePath, cancellationToken);
+        return await ParseCodeAsync(code, filePath, context, cancellationToken);
     }
 
     public Task<ParseResult> ParseCodeAsync(string code, string filePath, string? context = null, CancellationToken cancellationToken = default)

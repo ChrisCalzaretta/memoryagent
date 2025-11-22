@@ -72,7 +72,7 @@ public class McpService : IMcpService
                         query = new { type = "string", description = "Natural language question (e.g., 'How do we handle errors?')" },
                         context = new { type = "string", description = "Optional context to search within" },
                         limit = new { type = "number", description = "Maximum results", @default = 5 },
-                        minimumScore = new { type = "number", description = "Minimum similarity score 0-1", @default = 0.7 }
+                        minimumScore = new { type = "number", description = "Minimum similarity score 0-1", @default = 0.5 }
                     },
                     required = new[] { "query" }
                 }
@@ -89,7 +89,7 @@ public class McpService : IMcpService
                         query = new { type = "string", description = "Natural language question (e.g., 'How do we handle errors?')" },
                         context = new { type = "string", description = "Optional context to search within" },
                         limit = new { type = "number", description = "Maximum results", @default = 5 },
-                        minimumScore = new { type = "number", description = "Minimum similarity score 0-1", @default = 0.7 }
+                        minimumScore = new { type = "number", description = "Minimum similarity score 0-1", @default = 0.5 }
                     },
                     required = new[] { "query" }
                 }
