@@ -39,6 +39,9 @@ public enum RelationshipType
     // Organizational relationships
     InNamespace,        // Element is in namespace
     InContext,          // Element is in context
+    Contains,           // Container contains element (solution contains project, etc.)
+    DependsOn,          // Project depends on NuGet package
+    References,         // Project references another project
     
     // Pattern relationships
     FollowsPattern,     // Follows a code pattern

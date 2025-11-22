@@ -19,6 +19,14 @@ public class RoslynParser : ICodeParser
         _logger = logger;
         _loggerFactory = loggerFactory;
     }
+    
+    private static bool IsConfigFile(string fileName)
+    {
+        return fileName == "package.json" ||
+               fileName == "package-lock.json" ||
+               fileName.StartsWith("appsettings") ||
+               fileName == "tsconfig.json";
+    }
 
     public async Task<ParseResult> ParseFileAsync(string filePath, string? context = null, CancellationToken cancellationToken = default)
     {
@@ -30,14 +38,22 @@ public class RoslynParser : ICodeParser
             }
 
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            var fileName = Path.GetFileName(filePath).ToLowerInvariant();
             
-            // Route to appropriate parser based on file extension
+            // Route to appropriate parser based on file extension or name
             return extension switch
             {
                 ".cshtml" or ".razor" => await Task.Run(() => RazorParser.ParseRazorFile(filePath, context, _loggerFactory), cancellationToken),
                 ".py" => await Task.Run(() => PythonParser.ParsePythonFile(filePath, context), cancellationToken),
                 ".md" or ".markdown" => await new MarkdownParser(_loggerFactory.CreateLogger<MarkdownParser>()).ParseFileAsync(filePath, context, cancellationToken),
                 ".css" or ".scss" or ".less" => await Task.Run(() => CssParser.ParseCssFile(filePath, context), cancellationToken),
+                ".js" or ".jsx" or ".ts" or ".tsx" => await Task.Run(() => JavaScriptParser.ParseJavaScriptFile(filePath, context), cancellationToken),
+                ".vb" => await Task.Run(() => VBNetParser.ParseVBNetFile(filePath, context), cancellationToken),
+                ".csproj" or ".vbproj" or ".fsproj" or ".sln" => await Task.Run(() => ProjectFileParser.ParseProjectFile(filePath, context), cancellationToken),
+                ".json" when IsConfigFile(fileName) => await Task.Run(() => ConfigFileParser.ParseConfigFile(filePath, context), cancellationToken),
+                ".yml" or ".yaml" when fileName.Contains("docker-compose") => await Task.Run(() => DockerfileParser.ParseDockerfile(filePath, context), cancellationToken),
+                ".config" when fileName == "web.config" => await Task.Run(() => ConfigFileParser.ParseConfigFile(filePath, context), cancellationToken),
+                _ when fileName == "dockerfile" || fileName.EndsWith(".dockerfile") => await Task.Run(() => DockerfileParser.ParseDockerfile(filePath, context), cancellationToken),
                 ".cs" => await ParseCSharpFileAsync(filePath, context, cancellationToken),
                 _ => new ParseResult { Errors = { $"Unsupported file type: {extension}" } }
             };

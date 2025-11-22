@@ -125,27 +125,42 @@ public class IndexingService : IIndexingService
                 return result;
             }
 
-            // Find all supported code files (.cs, .cshtml, .razor, .py, .md, .css, .scss, .less)
+            // Find all supported code files
             var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            var patterns = new[] { "*.cs", "*.cshtml", "*.razor", "*.py", "*.md", "*.css", "*.scss", "*.less" };
+            var patterns = new[] 
+            { 
+                "*.cs", "*.vb", "*.cshtml", "*.razor", "*.py", "*.md", 
+                "*.css", "*.scss", "*.less", 
+                "*.js", "*.jsx", "*.ts", "*.tsx",
+                "*.csproj", "*.vbproj", "*.fsproj", "*.sln",
+                "*.json", "*.yml", "*.yaml", "*.config",
+                "Dockerfile", "*.dockerfile"
+            };
             
             var codeFiles = patterns
                 .SelectMany(pattern => Directory.GetFiles(containerPath, pattern, searchOption))
                 .Where(f => !f.Contains("\\obj\\") && !f.Contains("\\bin\\") && !f.Contains("/obj/") && !f.Contains("/bin/") 
                          && !f.Contains("\\node_modules\\") && !f.Contains("/node_modules/"))
+                // Exclude .cshtml.cs and .razor.cs files (they'll be picked up by *.cs pattern)
+                .Where(f => !f.EndsWith(".cshtml.cs") && !f.EndsWith(".razor.cs"))
                 .Distinct()
                 .ToList();
 
-            _logger.LogInformation("Found {Count} code files to index ({CSharp} .cs, {Razor} .cshtml/.razor, {Python} .py, {Markdown} .md, {Styles} .css/.scss/.less)", 
+            _logger.LogInformation("Found {Count} code files to index ({CSharp} .cs, {VB} .vb, {Razor} .cshtml/.razor, {Python} .py, {Markdown} .md, {Styles} .css/.scss/.less, {JavaScript} .js/.ts, {Project} .csproj/.sln, {Config} config files, {Docker} Docker)", 
                 codeFiles.Count,
                 codeFiles.Count(f => f.EndsWith(".cs")),
+                codeFiles.Count(f => f.EndsWith(".vb")),
                 codeFiles.Count(f => f.EndsWith(".cshtml") || f.EndsWith(".razor")),
                 codeFiles.Count(f => f.EndsWith(".py")),
                 codeFiles.Count(f => f.EndsWith(".md")),
-                codeFiles.Count(f => f.EndsWith(".css") || f.EndsWith(".scss") || f.EndsWith(".less")));
+                codeFiles.Count(f => f.EndsWith(".css") || f.EndsWith(".scss") || f.EndsWith(".less")),
+                codeFiles.Count(f => f.EndsWith(".js") || f.EndsWith(".ts") || f.EndsWith(".jsx") || f.EndsWith(".tsx")),
+                codeFiles.Count(f => f.EndsWith(".csproj") || f.EndsWith(".sln") || f.EndsWith(".vbproj") || f.EndsWith(".fsproj")),
+                codeFiles.Count(f => f.EndsWith(".json") || f.EndsWith(".config") || f.EndsWith(".yml") || f.EndsWith(".yaml")),
+                codeFiles.Count(f => f.Contains("Dockerfile") || f.Contains("docker-compose")));
 
             // Index files in parallel (but limit concurrency to avoid overwhelming services)
-            var semaphore = new SemaphoreSlim(5); // Max 5 concurrent file indexes
+            var semaphore = new SemaphoreSlim(8); // Max 8 concurrent file indexes
             var indexTasks = codeFiles.Select(async file =>
             {
                 await semaphore.WaitAsync(cancellationToken);

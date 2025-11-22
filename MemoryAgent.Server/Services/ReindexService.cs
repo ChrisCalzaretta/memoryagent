@@ -60,12 +60,22 @@ public class ReindexService : IReindexService
             }
 
             // Get all current code files (all supported types)
-            var patterns = new[] { "*.cs", "*.cshtml", "*.razor", "*.py", "*.md", "*.css", "*.scss", "*.less" };
+            var patterns = new[] 
+            { 
+                "*.cs", "*.vb", "*.cshtml", "*.razor", "*.py", "*.md", 
+                "*.css", "*.scss", "*.less", 
+                "*.js", "*.jsx", "*.ts", "*.tsx",
+                "*.csproj", "*.vbproj", "*.fsproj", "*.sln",
+                "*.json", "*.yml", "*.yaml", "*.config",
+                "Dockerfile", "*.dockerfile"
+            };
             var currentFiles = patterns
                 .SelectMany(pattern => Directory.GetFiles(containerPath, pattern, SearchOption.AllDirectories))
                 .Where(f => !f.Contains("/obj/") && !f.Contains("/bin/") && 
                            !f.Contains("\\obj\\") && !f.Contains("\\bin\\") &&
                            !f.Contains("/node_modules/") && !f.Contains("\\node_modules\\"))
+                // Exclude .cshtml.cs and .razor.cs files (they'll be picked up by *.cs pattern)
+                .Where(f => !f.EndsWith(".cshtml.cs") && !f.EndsWith(".razor.cs"))
                 .Select(f => f.Replace("\\", "/")) // Normalize paths
                 .ToHashSet();
 
@@ -94,50 +104,76 @@ public class ReindexService : IReindexService
 
             result.TotalProcessed = currentFiles.Count;
 
-            // Remove deleted files
+            // Thread-safe counters for parallel operations
+            int filesRemoved = 0;
+            int filesAdded = 0;
+            int filesUpdated = 0;
+
+            // Remove deleted files (in parallel)
             if (removeStale && deletedFiles.Any())
             {
-                _logger.LogInformation("Removing {Count} deleted files from index", deletedFiles.Count);
-                foreach (var deletedFile in deletedFiles)
+                _logger.LogInformation("Removing {Count} deleted files from index (parallel)", deletedFiles.Count);
+                var deleteOptions = new ParallelOptions 
+                { 
+                    MaxDegreeOfParallelism = 8,
+                    CancellationToken = cancellationToken 
+                };
+                
+                await Parallel.ForEachAsync(deletedFiles, deleteOptions, async (deletedFile, ct) =>
                 {
                     try
                     {
-                        await _vectorService.DeleteByFilePathAsync(deletedFile, cancellationToken);
-                        await _graphService.DeleteByFilePathAsync(deletedFile, cancellationToken);
-                        result.FilesRemoved++;
+                        await _vectorService.DeleteByFilePathAsync(deletedFile, ct);
+                        await _graphService.DeleteByFilePathAsync(deletedFile, ct);
+                        Interlocked.Increment(ref filesRemoved);
                     }
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Error removing deleted file: {File}", deletedFile);
-                        result.Errors.Add($"Error removing {deletedFile}: {ex.Message}");
+                        lock (result.Errors)
+                        {
+                            result.Errors.Add($"Error removing {deletedFile}: {ex.Message}");
+                        }
                     }
-                }
+                });
             }
 
-            // Index new files
+            // Index new files (in parallel)
             if (newFiles.Any())
             {
-                _logger.LogInformation("Indexing {Count} new files", newFiles.Count);
-                foreach (var newFile in newFiles)
+                _logger.LogInformation("Indexing {Count} new files (parallel)", newFiles.Count);
+                var indexOptions = new ParallelOptions 
+                { 
+                    MaxDegreeOfParallelism = 8,
+                    CancellationToken = cancellationToken 
+                };
+                
+                await Parallel.ForEachAsync(newFiles, indexOptions, async (newFile, ct) =>
                 {
                     try
                     {
-                        var fileResult = await _indexingService.IndexFileAsync(newFile, context, cancellationToken);
+                        var fileResult = await _indexingService.IndexFileAsync(newFile, context, ct);
                         if (fileResult.Success)
                         {
-                            result.FilesAdded++;
+                            Interlocked.Increment(ref filesAdded);
                         }
                         else
                         {
-                            result.Errors.AddRange(fileResult.Errors);
+                            lock (result.Errors)
+                            {
+                                result.Errors.AddRange(fileResult.Errors);
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Error indexing new file: {File}", newFile);
-                        result.Errors.Add($"Error indexing {newFile}: {ex.Message}");
+                        lock (result.Errors)
+                        {
+                            result.Errors.Add($"Error indexing {newFile}: {ex.Message}");
+                        }
                     }
-                }
+                });
             }
 
             // Check and reindex modified files
@@ -172,33 +208,50 @@ public class ReindexService : IReindexService
 
                 if (modifiedFiles.Any())
                 {
-                    _logger.LogInformation("Reindexing {Count} modified files", modifiedFiles.Count);
-                    foreach (var modifiedFile in modifiedFiles)
+                    _logger.LogInformation("Reindexing {Count} modified files (parallel)", modifiedFiles.Count);
+                    var reindexOptions = new ParallelOptions 
+                    { 
+                        MaxDegreeOfParallelism = 8,
+                        CancellationToken = cancellationToken 
+                    };
+                    
+                    await Parallel.ForEachAsync(modifiedFiles, reindexOptions, async (modifiedFile, ct) =>
                     {
                         try
                         {
-                            var fileResult = await _indexingService.IndexFileAsync(modifiedFile, context, cancellationToken);
+                            var fileResult = await _indexingService.IndexFileAsync(modifiedFile, context, ct);
                             if (fileResult.Success)
                             {
-                                result.FilesUpdated++;
+                                Interlocked.Increment(ref filesUpdated);
                             }
                             else
                             {
-                                result.Errors.AddRange(fileResult.Errors);
+                                lock (result.Errors)
+                                {
+                                    result.Errors.AddRange(fileResult.Errors);
+                                }
                             }
                         }
                         catch (Exception ex)
                         {
                             _logger.LogWarning(ex, "Error reindexing modified file: {File}", modifiedFile);
-                            result.Errors.Add($"Error reindexing {modifiedFile}: {ex.Message}");
+                            lock (result.Errors)
+                            {
+                                result.Errors.Add($"Error reindexing {modifiedFile}: {ex.Message}");
+                            }
                         }
-                    }
+                    });
                 }
                 else
                 {
                     _logger.LogInformation("No modified files detected");
                 }
             }
+
+            // Assign thread-safe counter values to result
+            result.FilesRemoved = filesRemoved;
+            result.FilesAdded = filesAdded;
+            result.FilesUpdated = filesUpdated;
 
             result.Success = !result.Errors.Any();
             result.Duration = stopwatch.Elapsed;
