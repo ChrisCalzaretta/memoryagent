@@ -45,6 +45,7 @@ builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
 // TODO and Plan Management
 builder.Services.AddScoped<ITodoService, TodoService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
+builder.Services.AddScoped<ITaskValidationService, TaskValidationService>();
 
 // Background Services
 builder.Services.AddHostedService<AutoReindexService>();

@@ -60,6 +60,18 @@ public class PlanTask
     public int OrderIndex { get; set; }
     public List<string> Dependencies { get; set; } = new(); // Task IDs that must complete first
     public DateTime? CompletedAt { get; set; }
+    public List<TaskValidationRule> ValidationRules { get; set; } = new(); // Rules that must pass before completion
+}
+
+/// <summary>
+/// Validation rule that must be satisfied before task can be marked complete
+/// </summary>
+public class TaskValidationRule
+{
+    public string RuleType { get; set; } = string.Empty; // requires_test, requires_file, min_coverage, max_complexity
+    public string Target { get; set; } = string.Empty; // File path, class name, etc.
+    public Dictionary<string, object> Parameters { get; set; } = new(); // Rule-specific parameters
+    public bool AutoFix { get; set; } = false; // Should agent auto-create missing items?
 }
 
 public enum PlanStatus
@@ -111,6 +123,7 @@ public class PlanTaskRequest
     public string Description { get; set; } = string.Empty;
     public int OrderIndex { get; set; }
     public List<string> Dependencies { get; set; } = new();
+    public List<TaskValidationRule> ValidationRules { get; set; } = new();
 }
 
 public class UpdatePlanRequest

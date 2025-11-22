@@ -304,7 +304,7 @@ public class PythonParser
                 var isAsync = PythonComplexityAnalyzer.IsAsync(methodLines);
                 
                 // Check if this is a test method
-                var decorators = lines.Take(i).TakeLast(5)
+                var decorators = classLines.Take(i).TakeLast(5)
                     .Where(l => l.Trim().StartsWith("@"))
                     .Select(l => l.Trim())
                     .ToList();

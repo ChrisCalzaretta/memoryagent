@@ -1,6 +1,7 @@
 using MemoryAgent.Server.Models;
 using MemoryAgent.Server.Services;
 using Microsoft.AspNetCore.Mvc;
+using TaskStatusModel = MemoryAgent.Server.Models.TaskStatus;
 
 namespace MemoryAgent.Server.Controllers;
 
@@ -107,7 +108,7 @@ public class PlanController : ControllerBase
     public async Task<ActionResult<DevelopmentPlan>> UpdateTaskStatus(
         string planId,
         string taskId,
-        [FromBody] TaskStatus status,
+        [FromBody] TaskStatusModel status,
         CancellationToken cancellationToken)
     {
         try
@@ -133,10 +134,10 @@ public class PlanController : ControllerBase
         }
 
         var totalTasks = plan.Tasks.Count;
-        var completedTasks = plan.Tasks.Count(t => t.Status == TaskStatus.Completed);
-        var inProgressTasks = plan.Tasks.Count(t => t.Status == TaskStatus.InProgress);
-        var pendingTasks = plan.Tasks.Count(t => t.Status == TaskStatus.Pending);
-        var blockedTasks = plan.Tasks.Count(t => t.Status == TaskStatus.Blocked);
+        var completedTasks = plan.Tasks.Count(t => t.Status == TaskStatusModel.Completed);
+        var inProgressTasks = plan.Tasks.Count(t => t.Status == TaskStatusModel.InProgress);
+        var pendingTasks = plan.Tasks.Count(t => t.Status == TaskStatusModel.Pending);
+        var blockedTasks = plan.Tasks.Count(t => t.Status == TaskStatusModel.Blocked);
         var progress = totalTasks > 0 ? (double)completedTasks / totalTasks * 100 : 0;
 
         return Ok(new

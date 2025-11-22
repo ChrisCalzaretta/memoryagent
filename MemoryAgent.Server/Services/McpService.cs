@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MemoryAgent.Server.Models;
+using TaskStatusModel = MemoryAgent.Server.Models.TaskStatus;
 
 namespace MemoryAgent.Server.Services;
 
@@ -14,6 +15,7 @@ public class McpService : IMcpService
     private readonly ISmartSearchService _smartSearchService;
     private readonly ITodoService _todoService;
     private readonly IPlanService _planService;
+    private readonly ITaskValidationService _validationService;
     private readonly ILogger<McpService> _logger;
 
     public McpService(
@@ -23,6 +25,7 @@ public class McpService : IMcpService
         ISmartSearchService smartSearchService,
         ITodoService todoService,
         IPlanService planService,
+        ITaskValidationService validationService,
         ILogger<McpService> logger)
     {
         _indexingService = indexingService;
@@ -31,6 +34,7 @@ public class McpService : IMcpService
         _smartSearchService = smartSearchService;
         _todoService = todoService;
         _planService = planService;
+        _validationService = validationService;
         _logger = logger;
     }
 
@@ -319,6 +323,22 @@ public class McpService : IMcpService
                         status = new { type = "string", description = "Filter by status: Draft, Active, Completed, Cancelled, OnHold" }
                     }
                 }
+            },
+            new McpTool
+            {
+                Name = "validate_task",
+                Description = "Validate a task against its rules before completion. Checks for required tests, files, code quality, etc. Can auto-fix validation failures if enabled.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        planId = new { type = "string", description = "Plan ID" },
+                        taskId = new { type = "string", description = "Task ID to validate" },
+                        autoFix = new { type = "boolean", description = "Automatically fix validation failures (e.g., create missing tests)" }
+                    },
+                    required = new[] { "planId", "taskId" }
+                }
             }
         };
 
@@ -351,6 +371,7 @@ public class McpService : IMcpService
                 "update_task_status" => await UpdateTaskStatusToolAsync(toolCall.Arguments, cancellationToken),
                 "complete_plan" => await CompletePlanToolAsync(toolCall.Arguments, cancellationToken),
                 "search_plans" => await SearchPlansToolAsync(toolCall.Arguments, cancellationToken),
+                "validate_task" => await ValidateTaskToolAsync(toolCall.Arguments, cancellationToken),
                 _ => new McpToolResult
                 {
                     IsError = true,
@@ -691,15 +712,15 @@ public class McpService : IMcpService
         };
     }
 
-    private async Task<McpToolResult> AddTodoToolAsync(JsonElement args, CancellationToken cancellationToken)
+    private async Task<McpToolResult> AddTodoToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args.GetProperty("context").GetString() ?? "default";
-        var title = args.GetProperty("title").GetString() ?? "";
-        var description = args.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "";
-        var priority = args.TryGetProperty("priority", out var prio) ? Enum.Parse<TodoPriority>(prio.GetString() ?? "Medium") : TodoPriority.Medium;
-        var filePath = args.TryGetProperty("filePath", out var file) ? file.GetString() ?? "" : "";
-        var lineNumber = args.TryGetProperty("lineNumber", out var line) ? line.GetInt32() : 0;
-        var assignedTo = args.TryGetProperty("assignedTo", out var assigned) ? assigned.GetString() ?? "" : "";
+        var context = args?.GetValueOrDefault("context")?.ToString() ?? "default";
+        var title = args?.GetValueOrDefault("title")?.ToString() ?? "";
+        var description = args?.GetValueOrDefault("description")?.ToString() ?? "";
+        var priority = Enum.TryParse<TodoPriority>(args?.GetValueOrDefault("priority")?.ToString(), out var parsedpriority) ? parsedpriority : TodoPriority.Medium;
+        var filePath = args?.GetValueOrDefault("filePath")?.ToString() ?? "";
+        var lineNumber = (args?.GetValueOrDefault("lineNumber") as int?) ?? 0;
+        var assignedTo = args?.GetValueOrDefault("assignedTo")?.ToString() ?? "";
 
         var request = new AddTodoRequest
         {
@@ -732,12 +753,12 @@ public class McpService : IMcpService
         };
     }
 
-    private async Task<McpToolResult> SearchTodosToolAsync(JsonElement args, CancellationToken cancellationToken)
+    private async Task<McpToolResult> SearchTodosToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args.TryGetProperty("context", out var ctx) ? ctx.GetString() : null;
-        var statusStr = args.TryGetProperty("status", out var stat) ? stat.GetString() : null;
-        var priorityStr = args.TryGetProperty("priority", out var prio) ? prio.GetString() : null;
-        var assignedTo = args.TryGetProperty("assignedTo", out var assigned) ? assigned.GetString() : null;
+        var context = args?.TryGetValue("context", out var ctx) == true ? ctx?.ToString() : null;
+        var statusStr = args?.TryGetValue("status", out var stat) == true ? stat?.ToString() : null;
+        var priorityStr = args?.TryGetValue("priority", out var prio) == true ? prio?.ToString() : null;
+        var assignedTo = args?.TryGetValue("assignedTo", out var assigned) == true ? assigned?.ToString() : null;
 
         TodoStatus? status = statusStr != null ? Enum.Parse<TodoStatus>(statusStr) : null;
         
@@ -774,10 +795,10 @@ public class McpService : IMcpService
         };
     }
 
-    private async Task<McpToolResult> UpdateTodoStatusToolAsync(JsonElement args, CancellationToken cancellationToken)
+    private async Task<McpToolResult> UpdateTodoStatusToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var todoId = args.GetProperty("todoId").GetString() ?? "";
-        var statusStr = args.GetProperty("status").GetString() ?? "";
+        var todoId = args?.GetValueOrDefault("todoId")?.ToString() ?? "";
+        var statusStr = args?.GetValueOrDefault("status")?.ToString() ?? "";
         var status = Enum.Parse<TodoStatus>(statusStr);
 
         var todo = await _todoService.UpdateTodoAsync(todoId, status, cancellationToken);
@@ -798,25 +819,28 @@ public class McpService : IMcpService
         };
     }
 
-    private async Task<McpToolResult> CreatePlanToolAsync(JsonElement args, CancellationToken cancellationToken)
+    private async Task<McpToolResult> CreatePlanToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args.GetProperty("context").GetString() ?? "default";
-        var name = args.GetProperty("name").GetString() ?? "";
-        var description = args.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "";
+        var context = args?.GetValueOrDefault("context")?.ToString() ?? "default";
+        var name = args?.GetValueOrDefault("name")?.ToString() ?? "";
+        var description = args?.GetValueOrDefault("description")?.ToString() ?? "";
         
         var tasks = new List<PlanTaskRequest>();
-        if (args.TryGetProperty("tasks", out var tasksArr))
+        if (args?.TryGetValue("tasks", out var tasksArr) == true && tasksArr is IEnumerable<object> tasksList)
         {
             int index = 0;
-            foreach (var taskElem in tasksArr.EnumerateArray())
+            foreach (var taskElem in tasksList)
             {
-                tasks.Add(new PlanTaskRequest
+                if (taskElem is Dictionary<string, object> taskDict)
                 {
-                    Title = taskElem.GetProperty("title").GetString() ?? "",
-                    Description = taskElem.TryGetProperty("description", out var taskDesc) ? taskDesc.GetString() ?? "" : "",
-                    OrderIndex = taskElem.TryGetProperty("orderIndex", out var order) ? order.GetInt32() : index++,
-                    Dependencies = new List<string>()
-                });
+                    tasks.Add(new PlanTaskRequest
+                    {
+                        Title = taskDict.GetValueOrDefault("title")?.ToString() ?? "",
+                        Description = taskDict.GetValueOrDefault("description")?.ToString() ?? "",
+                        OrderIndex = (taskDict.GetValueOrDefault("orderIndex") as int?) ?? index++,
+                        Dependencies = new List<string>()
+                    });
+                }
             }
         }
 
@@ -848,9 +872,9 @@ public class McpService : IMcpService
         };
     }
 
-    private async Task<McpToolResult> GetPlanStatusToolAsync(JsonElement args, CancellationToken cancellationToken)
+    private async Task<McpToolResult> GetPlanStatusToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var planId = args.GetProperty("planId").GetString() ?? "";
+        var planId = args?.GetValueOrDefault("planId")?.ToString() ?? "";
         var plan = await _planService.GetPlanAsync(planId, cancellationToken);
 
         if (plan == null)
@@ -859,9 +883,9 @@ public class McpService : IMcpService
         }
 
         var total = plan.Tasks.Count;
-        var completed = plan.Tasks.Count(t => t.Status == TaskStatus.Completed);
-        var inProgress = plan.Tasks.Count(t => t.Status == TaskStatus.InProgress);
-        var pending = plan.Tasks.Count(t => t.Status == TaskStatus.Pending);
+        var completed = plan.Tasks.Count(t => t.Status == TaskStatusModel.Completed);
+        var inProgress = plan.Tasks.Count(t => t.Status == TaskStatusModel.InProgress);
+        var pending = plan.Tasks.Count(t => t.Status == TaskStatusModel.Pending);
         var progress = total > 0 ? (double)completed / total * 100 : 0;
 
         var text = $"📋 {plan.Name}\n\n" +
@@ -869,7 +893,7 @@ public class McpService : IMcpService
                    $"Progress: {progress:F1}% ({completed}/{total} tasks completed)\n\n" +
                    $"Tasks:\n" +
                    string.Join("\n", plan.Tasks.OrderBy(t => t.OrderIndex).Select(t =>
-                       $"  {(t.Status == TaskStatus.Completed ? "✅" : t.Status == TaskStatus.InProgress ? "🔄" : t.Status == TaskStatus.Blocked ? "🚫" : "⏳")} {t.Title} ({t.Status})"));
+                       $"  {(t.Status == TaskStatusModel.Completed ? "✅" : t.Status == TaskStatusModel.InProgress ? "🔄" : t.Status == TaskStatusModel.Blocked ? "🚫" : "⏳")} {t.Title} ({t.Status})"));
 
         return new McpToolResult
         {
@@ -880,12 +904,12 @@ public class McpService : IMcpService
         };
     }
 
-    private async Task<McpToolResult> UpdateTaskStatusToolAsync(JsonElement args, CancellationToken cancellationToken)
+    private async Task<McpToolResult> UpdateTaskStatusToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var planId = args.GetProperty("planId").GetString() ?? "";
-        var taskId = args.GetProperty("taskId").GetString() ?? "";
-        var statusStr = args.GetProperty("status").GetString() ?? "";
-        var status = Enum.Parse<TaskStatus>(statusStr);
+        var planId = args?.GetValueOrDefault("planId")?.ToString() ?? "";
+        var taskId = args?.GetValueOrDefault("taskId")?.ToString() ?? "";
+        var statusStr = args?.GetValueOrDefault("status")?.ToString() ?? "";
+        var status = Enum.Parse<TaskStatusModel>(statusStr);
 
         var plan = await _planService.UpdateTaskStatusAsync(planId, taskId, status, cancellationToken);
 
@@ -898,15 +922,15 @@ public class McpService : IMcpService
                     Type = "text",
                     Text = $"✅ Task status updated!\n\n" +
                            $"Plan: {plan.Name}\n" +
-                           $"Progress: {(double)plan.Tasks.Count(t => t.Status == TaskStatus.Completed) / plan.Tasks.Count * 100:F1}%"
+                           $"Progress: {(double)plan.Tasks.Count(t => t.Status == TaskStatusModel.Completed) / plan.Tasks.Count * 100:F1}%"
                 }
             }
         };
     }
 
-    private async Task<McpToolResult> CompletePlanToolAsync(JsonElement args, CancellationToken cancellationToken)
+    private async Task<McpToolResult> CompletePlanToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var planId = args.GetProperty("planId").GetString() ?? "";
+        var planId = args?.GetValueOrDefault("planId")?.ToString() ?? "";
         var plan = await _planService.CompletePlanAsync(planId, cancellationToken);
 
         return new McpToolResult
@@ -925,10 +949,10 @@ public class McpService : IMcpService
         };
     }
 
-    private async Task<McpToolResult> SearchPlansToolAsync(JsonElement args, CancellationToken cancellationToken)
+    private async Task<McpToolResult> SearchPlansToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args.TryGetProperty("context", out var ctx) ? ctx.GetString() : null;
-        var statusStr = args.TryGetProperty("status", out var stat) ? stat.GetString() : null;
+        var context = args?.TryGetValue("context", out var ctx) == true ? ctx?.ToString() : null;
+        var statusStr = args?.TryGetValue("status", out var stat) == true ? stat?.ToString() : null;
         PlanStatus? status = statusStr != null ? Enum.Parse<PlanStatus>(statusStr) : null;
 
         var plans = await _planService.GetPlansAsync(context, status, cancellationToken);
@@ -938,7 +962,7 @@ public class McpService : IMcpService
               string.Join("\n\n", plans.Select(p =>
               {
                   var total = p.Tasks.Count;
-                  var completed = p.Tasks.Count(t => t.Status == TaskStatus.Completed);
+                  var completed = p.Tasks.Count(t => t.Status == TaskStatusModel.Completed);
                   var progress = total > 0 ? (double)completed / total * 100 : 0;
                   return $"📋 {p.Name}\n" +
                          $"   ID: {p.Id}\n" +
@@ -957,6 +981,160 @@ public class McpService : IMcpService
         };
     }
 
+    private async Task<McpToolResult> ValidateTaskToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var planId = args?.GetValueOrDefault("planId")?.ToString()!;
+        var taskId = args?.GetValueOrDefault("taskId")?.ToString()!;
+        var autoFix = args?.TryGetValue("autoFix", out var fix) == true && (fix as bool?) == true;
+
+        // Get the plan and task
+        var plan = await _planService.GetPlanAsync(planId, cancellationToken);
+        if (plan == null)
+        {
+            return new McpToolResult
+            {
+                IsError = true,
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"Plan not found: {planId}" }
+                }
+            };
+        }
+
+        var task = plan.Tasks.FirstOrDefault(t => t.Id == taskId);
+        if (task == null)
+        {
+            return new McpToolResult
+            {
+                IsError = true,
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"Task not found: {taskId}" }
+                }
+            };
+        }
+
+        // Validate the task
+        var validationResult = await _validationService.ValidateTaskAsync(task, plan.Context, cancellationToken);
+
+        if (validationResult.IsValid)
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent
+                    {
+                        Type = "text",
+                        Text = $"✅ Task '{task.Title}' passed all validation rules!\n\n" +
+                               "Task is ready to be marked as completed."
+                    }
+                }
+            };
+        }
+
+        // Validation failed
+        var failureText = $"❌ Task '{task.Title}' failed validation:\n\n";
+        foreach (var failure in validationResult.Failures)
+        {
+            failureText += $"• {failure.RuleType}: {failure.Message}\n";
+            if (failure.CanAutoFix)
+            {
+                failureText += $"  💡 Auto-fix available: {failure.FixDescription}\n";
+            }
+            
+            // Add actionable context for AI agents (Cursor)
+            if (failure.ActionableContext.Any())
+            {
+                failureText += $"\n  📋 Details:\n";
+                
+                if (failure.ActionableContext.ContainsKey("suggestion"))
+                {
+                    failureText += $"     {failure.ActionableContext["suggestion"]}\n";
+                }
+                
+                if (failure.ActionableContext.ContainsKey("methods_to_test"))
+                {
+                    var methods = failure.ActionableContext["methods_to_test"];
+                    failureText += $"\n     Methods needing tests:\n";
+                    
+                    // Show first few methods
+                    if (methods is IEnumerable<object> methodList)
+                    {
+                        var methodArray = methodList.Take(5).ToArray();
+                        for (int i = 0; i < methodArray.Length && i < 5; i++)
+                        {
+                            var method = methodArray[i];
+                            var nameProperty = method.GetType().GetProperty("Name");
+                            if (nameProperty != null)
+                            {
+                                var methodName = nameProperty.GetValue(method)?.ToString();
+                                failureText += $"       - {methodName}\n";
+                            }
+                        }
+                        
+                        var totalCount = failure.ActionableContext.ContainsKey("method_count") 
+                            ? Convert.ToInt32(failure.ActionableContext["method_count"]) 
+                            : 0;
+                        if (totalCount > 5)
+                        {
+                            failureText += $"       ... and {totalCount - 5} more\n";
+                        }
+                    }
+                }
+                
+                if (failure.ActionableContext.ContainsKey("example_test_names"))
+                {
+                    var examples = failure.ActionableContext["example_test_names"];
+                    if (examples is IEnumerable<object> exampleList)
+                    {
+                        failureText += $"\n     Example test names:\n";
+                        foreach (var example in exampleList.Take(3))
+                        {
+                            failureText += $"       - {example}\n";
+                        }
+                    }
+                }
+            }
+            
+            failureText += "\n";
+        }
+
+        // Try auto-fix if requested
+        if (autoFix)
+        {
+            failureText += "\n🔧 Attempting auto-fix...\n";
+            var wasFixed = await _validationService.AutoFixValidationFailuresAsync(task, validationResult, plan.Context, cancellationToken);
+            
+            if (wasFixed)
+            {
+                failureText += "✅ Auto-fix completed! Please re-validate to confirm.\n";
+            }
+            else
+            {
+                failureText += "❌ Auto-fix failed. Manual intervention required.\n";
+            }
+        }
+        else if (validationResult.Suggestions.Any())
+        {
+            failureText += "\n💡 Suggestions:\n";
+            foreach (var suggestion in validationResult.Suggestions)
+            {
+                failureText += $"• {suggestion}\n";
+            }
+            failureText += "\nRun with autoFix: true to automatically fix these issues.\n";
+        }
+
+        return new McpToolResult
+        {
+            IsError = !autoFix, // Only error if not auto-fixing
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = failureText }
+            }
+        };
+    }
+
     private static McpToolResult ErrorResult(string message)
     {
         return new McpToolResult
@@ -969,5 +1147,8 @@ public class McpService : IMcpService
         };
     }
 }
+
+
+
 
 

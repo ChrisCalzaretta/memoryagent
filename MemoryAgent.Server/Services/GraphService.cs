@@ -2,6 +2,7 @@ using MemoryAgent.Server.Models;
 using Neo4j.Driver;
 using Polly;
 using Polly.Retry;
+using TaskStatusModel = MemoryAgent.Server.Models.TaskStatus;
 
 namespace MemoryAgent.Server.Services;
 
@@ -938,7 +939,7 @@ public class GraphService : IGraphService, IDisposable
             Id = props["id"].As<string>(),
             Title = props["title"].As<string>(),
             Description = props["description"].As<string>(),
-            Status = Enum.Parse<TaskStatus>(props["status"].As<string>()),
+            Status = Enum.Parse<TaskStatusModel>(props["status"].As<string>()),
             OrderIndex = props["orderIndex"].As<int>(),
             CompletedAt = props.ContainsKey("completedAt") ? props["completedAt"].As<DateTime?>() : null,
             Dependencies = new List<string>()

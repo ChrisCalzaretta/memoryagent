@@ -131,6 +131,58 @@ Search and filter development plans.
 @memory list completed plans for CBC_AI
 ```
 
+#### 17. **validate_task** ✨
+Validate a task against its rules before completion. Checks for required tests, files, code quality, etc. Can auto-fix validation failures if enabled.
+
+**Parameters:**
+- `planId` (required): Plan ID
+- `taskId` (required): Task ID to validate
+- `autoFix` (optional): Automatically fix validation failures (default: false)
+
+**What it checks:**
+- `requires_test`: Does the code have unit tests?
+- `requires_file`: Do required files exist?
+- `min_test_coverage`: Are enough methods tested?
+- `max_complexity`: Is code complexity below threshold?
+- `requires_documentation`: Are public APIs documented?
+- `no_code_smells`: Are there any quality issues?
+
+**What auto-fix does:**
+- ✅ Creates test file scaffolding
+- ✅ Generates XML documentation templates
+- ✅ Creates missing files from templates
+- ✅ Suggests which methods need tests
+- ❌ Cannot refactor complex methods (manual)
+- ❌ Cannot fix code smells (manual)
+
+**Example usage in Cursor:**
+```
+@memory validate task {taskId} in plan {planId}
+@memory validate task {taskId} and auto-fix issues
+```
+
+**Response Example:**
+```
+❌ Task 'Create PaymentService' failed validation:
+
+• requires_test: No tests found for PaymentService
+  💡 Auto-fix available: Create PaymentServiceTests.cs
+
+• max_complexity: Method ProcessPayment has complexity 15 (limit: 10)
+  💡 Refactor: ProcessPayment
+
+🔧 Auto-fix created PaymentServiceTests.cs
+⚠️  Complexity issue requires manual refactoring
+```
+
+**When to use:**
+- Before marking a task as "Completed"
+- To check if your implementation meets quality standards
+- To auto-generate missing test files or documentation
+- To ensure code doesn't exceed complexity limits
+
+**See also:** `TASK_VALIDATION.md` for complete validation system documentation
+
 ## How to Use from Cursor
 
 ### 1. Direct MCP Tool Calls

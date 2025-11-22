@@ -2,7 +2,7 @@
 
 ## Overview
 
-Major enhancements to the Memory Agent code analysis and tracking capabilities, including complexity metrics, test tracking, TODO/Plan management, and comprehensive metadata extraction.
+Major enhancements to the Memory Agent code analysis and tracking capabilities, including complexity metrics, test tracking, TODO/Plan management with validation rules, and comprehensive metadata extraction.
 
 ## 1. Code Complexity Metrics ✅
 
@@ -198,6 +198,174 @@ TODOs and Plans are stored in Neo4j as nodes:
 - `(:Plan)` and `(:PlanTask)` nodes
 - `(:Plan)-[:HAS_TASK]->(:PlanTask)` relationships
 - `(:PlanTask)-[:DEPENDS_ON]->(:PlanTask)` for dependencies
+
+### Task Validation Rules ✅
+
+**NEW**: Tasks can have validation rules that must pass before marking complete!
+
+#### Validation Rule Types
+
+| Rule Type | Description | Auto-Fix | Purpose |
+|-----------|-------------|----------|---------|
+| `requires_test` | Task must have unit tests | ✅ | Ensures test coverage |
+| `requires_file` | Specific file must exist | ✅ | Validates deliverables |
+| `min_test_coverage` | Minimum % of methods tested | ✅ | Enforces coverage goals |
+| `max_complexity` | Cyclomatic complexity limit | ❌ | Prevents complex code |
+| `requires_documentation` | Public APIs need XML docs | ✅ | Ensures documentation |
+| `no_code_smells` | No quality issues detected | ❌ | Maintains code quality |
+
+#### Example: Create a Task with Validation
+
+```json
+POST /api/plan/add
+{
+  "context": "MyProject",
+  "name": "Add Payment Processing",
+  "tasks": [
+    {
+      "title": "Create PaymentService",
+      "description": "Core payment logic",
+      "orderIndex": 0,
+      "validationRules": [
+        {
+          "ruleType": "requires_test",
+          "target": "PaymentService",
+          "autoFix": true
+        },
+        {
+          "ruleType": "max_complexity",
+          "target": "PaymentService",
+          "parameters": {
+            "max_complexity": 10
+          },
+          "autoFix": false
+        },
+        {
+          "ruleType": "requires_documentation",
+          "target": "PaymentService",
+          "autoFix": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Validation Workflow
+
+**When Marking Task Complete:**
+1. System checks all validation rules
+2. If any fail:
+   - Auto-fix enabled? → Try to fix automatically
+   - Auto-fix disabled? → Block completion with error
+3. If auto-fix successful, re-validate
+4. Only mark complete if all rules pass
+
+**Example Validation Failure:**
+```
+❌ Task 'Create PaymentService' failed validation:
+
+• requires_test: No tests found for PaymentService
+  💡 Auto-fix available: Create PaymentServiceTests.cs
+
+  📋 Details:
+     Create tests for 5 method(s) in PaymentService. Focus on public methods first.
+
+     Methods needing tests:
+       - ProcessPayment
+       - ValidateCard
+       - RefundPayment
+       - GetPaymentStatus
+       - CancelPayment
+
+     Example test names:
+       - ProcessPayment_ShouldReturnTrue_WhenPaymentSucceeds
+       - ValidateCard_ShouldThrow_WhenCardExpired
+       - RefundPayment_ShouldUpdateStatus_WhenRefunded
+
+• max_complexity: Method ProcessPayment has complexity 15 (limit: 10)
+  💡 Refactor: ProcessPayment, ValidateCard
+
+🔧 Attempting auto-fix...
+✅ Created PaymentServiceTests.cs
+❌ Complexity issue requires manual refactoring
+
+💡 Cursor can now use the provided context to write the actual test implementations!
+```
+
+#### Auto-Fix Capabilities
+
+**What Auto-Fix Does:**
+- ✅ Creates test file scaffolding with xUnit template
+- ✅ Generates XML documentation stubs
+- ✅ Creates missing files from templates
+- ✅ **Provides detailed context to AI agents (Cursor)**:
+  - Lists all methods that need tests
+  - Suggests test names (e.g., `CreateUser_Should...`)
+  - Shows method signatures
+  - Prioritizes public methods
+  - Gives example test structure
+
+**What It Doesn't Do (But Guides You):**
+- 🤖 **Doesn't write full test logic** BUT provides enough context for Cursor AI to write it
+- ❌ Doesn't refactor complex methods (requires human judgment)
+- ❌ Doesn't fix code smells automatically (needs design decisions)
+
+**How It Helps AI Agents:**
+When validation fails, the response includes **actionable context** that Cursor can use:
+```json
+{
+  "target_class": "UserService",
+  "methods_to_test": [
+    { "Name": "CreateUser", "Signature": "async Task<User> CreateUser(...)" },
+    { "Name": "DeleteUser", "Signature": "async Task<bool> DeleteUser(...)" }
+  ],
+  "suggestion": "Create tests for 5 method(s). Focus on public methods first.",
+  "example_test_names": [
+    "CreateUser_Should...",
+    "DeleteUser_Should..."
+  ]
+}
+```
+
+This means **Cursor can read the context and write the actual tests for you!** 🎉
+
+#### MCP Integration
+
+**Validate Task Before Completion:**
+```javascript
+// Cursor MCP tool: validate_task
+{
+  "planId": "plan-123",
+  "taskId": "task-456",
+  "autoFix": true  // Automatically fix issues
+}
+```
+
+**Response:**
+```
+✅ Task 'Create PaymentService' passed all validation rules!
+
+Checks:
+  ✅ requires_test: PaymentServiceTests.cs found
+  ✅ max_complexity: All methods < 10
+  ✅ requires_documentation: All public methods documented
+
+Task is ready to be marked as completed.
+```
+
+#### Benefits
+
+1. **Quality Gates**: Can't mark task complete without tests
+2. **Automation**: Auto-generates boilerplate (tests, docs)
+3. **Objective Criteria**: Clear definition of "done"
+4. **Prevention**: Stops technical debt at the source
+5. **Guidance**: Tells you exactly what's missing
+
+#### See Also
+
+- `TASK_VALIDATION.md` - Complete validation system documentation
+- `TASK_VALIDATION_EXAMPLE.md` - Practical examples and workflows
 
 ## 4. Enhanced API Metadata ✅
 
