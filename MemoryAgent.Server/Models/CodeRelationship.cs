@@ -70,6 +70,16 @@ public enum RelationshipType
     ReadsConfig,        // Reads configuration section
     BindsConfig,        // Binds configuration to class
     BackgroundTask,     // Background/hosted service task
-    Monitors            // Health check monitoring
+    Monitors,           // Health check monitoring
+    
+    // API & Infrastructure patterns
+    HasApiVersion,      // Has API version attribute
+    Documents,          // API documentation (Swagger)
+    AllowsOrigin,       // CORS policy allows origin
+    Caches,             // Response caching
+    Binds,              // Custom model binder
+    Filters,            // Action/Exception filter
+    RateLimits,         // Rate limiting policy
+    HandlesException    // Exception filter handling
 }
 

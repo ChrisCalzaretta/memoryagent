@@ -92,6 +92,11 @@ public class RoslynParser : ICodeParser
             // Extract using directives (imports)
             ExtractUsingDirectives(root, filePath, context, result);
 
+            // SEMANTIC CHUNKING: Extract file-level configuration patterns
+            ExtractSwaggerConfig(root, filePath, context, result);
+            ExtractCorsPolicies(root, filePath, context, result);
+            ExtractRateLimiting(root, filePath, context, result);
+
             // Extract namespaces, classes, interfaces
             var namespaceDeclarations = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>();
             foreach (var namespaceDecl in namespaceDeclarations)
@@ -192,6 +197,18 @@ public class RoslynParser : ICodeParser
 
         // SEMANTIC CHUNKING: Extract health checks
         ExtractHealthChecks(classDecl, fullName, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract API versioning
+        ExtractApiVersioning(classDecl, fullName, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract exception filters
+        ExtractExceptionFilters(classDecl, fullName, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract model binders
+        ExtractModelBinders(classDecl, fullName, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract action filters
+        ExtractActionFilters(classDecl, fullName, filePath, context, result);
 
         // Extract base classes and interfaces
         if (classDecl.BaseList != null)
@@ -358,6 +375,9 @@ public class RoslynParser : ICodeParser
 
         // SEMANTIC CHUNKING: Extract configuration binding
         ExtractConfigurationBinding(methodDecl, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract response caching
+        ExtractResponseCaching(methodDecl, $"{fullClassName}.{methodName}", filePath, context, result);
     }
 
     private void ExtractProperty(
@@ -2423,6 +2443,608 @@ public class RoslynParser : ICodeParser
         if (rateLimitAttr != null)
         {
             methodMemory.Metadata["has_rate_limiting"] = true;
+        }
+    }
+
+    /// <summary>
+    /// Extract API versioning attributes
+    /// </summary>
+    private void ExtractApiVersioning(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var classAttributes = classDecl.AttributeLists.SelectMany(al => al.Attributes).ToList();
+        
+        // [ApiVersion("1.0")]
+        var versionAttrs = classAttributes.Where(a => a.Name.ToString().Contains("ApiVersion")).ToList();
+        
+        foreach (var versionAttr in versionAttrs)
+        {
+            var versionArg = versionAttr.ArgumentList?.Arguments.FirstOrDefault()?.ToString().Trim('"', ' ');
+            if (string.IsNullOrEmpty(versionArg))
+                continue;
+            
+            var lineNumber = versionAttr.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            
+            var versionChunk = new CodeMemory
+            {
+                Type = CodeMemoryType.Other,
+                Name = $"ApiVersion: {versionArg}",
+                Content = versionAttr.ToString(),
+                FilePath = filePath,
+                Context = context,
+                LineNumber = lineNumber,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["chunk_type"] = "api_version",
+                    ["version"] = versionArg,
+                    ["controller"] = fullClassName,
+                    ["framework"] = "aspnet-core"
+                }
+            };
+            result.CodeElements.Add(versionChunk);
+            
+            result.Relationships.Add(new CodeRelationship
+            {
+                FromName = fullClassName,
+                ToName = $"ApiVersion({versionArg})",
+                Type = RelationshipType.HasApiVersion,
+                Context = context,
+                Properties = new Dictionary<string, object>
+                {
+                    ["version"] = versionArg
+                }
+            });
+        }
+        
+        // Check methods for MapToApiVersion
+        var methods = classDecl.Members.OfType<MethodDeclarationSyntax>();
+        foreach (var method in methods)
+        {
+            var methodAttributes = method.AttributeLists.SelectMany(al => al.Attributes).ToList();
+            var mapToVersionAttr = methodAttributes.FirstOrDefault(a => a.Name.ToString().Contains("MapToApiVersion"));
+            
+            if (mapToVersionAttr != null)
+            {
+                var versionArg = mapToVersionAttr.ArgumentList?.Arguments.FirstOrDefault()?.ToString().Trim('"', ' ');
+                var methodName = method.Identifier.Text;
+                
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = $"{fullClassName}.{methodName}",
+                    ToName = $"ApiVersion({versionArg})",
+                    Type = RelationshipType.HasApiVersion,
+                    Context = context,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["version"] = versionArg ?? "unknown",
+                        ["mapped"] = true
+                    }
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Extract exception filters
+    /// </summary>
+    private void ExtractExceptionFilters(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var implementsExceptionFilter = classDecl.BaseList?.Types
+            .Any(t => t.Type.ToString().Contains("ExceptionFilter") || 
+                     t.Type.ToString() == "IExceptionFilter" ||
+                     t.Type.ToString() == "IAsyncExceptionFilter") ?? false;
+        
+        if (!implementsExceptionFilter)
+            return;
+        
+        var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        
+        var filterChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"ExceptionFilter: {fullClassName}",
+            Content = classDecl.ToString(),
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "exception_filter",
+                ["filter_name"] = fullClassName,
+                ["framework"] = "aspnet-core",
+                ["layer"] = "API",
+                ["is_async"] = classDecl.BaseList?.Types.Any(t => t.Type.ToString().Contains("Async")) ?? false
+            }
+        };
+        result.CodeElements.Add(filterChunk);
+        
+        // Find OnException or OnExceptionAsync method
+        var exceptionMethods = classDecl.Members.OfType<MethodDeclarationSyntax>()
+            .Where(m => m.Identifier.Text == "OnException" || m.Identifier.Text == "OnExceptionAsync");
+        
+        foreach (var method in exceptionMethods)
+        {
+            // Try to detect which exception types are handled
+            var methodBody = method.Body?.ToString() ?? string.Empty;
+            var catchMatches = Regex.Matches(methodBody, @"catch\s*\(\s*(\w+)");
+            var isMatches = Regex.Matches(methodBody, @"is\s+(\w+Exception)");
+            
+            var handledExceptions = catchMatches.Cast<Match>()
+                .Concat(isMatches.Cast<Match>())
+                .Select(m => m.Groups[1].Value)
+                .Distinct()
+                .ToList();
+            
+            foreach (var exceptionType in handledExceptions)
+            {
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = fullClassName,
+                    ToName = exceptionType,
+                    Type = RelationshipType.HandlesException,
+                    Context = context,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["filter_type"] = "ExceptionFilter"
+                    }
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Extract Swagger/OpenAPI configuration
+    /// </summary>
+    private void ExtractSwaggerConfig(
+        SyntaxNode root,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        if (!filePath.Contains("Program.cs") && !filePath.Contains("Startup.cs"))
+            return;
+        
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        // AddSwaggerGen
+        var swaggerGenCalls = invocations.Where(inv => 
+            inv.ToString().Contains("AddSwaggerGen"));
+        
+        foreach (var call in swaggerGenCalls)
+        {
+            var lineNumber = call.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            
+            var swaggerChunk = new CodeMemory
+            {
+                Type = CodeMemoryType.Other,
+                Name = "SwaggerConfig",
+                Content = call.ToString(),
+                FilePath = filePath,
+                Context = context,
+                LineNumber = lineNumber,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["chunk_type"] = "swagger_config",
+                    ["framework"] = "aspnet-core",
+                    ["api_docs"] = true
+                }
+            };
+            result.CodeElements.Add(swaggerChunk);
+            
+            result.Relationships.Add(new CodeRelationship
+            {
+                FromName = "SwaggerConfig",
+                ToName = "API",
+                Type = RelationshipType.Documents,
+                Context = context,
+                Properties = new Dictionary<string, object>
+                {
+                    ["tool"] = "Swagger/OpenAPI"
+                }
+            });
+        }
+        
+        // OperationFilter, SchemaFilter
+        var filterCalls = invocations.Where(inv => 
+            inv.ToString().Contains("OperationFilter") || 
+            inv.ToString().Contains("SchemaFilter"));
+        
+        foreach (var call in filterCalls)
+        {
+            var genericMatch = Regex.Match(call.ToString(), @"<(\w+)>");
+            if (genericMatch.Success)
+            {
+                var filterType = genericMatch.Groups[1].Value;
+                
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = "SwaggerConfig",
+                    ToName = filterType,
+                    Type = RelationshipType.Filters,
+                    Context = context,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["filter_category"] = call.ToString().Contains("Operation") ? "OperationFilter" : "SchemaFilter"
+                    }
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Extract CORS policies
+    /// </summary>
+    private void ExtractCorsPolicies(
+        SyntaxNode root,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        if (!filePath.Contains("Program.cs") && !filePath.Contains("Startup.cs"))
+            return;
+        
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        // AddCors
+        var addCorsCalls = invocations.Where(inv => inv.ToString().Contains("AddCors"));
+        
+        foreach (var call in addCorsCalls)
+        {
+            var lineNumber = call.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            var callText = call.ToString();
+            
+            // Extract policy name
+            var policyMatch = Regex.Match(callText, @"AddPolicy\s*\(\s*""([^""]+)""");
+            var policyName = policyMatch.Success ? policyMatch.Groups[1].Value : "DefaultCorsPolicy";
+            
+            // Extract allowed origins
+            var originsMatches = Regex.Matches(callText, @"WithOrigins\s*\([^)]*""([^""]+)""");
+            var allowAnyOrigin = callText.Contains("AllowAnyOrigin");
+            
+            var corsChunk = new CodeMemory
+            {
+                Type = CodeMemoryType.Other,
+                Name = $"CorsPolicy: {policyName}",
+                Content = call.ToString(),
+                FilePath = filePath,
+                Context = context,
+                LineNumber = lineNumber,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["chunk_type"] = "cors_policy",
+                    ["policy_name"] = policyName,
+                    ["allow_any_origin"] = allowAnyOrigin,
+                    ["framework"] = "aspnet-core"
+                }
+            };
+            result.CodeElements.Add(corsChunk);
+            
+            if (allowAnyOrigin)
+            {
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = $"CorsPolicy({policyName})",
+                    ToName = "*",
+                    Type = RelationshipType.AllowsOrigin,
+                    Context = context,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["any_origin"] = true
+                    }
+                });
+            }
+            else
+            {
+                foreach (Match match in originsMatches)
+                {
+                    var origin = match.Groups[1].Value;
+                    result.Relationships.Add(new CodeRelationship
+                    {
+                        FromName = $"CorsPolicy({policyName})",
+                        ToName = origin,
+                        Type = RelationshipType.AllowsOrigin,
+                        Context = context
+                    });
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Extract response caching configuration
+    /// </summary>
+    private void ExtractResponseCaching(
+        MethodDeclarationSyntax methodDecl,
+        string fullMethodName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var attributes = methodDecl.AttributeLists.SelectMany(al => al.Attributes).ToList();
+        var responseCacheAttr = attributes.FirstOrDefault(a => a.Name.ToString().Contains("ResponseCache"));
+        
+        if (responseCacheAttr == null)
+            return;
+        
+        var lineNumber = responseCacheAttr.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        var attrText = responseCacheAttr.ToString();
+        
+        // Extract duration
+        var durationMatch = Regex.Match(attrText, @"Duration\s*=\s*(\d+)");
+        var duration = durationMatch.Success ? durationMatch.Groups[1].Value : "unknown";
+        
+        // Extract cache profile
+        var profileMatch = Regex.Match(attrText, @"CacheProfileName\s*=\s*""([^""]+)""");
+        var profileName = profileMatch.Success ? profileMatch.Groups[1].Value : null;
+        
+        var cacheChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"ResponseCache: {fullMethodName}",
+            Content = attrText,
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "response_cache",
+                ["method"] = fullMethodName,
+                ["duration"] = duration,
+                ["framework"] = "aspnet-core"
+            }
+        };
+        
+        if (profileName != null)
+            cacheChunk.Metadata["cache_profile"] = profileName;
+        
+        result.CodeElements.Add(cacheChunk);
+        
+        result.Relationships.Add(new CodeRelationship
+        {
+            FromName = fullMethodName,
+            ToName = profileName ?? "ResponseCache",
+            Type = RelationshipType.Caches,
+            Context = context,
+            Properties = new Dictionary<string, object>
+            {
+                ["duration_seconds"] = duration
+            }
+        });
+    }
+
+    /// <summary>
+    /// Extract custom model binders
+    /// </summary>
+    private void ExtractModelBinders(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var implementsBinder = classDecl.BaseList?.Types
+            .Any(t => t.Type.ToString() == "IModelBinder") ?? false;
+        
+        if (!implementsBinder)
+            return;
+        
+        var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        
+        // Try to detect which type is being bound
+        var bindMethod = classDecl.Members.OfType<MethodDeclarationSyntax>()
+            .FirstOrDefault(m => m.Identifier.Text == "BindModelAsync");
+        
+        string? boundType = null;
+        if (bindMethod != null)
+        {
+            var methodBody = bindMethod.Body?.ToString() ?? string.Empty;
+            var typeMatch = Regex.Match(methodBody, @"typeof\s*\(\s*(\w+)\s*\)");
+            boundType = typeMatch.Success ? typeMatch.Groups[1].Value : null;
+        }
+        
+        var binderChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"ModelBinder: {fullClassName}",
+            Content = classDecl.ToString(),
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "model_binder",
+                ["binder_name"] = fullClassName,
+                ["framework"] = "aspnet-core",
+                ["layer"] = "API"
+            }
+        };
+        
+        if (boundType != null)
+            binderChunk.Metadata["bound_type"] = boundType;
+        
+        result.CodeElements.Add(binderChunk);
+        
+        if (boundType != null)
+        {
+            result.Relationships.Add(new CodeRelationship
+            {
+                FromName = fullClassName,
+                ToName = boundType,
+                Type = RelationshipType.Binds,
+                Context = context,
+                Properties = new Dictionary<string, object>
+                {
+                    ["binder_type"] = "Custom"
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Extract action filters
+    /// </summary>
+    private void ExtractActionFilters(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var implementsFilter = classDecl.BaseList?.Types
+            .Any(t => t.Type.ToString().Contains("ActionFilter") ||
+                     t.Type.ToString() == "IActionFilter" ||
+                     t.Type.ToString() == "IAsyncActionFilter" ||
+                     t.Type.ToString() == "IResultFilter" ||
+                     t.Type.ToString() == "IAsyncResultFilter") ?? false;
+        
+        if (!implementsFilter)
+            return;
+        
+        var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        var filterType = classDecl.BaseList?.Types.FirstOrDefault()?.Type.ToString() ?? "ActionFilter";
+        
+        var filterChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"ActionFilter: {fullClassName}",
+            Content = classDecl.ToString(),
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "action_filter",
+                ["filter_name"] = fullClassName,
+                ["filter_type"] = filterType,
+                ["framework"] = "aspnet-core",
+                ["layer"] = "API",
+                ["is_async"] = filterType.Contains("Async")
+            }
+        };
+        result.CodeElements.Add(filterChunk);
+        
+        // Check for [ServiceFilter] or [TypeFilter] usage on methods/controllers
+        result.Relationships.Add(new CodeRelationship
+        {
+            FromName = "FilterPipeline",
+            ToName = fullClassName,
+            Type = RelationshipType.Filters,
+            Context = context,
+            Properties = new Dictionary<string, object>
+            {
+                ["filter_category"] = filterType.Contains("Result") ? "ResultFilter" : "ActionFilter"
+            }
+        });
+    }
+
+    /// <summary>
+    /// Extract rate limiting configuration
+    /// </summary>
+    private void ExtractRateLimiting(
+        SyntaxNode root,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        if (!filePath.Contains("Program.cs") && !filePath.Contains("Startup.cs"))
+            return;
+        
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        // AddRateLimiter
+        var rateLimiterCalls = invocations.Where(inv => inv.ToString().Contains("AddRateLimiter"));
+        
+        foreach (var call in rateLimiterCalls)
+        {
+            var lineNumber = call.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            var callText = call.ToString();
+            
+            // Extract policy name
+            var policyMatch = Regex.Match(callText, @"AddPolicy[^(]*\(\s*""([^""]+)""");
+            var policyName = policyMatch.Success ? policyMatch.Groups[1].Value : "DefaultRateLimitPolicy";
+            
+            // Extract limiter type
+            var limiterType = "Unknown";
+            if (callText.Contains("FixedWindowLimiter")) limiterType = "FixedWindow";
+            else if (callText.Contains("SlidingWindowLimiter")) limiterType = "SlidingWindow";
+            else if (callText.Contains("TokenBucketLimiter")) limiterType = "TokenBucket";
+            else if (callText.Contains("ConcurrencyLimiter")) limiterType = "Concurrency";
+            
+            var rateLimitChunk = new CodeMemory
+            {
+                Type = CodeMemoryType.Other,
+                Name = $"RateLimitPolicy: {policyName}",
+                Content = call.ToString(),
+                FilePath = filePath,
+                Context = context,
+                LineNumber = lineNumber,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["chunk_type"] = "rate_limit_policy",
+                    ["policy_name"] = policyName,
+                    ["limiter_type"] = limiterType,
+                    ["framework"] = "aspnet-core"
+                }
+            };
+            result.CodeElements.Add(rateLimitChunk);
+            
+            result.Relationships.Add(new CodeRelationship
+            {
+                FromName = "API",
+                ToName = $"RateLimitPolicy({policyName})",
+                Type = RelationshipType.RateLimits,
+                Context = context,
+                Properties = new Dictionary<string, object>
+                {
+                    ["limiter_type"] = limiterType
+                }
+            });
+        }
+        
+        // Check for [EnableRateLimiting] attributes
+        var attributes = root.DescendantNodes()
+            .OfType<AttributeSyntax>()
+            .Where(a => a.Name.ToString().Contains("EnableRateLimiting"));
+        
+        foreach (var attr in attributes)
+        {
+            var policyArg = attr.ArgumentList?.Arguments.FirstOrDefault()?.ToString().Trim('"', ' ');
+            if (string.IsNullOrEmpty(policyArg))
+                continue;
+            
+            // Find the parent method or class
+            var parent = attr.Parent?.Parent?.Parent;
+            string targetName = "Unknown";
+            
+            if (parent is MethodDeclarationSyntax method)
+            {
+                targetName = method.Identifier.Text;
+            }
+            else if (parent is ClassDeclarationSyntax cls)
+            {
+                targetName = cls.Identifier.Text;
+            }
+            
+            result.Relationships.Add(new CodeRelationship
+            {
+                FromName = targetName,
+                ToName = $"RateLimitPolicy({policyArg})",
+                Type = RelationshipType.RateLimits,
+                Context = context,
+                Properties = new Dictionary<string, object>
+                {
+                    ["applied_via"] = "EnableRateLimiting"
+                }
+            });
         }
     }
 
