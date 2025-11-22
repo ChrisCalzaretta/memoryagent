@@ -439,7 +439,7 @@ public class McpService : IMcpService
             RelationshipDepth = relationshipDepth
         };
 
-        var result = await _smartSearchService.SmartSearchAsync(request, ct);
+        var result = await _smartSearchService.SearchAsync(request, ct);
         
         return new McpToolResult
         {
