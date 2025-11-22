@@ -71,7 +71,7 @@ public class RazorSemanticAnalyzer
         // Create Endpoint node for GET (default for Razor Pages)
         var getEndpoint = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"Endpoint(GET {route})",
             Content = $"@page \"{route}\"",
             FilePath = filePath,
@@ -123,7 +123,7 @@ public class RazorSemanticAnalyzer
             // Create injection chunk
             var injectionChunk = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = $"Inject: {serviceType}",
                 Content = match.Value,
                 FilePath = filePath,
@@ -310,7 +310,7 @@ public class RazorSemanticAnalyzer
             {
                 var endpoint = new CodeMemory
                 {
-                    Type = CodeMemoryType.Other,
+                    Type = CodeMemoryType.Pattern,
                     Name = $"Endpoint({httpMethod} {route})",
                     Content = $"{httpMethod} {route} -> {handlerName}",
                     FilePath = filePath,

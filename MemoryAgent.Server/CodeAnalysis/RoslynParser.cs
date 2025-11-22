@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MemoryAgent.Server.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -897,7 +898,7 @@ public class RoslynParser : ICodeParser
             var endpointName = $"Endpoint({httpVerb} {route})";
             var endpoint = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = endpointName,
                 Content = $"{httpVerb} {route}",
                 FilePath = methodMemory.FilePath,
@@ -1458,7 +1459,7 @@ public class RoslynParser : ICodeParser
                     // Create a code chunk for this DI registration
                     var registrationChunk = new CodeMemory
                     {
-                        Type = CodeMemoryType.Other,
+                        Type = CodeMemoryType.Pattern,
                         Name = $"DI: {interfaceType}",
                         Content = invocation.ToString(),
                         FilePath = filePath,
@@ -1621,7 +1622,7 @@ public class RoslynParser : ICodeParser
         // Create validation chunk
         var validationChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"Validation: {validatedType}",
             Content = classDecl.ToString(),
             FilePath = filePath,
@@ -1739,7 +1740,7 @@ public class RoslynParser : ICodeParser
         // Create validation chunk
         var validationChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"Validation: {fullClassName}",
             Content = string.Join("\n", properties.Where(p => validationRules.ContainsKey(p.Identifier.Text)).Select(p => p.ToString())),
             FilePath = filePath,
@@ -1829,7 +1830,7 @@ public class RoslynParser : ICodeParser
             // Create middleware pipeline chunk
             var pipelineChunk = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = "MiddlewarePipeline",
                 Content = string.Join("\n", middlewareStack.Select(m => $"{m.order}. {m.name}")),
                 FilePath = filePath,
@@ -1931,7 +1932,7 @@ public class RoslynParser : ICodeParser
         
         var jobChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"BackgroundService: {fullClassName}",
             Content = classDecl.ToString(),
             FilePath = filePath,
@@ -1981,7 +1982,7 @@ public class RoslynParser : ICodeParser
             
             var jobChunk = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = $"HangfireJob: {fullClassName}.{methodName}",
                 Content = methodDecl.ToString(),
                 FilePath = filePath,
@@ -2037,7 +2038,7 @@ public class RoslynParser : ICodeParser
                 
                 var handlerChunk = new CodeMemory
                 {
-                    Type = CodeMemoryType.Other,
+                    Type = CodeMemoryType.Pattern,
                     Name = $"Handler: {fullClassName}",
                     Content = classDecl.ToString(),
                     FilePath = filePath,
@@ -2120,7 +2121,7 @@ public class RoslynParser : ICodeParser
         
         var profileChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"AutoMapper: {fullClassName}",
             Content = classDecl.ToString(),
             FilePath = filePath,
@@ -2216,7 +2217,7 @@ public class RoslynParser : ICodeParser
                     
                     var policyChunk = new CodeMemory
                     {
-                        Type = CodeMemoryType.Other,
+                        Type = CodeMemoryType.Pattern,
                         Name = $"Policy: {policyName}",
                         Content = policyDef.ToString(),
                         FilePath = filePath,
@@ -2284,7 +2285,7 @@ public class RoslynParser : ICodeParser
                 
                 var configChunk = new CodeMemory
                 {
-                    Type = CodeMemoryType.Other,
+                    Type = CodeMemoryType.Pattern,
                     Name = $"Config: {configType}",
                     Content = configureCall.ToString(),
                     FilePath = filePath,
@@ -2379,7 +2380,7 @@ public class RoslynParser : ICodeParser
         
         var healthCheckChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"HealthCheck: {fullClassName}",
             Content = classDecl.ToString(),
             FilePath = filePath,
@@ -2471,7 +2472,7 @@ public class RoslynParser : ICodeParser
             
             var versionChunk = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = $"ApiVersion: {versionArg}",
                 Content = versionAttr.ToString(),
                 FilePath = filePath,
@@ -2550,7 +2551,7 @@ public class RoslynParser : ICodeParser
         
         var filterChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"ExceptionFilter: {fullClassName}",
             Content = classDecl.ToString(),
             FilePath = filePath,
@@ -2625,7 +2626,7 @@ public class RoslynParser : ICodeParser
             
             var swaggerChunk = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = "SwaggerConfig",
                 Content = call.ToString(),
                 FilePath = filePath,
@@ -2712,7 +2713,7 @@ public class RoslynParser : ICodeParser
             
             var corsChunk = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = $"CorsPolicy: {policyName}",
                 Content = call.ToString(),
                 FilePath = filePath,
@@ -2788,7 +2789,7 @@ public class RoslynParser : ICodeParser
         
         var cacheChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"ResponseCache: {fullMethodName}",
             Content = attrText,
             FilePath = filePath,
@@ -2853,7 +2854,7 @@ public class RoslynParser : ICodeParser
         
         var binderChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"ModelBinder: {fullClassName}",
             Content = classDecl.ToString(),
             FilePath = filePath,
@@ -2914,7 +2915,7 @@ public class RoslynParser : ICodeParser
         
         var filterChunk = new CodeMemory
         {
-            Type = CodeMemoryType.Other,
+            Type = CodeMemoryType.Pattern,
             Name = $"ActionFilter: {fullClassName}",
             Content = classDecl.ToString(),
             FilePath = filePath,
@@ -2981,7 +2982,7 @@ public class RoslynParser : ICodeParser
             
             var rateLimitChunk = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = $"RateLimitPolicy: {policyName}",
                 Content = call.ToString(),
                 FilePath = filePath,

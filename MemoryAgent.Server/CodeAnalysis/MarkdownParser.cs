@@ -24,18 +24,22 @@ public class MarkdownParser : ICodeParser
 
     public async Task<ParseResult> ParseFileAsync(string filePath, string? context = null, CancellationToken cancellationToken = default)
     {
-        var result = new ParseResult { Success = true };
+        if (!File.Exists(filePath))
+        {
+            return new ParseResult { Errors = { $"File not found: {filePath}" } };
+        }
+
+        var content = await File.ReadAllTextAsync(filePath, cancellationToken);
+        return await ParseCodeAsync(content, filePath, context, cancellationToken);
+    }
+
+    public Task<ParseResult> ParseCodeAsync(string code, string filePath, string? context = null, CancellationToken cancellationToken = default)
+    {
+        var result = new ParseResult();
         
         try
         {
-            if (!File.Exists(filePath))
-            {
-                result.Errors.Add($"File not found: {filePath}");
-                result.Success = false;
-                return result;
-            }
-
-            var content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            var content = code;
             var fileName = Path.GetFileName(filePath);
             
             // Extract front matter (YAML/TOML) if present
@@ -89,14 +93,13 @@ public class MarkdownParser : ICodeParser
                 "Parsed Markdown file: {FileName} - {ElementCount} elements, {RelationshipCount} relationships",
                 fileName, result.CodeElements.Count, result.Relationships.Count);
 
-            return result;
+            return Task.FromResult(result);
         }
         catch (Exception ex)
         {
             result.Errors.Add($"Error parsing Markdown file: {ex.Message}");
-            result.Success = false;
             _logger.LogError(ex, "Error parsing Markdown file: {FilePath}", filePath);
-            return result;
+            return Task.FromResult(result);
         }
     }
 
@@ -187,7 +190,7 @@ public class MarkdownParser : ICodeParser
 
             var chunk = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = $"Section: {title}",
                 Content = sectionContent,
                 FilePath = filePath,
@@ -210,7 +213,7 @@ public class MarkdownParser : ICodeParser
         {
             chunks.Add(new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = "Content",
                 Content = content.Length > 2000 ? content.Substring(0, 2000) + "..." : content,
                 FilePath = filePath,
@@ -307,7 +310,7 @@ public class MarkdownParser : ICodeParser
 
             var codeBlock = new CodeMemory
             {
-                Type = CodeMemoryType.Other,
+                Type = CodeMemoryType.Pattern,
                 Name = $"CodeBlock_{blockIndex}_{language}",
                 Content = code,
                 FilePath = filePath,
