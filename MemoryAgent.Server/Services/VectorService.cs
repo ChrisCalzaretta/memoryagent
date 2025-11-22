@@ -352,6 +352,132 @@ public class VectorService : IVectorService
         }
     }
 
+    public async Task<List<string>> GetFilePathsForContextAsync(string? context = null, CancellationToken cancellationToken = default)
+    {
+        var filePaths = new HashSet<string>();
+        var collections = new[] { FilesCollection, ClassesCollection, MethodsCollection, PatternsCollection };
+
+        try
+        {
+            foreach (var collection in collections)
+            {
+                // Scroll through all points in the collection
+                var scrollRequest = new
+                {
+                    filter = context != null ? new
+                    {
+                        must = new[]
+                        {
+                            new
+                            {
+                                key = "context",
+                                match = new { value = context }
+                            }
+                        }
+                    } : null as object,
+                    limit = 1000, // Scroll in batches
+                    with_payload = new[] { "file_path" },
+                    with_vector = false
+                };
+
+                var scrollJson = JsonSerializer.Serialize(scrollRequest);
+                var scrollContent = new StringContent(scrollJson, Encoding.UTF8, "application/json");
+
+                var scrollResponse = await _httpClient.PostAsync($"/collections/{collection}/points/scroll", scrollContent, cancellationToken);
+                
+                if (scrollResponse.IsSuccessStatusCode)
+                {
+                    var scrollResult = await scrollResponse.Content.ReadAsStringAsync(cancellationToken);
+                    var scrollData = JsonSerializer.Deserialize<QdrantScrollResponse>(scrollResult);
+
+                    if (scrollData?.Result?.Points != null)
+                    {
+                        foreach (var point in scrollData.Result.Points)
+                        {
+                            if (point.Payload != null && point.Payload.TryGetValue("file_path", out var filePathElement))
+                            {
+                                var filePath = filePathElement.ValueKind == JsonValueKind.String 
+                                    ? filePathElement.GetString() 
+                                    : filePathElement.ToString();
+                                
+                                if (!string.IsNullOrEmpty(filePath))
+                                {
+                                    filePaths.Add(filePath);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return filePaths.ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting file paths for context: {Context}", context);
+            return new List<string>();
+        }
+    }
+
+    public async Task<DateTime?> GetFileLastIndexedTimeAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Search for the file in the files collection
+            var searchRequest = new
+            {
+                filter = new
+                {
+                    must = new[]
+                    {
+                        new
+                        {
+                            key = "file_path",
+                            match = new { value = filePath }
+                        }
+                    }
+                },
+                limit = 1,
+                with_payload = new[] { "indexed_at" },
+                with_vector = false
+            };
+
+            var searchJson = JsonSerializer.Serialize(searchRequest);
+            var searchContent = new StringContent(searchJson, Encoding.UTF8, "application/json");
+
+            var searchResponse = await _httpClient.PostAsync($"/collections/{FilesCollection}/points/scroll", searchContent, cancellationToken);
+
+            if (searchResponse.IsSuccessStatusCode)
+            {
+                var searchResult = await searchResponse.Content.ReadAsStringAsync(cancellationToken);
+                var searchData = JsonSerializer.Deserialize<QdrantScrollResponse>(searchResult);
+
+                if (searchData?.Result?.Points != null && searchData.Result.Points.Count > 0)
+                {
+                    var point = searchData.Result.Points[0];
+                    if (point.Payload != null && point.Payload.TryGetValue("indexed_at", out var indexedAtElement))
+                    {
+                        var indexedAtStr = indexedAtElement.ValueKind == JsonValueKind.String 
+                            ? indexedAtElement.GetString() 
+                            : indexedAtElement.ToString();
+
+                        if (DateTime.TryParse(indexedAtStr, out var indexedAt))
+                        {
+                            return indexedAt;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting last indexed time for file: {FilePath}", filePath);
+            return null;
+        }
+    }
+
     private static string GetCollectionName(CodeMemoryType type) => type switch
     {
         CodeMemoryType.File => FilesCollection,
@@ -407,6 +533,30 @@ public class VectorService : IVectorService
 
         [JsonPropertyName("score")]
         public float Score { get; set; }
+
+        [JsonPropertyName("payload")]
+        public Dictionary<string, JsonElement>? Payload { get; set; }
+    }
+
+    private class QdrantScrollResponse
+    {
+        [JsonPropertyName("result")]
+        public QdrantScrollResult? Result { get; set; }
+    }
+
+    private class QdrantScrollResult
+    {
+        [JsonPropertyName("points")]
+        public List<QdrantPoint>? Points { get; set; }
+
+        [JsonPropertyName("next_page_offset")]
+        public string? NextPageOffset { get; set; }
+    }
+
+    private class QdrantPoint
+    {
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
 
         [JsonPropertyName("payload")]
         public Dictionary<string, JsonElement>? Payload { get; set; }

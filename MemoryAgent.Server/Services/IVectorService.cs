@@ -39,6 +39,16 @@ public interface IVectorService
     Task DeleteByFilePathAsync(string filePath, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Get all file paths indexed for a specific context
+    /// </summary>
+    Task<List<string>> GetFilePathsForContextAsync(string? context = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get the last indexed time for a specific file
+    /// </summary>
+    Task<DateTime?> GetFileLastIndexedTimeAsync(string filePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Health check for Qdrant
     /// </summary>
     Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default);

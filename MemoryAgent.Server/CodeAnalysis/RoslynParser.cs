@@ -37,6 +37,7 @@ public class RoslynParser : ICodeParser
                 ".cshtml" or ".razor" => await Task.Run(() => RazorParser.ParseRazorFile(filePath, context, _loggerFactory), cancellationToken),
                 ".py" => await Task.Run(() => PythonParser.ParsePythonFile(filePath, context), cancellationToken),
                 ".md" or ".markdown" => await new MarkdownParser(_loggerFactory.CreateLogger<MarkdownParser>()).ParseFileAsync(filePath, context, cancellationToken),
+                ".css" or ".scss" or ".less" => await Task.Run(() => CssParser.ParseCssFile(filePath, context), cancellationToken),
                 ".cs" => await ParseCSharpFileAsync(filePath, context, cancellationToken),
                 _ => new ParseResult { Errors = { $"Unsupported file type: {extension}" } }
             };

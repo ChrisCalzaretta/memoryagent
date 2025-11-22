@@ -11,17 +11,20 @@ public class McpService : IMcpService
     private readonly IIndexingService _indexingService;
     private readonly IReindexService _reindexService;
     private readonly IGraphService _graphService;
+    private readonly ISmartSearchService _smartSearchService;
     private readonly ILogger<McpService> _logger;
 
     public McpService(
         IIndexingService indexingService,
         IReindexService reindexService,
         IGraphService graphService,
+        ISmartSearchService smartSearchService,
         ILogger<McpService> logger)
     {
         _indexingService = indexingService;
         _reindexService = reindexService;
         _graphService = graphService;
+        _smartSearchService = smartSearchService;
         _logger = logger;
     }
 
@@ -151,6 +154,25 @@ public class McpService : IMcpService
                         context = new { type = "string", description = "Optional context to search within" }
                     }
                 }
+            },
+            new McpTool
+            {
+                Name = "smartsearch",
+                Description = "Intelligent search that auto-detects whether to use graph-first (for structural queries) or semantic-first (for conceptual queries) strategy. Returns enriched results with relationships and scores.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string", description = "Search query (e.g., 'classes that implement IService' or 'how is authentication handled?')" },
+                        context = new { type = "string", description = "Optional context to search within" },
+                        limit = new { type = "number", description = "Maximum results per page", @default = 20 },
+                        offset = new { type = "number", description = "Offset for pagination", @default = 0 },
+                        includeRelationships = new { type = "boolean", description = "Include relationship data", @default = true },
+                        relationshipDepth = new { type = "number", description = "Max relationship depth", @default = 2 }
+                    },
+                    required = new[] { "query" }
+                }
             }
         };
 
@@ -171,6 +193,7 @@ public class McpService : IMcpService
                 "query" => await QueryToolAsync(toolCall.Arguments, cancellationToken),
                 "search" => await QueryToolAsync(toolCall.Arguments, cancellationToken), // Alias for query
                 "reindex" => await ReindexToolAsync(toolCall.Arguments, cancellationToken),
+                "smartsearch" => await SmartSearchToolAsync(toolCall.Arguments, cancellationToken),
                 "impact_analysis" => await ImpactAnalysisToolAsync(toolCall.Arguments, cancellationToken),
                 "dependency_chain" => await DependencyChainToolAsync(toolCall.Arguments, cancellationToken),
                 "find_circular_dependencies" => await CircularDependenciesToolAsync(toolCall.Arguments, cancellationToken),
@@ -381,6 +404,45 @@ public class McpService : IMcpService
         return new McpToolResult
         {
             IsError = !result.Success,
+            Content = new List<McpContent>
+            {
+                new McpContent
+                {
+                    Type = "text",
+                    Text = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true })
+                }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> SmartSearchToolAsync(Dictionary<string, object>? args, CancellationToken ct)
+    {
+        var query = args?.GetValueOrDefault("query")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString();
+        var limit = args?.GetValueOrDefault("limit") as int? ?? 20;
+        var offset = args?.GetValueOrDefault("offset") as int? ?? 0;
+        var includeRelationships = args?.GetValueOrDefault("includeRelationships") as bool? ?? true;
+        var relationshipDepth = args?.GetValueOrDefault("relationshipDepth") as int? ?? 2;
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return ErrorResult("Query is required");
+        }
+
+        var request = new SmartSearchRequest
+        {
+            Query = query,
+            Context = context,
+            Limit = limit,
+            Offset = offset,
+            IncludeRelationships = includeRelationships,
+            RelationshipDepth = relationshipDepth
+        };
+
+        var result = await _smartSearchService.SmartSearchAsync(request, ct);
+        
+        return new McpToolResult
+        {
             Content = new List<McpContent>
             {
                 new McpContent

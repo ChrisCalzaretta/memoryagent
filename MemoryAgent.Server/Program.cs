@@ -39,6 +39,7 @@ builder.Services.AddSingleton<ICodeParser, RoslynParser>();
 builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();
 builder.Services.AddScoped<IMcpService, McpService>();  // Changed from Singleton to Scoped
+builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
 
 // CORS for development
 builder.Services.AddCors(options =>

@@ -15,6 +15,9 @@ The Memory Code Agent now supports **smart chunking** for multiple file types wi
 | `.razor` | RazorParser | Same as .cshtml | ✅ NEW |
 | `.py` | PythonParser | Classes, functions, decorators, imports | ✅ NEW |
 | `.md` | MarkdownParser | Headers, sections, code blocks, links | ✅ NEW |
+| `.css` | CssParser | Rules, variables, media queries, animations | ✅ **NEWEST** |
+| `.scss` | CssParser | Same as CSS + mixins, functions, variables | ✅ **NEWEST** |
+| `.less` | CssParser | Same as CSS + mixins, variables | ✅ **NEWEST** |
 | `.json` | - | Not chunked (as requested) | ❌ Excluded |
 | `.sql` | - | Not chunked (as requested) | ❌ Excluded |
 | `.ps1` | - | Not chunked (as requested) | ❌ Excluded |
