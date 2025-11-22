@@ -33,7 +33,7 @@ public class RoslynParser : ICodeParser
             // Route to appropriate parser based on file extension
             return extension switch
             {
-                ".cshtml" or ".razor" => await Task.Run(() => RazorParser.ParseRazorFile(filePath, context), cancellationToken),
+                ".cshtml" or ".razor" => await Task.Run(() => RazorParser.ParseRazorFile(filePath, context, _loggerFactory), cancellationToken),
                 ".py" => await Task.Run(() => PythonParser.ParsePythonFile(filePath, context), cancellationToken),
                 ".md" or ".markdown" => await new MarkdownParser(_loggerFactory.CreateLogger<MarkdownParser>()).ParseFileAsync(filePath, context, cancellationToken),
                 ".cs" => await ParseCSharpFileAsync(filePath, context, cancellationToken),

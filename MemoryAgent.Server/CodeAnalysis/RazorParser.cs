@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using MemoryAgent.Server.Models;
+using Microsoft.Extensions.Logging;
 
 namespace MemoryAgent.Server.CodeAnalysis;
 
@@ -9,7 +10,7 @@ namespace MemoryAgent.Server.CodeAnalysis;
 /// </summary>
 public class RazorParser
 {
-    public static ParseResult ParseRazorFile(string filePath, string? context = null)
+    public static ParseResult ParseRazorFile(string filePath, string? context = null, ILoggerFactory? loggerFactory = null)
     {
         var result = new ParseResult();
         
@@ -44,7 +45,10 @@ public class RazorParser
                 Metadata = new Dictionary<string, object>
                 {
                     ["file_type"] = Path.GetExtension(filePath),
-                    ["is_razor"] = true
+                    ["is_razor"] = true,
+                    ["language"] = "razor",
+                    ["framework"] = "aspnet-core",
+                    ["layer"] = "UI"
                 }
             };
             
@@ -72,6 +76,15 @@ public class RazorParser
             
             // Create relationships
             CreateRazorRelationships(fileName, modelType, result);
+
+            // ========================================
+            // SEMANTIC ANALYSIS (NEW!)
+            // ========================================
+            if (loggerFactory != null)
+            {
+                var semanticAnalyzer = new RazorSemanticAnalyzer(loggerFactory.CreateLogger<RazorSemanticAnalyzer>());
+                semanticAnalyzer.AnalyzeRazorFile(content, filePath, context, result);
+            }
         }
         catch (Exception ex)
         {
