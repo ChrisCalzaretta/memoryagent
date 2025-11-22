@@ -44,6 +44,32 @@ public enum RelationshipType
     FollowsPattern,     // Follows a code pattern
     SimilarTo,          // Similar to another element
     EvolvedFrom,        // Evolved from previous version
-    ModifiedFrom        // Modified from original
+    ModifiedFrom,       // Modified from original
+    
+    // ASP.NET Core semantic relationships
+    Exposes,            // Endpoint exposes a controller action
+    Authorizes,         // Requires authorization (role/policy)
+    Accesses,           // Accesses database entity/table
+    Queries,            // Executes query against entity
+    Projects,           // Projects entity to DTO
+    Includes,           // EF Include/ThenInclude eager loading
+    GroupsBy,           // Groups query results
+    Registers,          // DI registration (services.Add*)
+    ImplementsRegistration, // DI interface → implementation
+    Configures,         // Configures a service/component
+    Validates,          // Validates a model/property
+    ValidatesProperty,  // Validates specific property
+    RequiresPolicy,     // Requires authorization policy
+    DefinesPolicy,      // Defines authorization policy
+    RequiresRole,       // Requires specific role
+    RequiresClaim,      // Requires specific claim
+    Handles,            // Handles message/command/query (MediatR)
+    Schedules,          // Schedules background job
+    UsesMiddleware,     // Uses middleware component
+    Precedes,           // Middleware execution order
+    ReadsConfig,        // Reads configuration section
+    BindsConfig,        // Binds configuration to class
+    BackgroundTask,     // Background/hosted service task
+    Monitors            // Health check monitoring
 }
 
