@@ -11,7 +11,6 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
     <PackageReference Include="Neo4j.Driver" Version="5.15.0" />
     <PackageReference Include="Polly" Version="8.5.0" />
-    <PackageReference Include="Qdrant.Client" Version="1.7.0" />
   </ItemGroup>
 
 </Project>

@@ -1,20 +1,22 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using MemoryAgent.Server.Models;
-using Qdrant.Client;
-using Qdrant.Client.Grpc;
 using Polly;
 using Polly.Retry;
 
 namespace MemoryAgent.Server.Services;
 
 /// <summary>
-/// Service for interacting with Qdrant vector database
+/// Service for interacting with Qdrant vector database via HTTP REST API
 /// </summary>
 public class VectorService : IVectorService
 {
-    private readonly QdrantClient _client;
+    private readonly HttpClient _httpClient;
     private readonly ILogger<VectorService> _logger;
     private readonly int _vectorSize;
     private readonly AsyncRetryPolicy _retryPolicy;
+    private readonly string _baseUrl;
 
     private const string FilesCollection = "files";
     private const string ClassesCollection = "classes";
@@ -23,17 +25,23 @@ public class VectorService : IVectorService
 
     public VectorService(
         IConfiguration configuration,
-        ILogger<VectorService> logger)
+        ILogger<VectorService> logger,
+        HttpClient httpClient)
     {
         var qdrantUrl = configuration["Qdrant:Url"] ?? "http://localhost:6333";
         
-        // Parse URL to extract host and port
-        var uri = new Uri(qdrantUrl);
-        var host = uri.Host;
-        var port = uri.Port;
-        var useHttps = uri.Scheme == "https";
+        // Ensure URL uses HTTP port (6333) not gRPC port (6334)
+        if (qdrantUrl.Contains(":6334"))
+        {
+            qdrantUrl = qdrantUrl.Replace(":6334", ":6333");
+            logger.LogWarning("Changed Qdrant URL from gRPC port 6334 to HTTP port 6333");
+        }
         
-        _client = new QdrantClient(host, port, useHttps);
+        _baseUrl = qdrantUrl.TrimEnd('/');
+        _httpClient = httpClient;
+        _httpClient.BaseAddress = new Uri(_baseUrl);
+        _httpClient.Timeout = TimeSpan.FromMinutes(5);
+        
         _logger = logger;
         _vectorSize = int.Parse(configuration["Embedding:Dimension"] ?? "1024");
 
@@ -64,22 +72,30 @@ public class VectorService : IVectorService
     {
         try
         {
-            var collections = await _client.ListCollectionsAsync(cancellationToken);
+            // Check if collection exists
+            var response = await _httpClient.GetAsync($"/collections/{collectionName}", cancellationToken);
             
-            if (collections.Any(c => c == collectionName))
+            if (response.IsSuccessStatusCode)
             {
                 _logger.LogInformation("Collection {Collection} already exists", collectionName);
                 return;
             }
 
-            await _client.CreateCollectionAsync(
-                collectionName,
-                new VectorParams
+            // Create collection
+            var createRequest = new
+            {
+                vectors = new
                 {
-                    Size = (ulong)_vectorSize,
-                    Distance = Distance.Cosine
-                },
-                cancellationToken: cancellationToken);
+                    size = _vectorSize,
+                    distance = "Cosine"
+                }
+            };
+
+            var json = JsonSerializer.Serialize(createRequest);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            response = await _httpClient.PutAsync($"/collections/{collectionName}", content, cancellationToken);
+            response.EnsureSuccessStatusCode();
 
             _logger.LogInformation("Created collection {Collection}", collectionName);
         }
@@ -108,7 +124,7 @@ public class VectorService : IVectorService
             foreach (var group in grouped)
             {
                 var collectionName = GetCollectionName(group.Key);
-                var points = new List<PointStruct>();
+                var points = new List<object>();
 
                 foreach (var memory in group)
                 {
@@ -118,40 +134,28 @@ public class VectorService : IVectorService
                         continue;
                     }
 
-                    var point = new PointStruct
+                    var payload = new Dictionary<string, object>
                     {
-                        Id = Guid.NewGuid(),
-                        Vectors = memory.Embedding,
-                        Payload =
-                        {
-                            ["name"] = memory.Name,
-                            ["content"] = memory.Content,
-                            ["file_path"] = memory.FilePath,
-                            ["context"] = memory.Context,
-                            ["line_number"] = memory.LineNumber,
-                            ["indexed_at"] = memory.IndexedAt.ToString("O")
-                        }
+                        ["name"] = memory.Name,
+                        ["content"] = memory.Content,
+                        ["file_path"] = memory.FilePath,
+                        ["context"] = memory.Context,
+                        ["line_number"] = memory.LineNumber,
+                        ["indexed_at"] = memory.IndexedAt.ToString("O")
                     };
 
                     // Add metadata
                     foreach (var (key, value) in memory.Metadata)
                     {
-                        // Qdrant payload accepts standard types directly
-                        if (value is string str)
-                            point.Payload[key] = str;
-                        else if (value is int intVal)
-                            point.Payload[key] = intVal;
-                        else if (value is long longVal)
-                            point.Payload[key] = longVal;
-                        else if (value is double doubleVal)
-                            point.Payload[key] = doubleVal;
-                        else if (value is float floatVal)
-                            point.Payload[key] = (double)floatVal;
-                        else if (value is bool boolVal)
-                            point.Payload[key] = boolVal;
-                        else
-                            point.Payload[key] = value.ToString() ?? "";
+                        payload[key] = value;
                     }
+
+                    var point = new
+                    {
+                        id = Guid.NewGuid().ToString(),
+                        vector = memory.Embedding,
+                        payload
+                    };
 
                     points.Add(point);
                 }
@@ -160,7 +164,16 @@ public class VectorService : IVectorService
                 {
                     await _retryPolicy.ExecuteAsync(async () =>
                     {
-                        await _client.UpsertAsync(collectionName, points, cancellationToken: cancellationToken);
+                        var upsertRequest = new { points };
+                        var json = JsonSerializer.Serialize(upsertRequest);
+                        var content = new StringContent(json, Encoding.UTF8, "application/json");
+                        
+                        var response = await _httpClient.PutAsync(
+                            $"/collections/{collectionName}/points?wait=true", 
+                            content, 
+                            cancellationToken);
+                        
+                        response.EnsureSuccessStatusCode();
                     });
 
                     _logger.LogInformation(
@@ -193,65 +206,80 @@ public class VectorService : IVectorService
 
             foreach (var collection in collections)
             {
-                Filter? filter = null;
+                object? filter = null;
                 if (!string.IsNullOrWhiteSpace(context))
                 {
-                    filter = new Filter
+                    filter = new
                     {
-                        Must =
+                        must = new[]
                         {
-                            new Condition
+                            new
                             {
-                                Field = new FieldCondition
-                                {
-                                    Key = "context",
-                                    Match = new Match { Keyword = context }
-                                }
+                                key = "context",
+                                match = new { value = context }
                             }
                         }
                     };
                 }
 
-                var searchResults = await _client.SearchAsync(
-                    collection,
-                    queryEmbedding,
-                    limit: (ulong)limit,
-                    scoreThreshold: minimumScore,
-                    filter: filter,
-                    cancellationToken: cancellationToken);
-
-                foreach (var result in searchResults)
+                var searchRequest = new
                 {
-                    var example = new CodeExample
-                    {
-                        Name = result.Payload["name"].StringValue,
-                        Code = result.Payload["content"].StringValue,
-                        FilePath = result.Payload["file_path"].StringValue,
-                        Context = result.Payload["context"].StringValue,
-                        LineNumber = (int)result.Payload["line_number"].IntegerValue,
-                        Score = result.Score,
-                        Type = GetCodeMemoryType(collection)
-                    };
+                    vector = queryEmbedding,
+                    limit,
+                    score_threshold = minimumScore,
+                    filter,
+                    with_payload = true
+                };
 
-                    // Add other metadata
-                    foreach (var kvp in result.Payload)
+                var json = JsonSerializer.Serialize(searchRequest, new JsonSerializerOptions 
+                { 
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
+                });
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(
+                    $"/collections/{collection}/points/search",
+                    content,
+                    cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Search failed for collection {Collection}: {Status}", 
+                        collection, response.StatusCode);
+                    continue;
+                }
+
+                var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var searchResponse = JsonSerializer.Deserialize<QdrantSearchResponse>(responseJson);
+
+                if (searchResponse?.Result != null)
+                {
+                    foreach (var result in searchResponse.Result)
                     {
-                        if (!new[] { "name", "content", "file_path", "context", "line_number", "indexed_at" }.Contains(kvp.Key))
+                        if (result.Payload == null) continue;
+
+                        var example = new CodeExample
                         {
-                            // Convert Qdrant Value to object
-                            object metadataValue = kvp.Value.KindCase switch
-                            {
-                                Value.KindOneofCase.StringValue => kvp.Value.StringValue,
-                                Value.KindOneofCase.IntegerValue => kvp.Value.IntegerValue,
-                                Value.KindOneofCase.DoubleValue => kvp.Value.DoubleValue,
-                                Value.KindOneofCase.BoolValue => kvp.Value.BoolValue,
-                                _ => kvp.Value.ToString()
-                            };
-                            example.Metadata[kvp.Key] = metadataValue;
-                        }
-                    }
+                            Name = GetPayloadString(result.Payload, "name"),
+                            Code = GetPayloadString(result.Payload, "content"),
+                            FilePath = GetPayloadString(result.Payload, "file_path"),
+                            Context = GetPayloadString(result.Payload, "context"),
+                            LineNumber = GetPayloadInt(result.Payload, "line_number"),
+                            Score = result.Score,
+                            Type = GetCodeMemoryType(collection)
+                        };
 
-                    results.Add(example);
+                        // Add other metadata
+                        foreach (var kvp in result.Payload)
+                        {
+                            if (!new[] { "name", "content", "file_path", "context", "line_number", "indexed_at" }.Contains(kvp.Key))
+                            {
+                                example.Metadata[kvp.Key] = kvp.Value;
+                            }
+                        }
+
+                        results.Add(example);
+                    }
                 }
             }
 
@@ -275,22 +303,30 @@ public class VectorService : IVectorService
 
             foreach (var collection in collections)
             {
-                var filter = new Filter
+                var deleteRequest = new
                 {
-                    Must =
+                    filter = new
                     {
-                        new Condition
+                        must = new[]
                         {
-                            Field = new FieldCondition
+                            new
                             {
-                                Key = "file_path",
-                                Match = new Match { Keyword = filePath }
+                                key = "file_path",
+                                match = new { value = filePath }
                             }
                         }
                     }
                 };
 
-                await _client.DeleteAsync(collection, filter, cancellationToken: cancellationToken);
+                var json = JsonSerializer.Serialize(deleteRequest);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(
+                    $"/collections/{collection}/points/delete?wait=true",
+                    content,
+                    cancellationToken);
+
+                response.EnsureSuccessStatusCode();
             }
 
             _logger.LogInformation("Deleted memories for file: {FilePath}", filePath);
@@ -306,8 +342,8 @@ public class VectorService : IVectorService
     {
         try
         {
-            var collections = await _client.ListCollectionsAsync(cancellationToken);
-            return collections != null;
+            var response = await _httpClient.GetAsync("/collections", cancellationToken);
+            return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
         {
@@ -336,18 +372,43 @@ public class VectorService : IVectorService
         _ => throw new ArgumentException($"Unknown collection: {collection}")
     };
 
-    private static object ConvertToPayloadValue(object value)
+    private static string GetPayloadString(Dictionary<string, JsonElement> payload, string key)
     {
-        return value switch
+        if (payload.TryGetValue(key, out var value))
         {
-            string s => s,
-            int i => i,
-            long l => l,
-            double d => d,
-            float f => f,
-            bool b => b,
-            _ => value.ToString() ?? ""
-        };
+            return value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : value.ToString();
+        }
+        return "";
+    }
+
+    private static int GetPayloadInt(Dictionary<string, JsonElement> payload, string key)
+    {
+        if (payload.TryGetValue(key, out var value))
+        {
+            if (value.ValueKind == JsonValueKind.Number)
+                return value.GetInt32();
+            if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var intVal))
+                return intVal;
+        }
+        return 0;
+    }
+
+    // DTOs for Qdrant HTTP API responses
+    private class QdrantSearchResponse
+    {
+        [JsonPropertyName("result")]
+        public List<QdrantSearchResult>? Result { get; set; }
+    }
+
+    private class QdrantSearchResult
+    {
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+
+        [JsonPropertyName("score")]
+        public float Score { get; set; }
+
+        [JsonPropertyName("payload")]
+        public Dictionary<string, JsonElement>? Payload { get; set; }
     }
 }
-

@@ -19,10 +19,21 @@ builder.Services.AddHttpClient("Ollama", client =>
     client.Timeout = TimeSpan.FromHours(2); // Indexing large projects can take a long time
 });
 
+builder.Services.AddHttpClient<IVectorService, VectorService>(client =>
+{
+    var qdrantUrl = builder.Configuration["Qdrant:Url"] ?? "http://localhost:6333";
+    // Ensure HTTP port (6333) not gRPC port (6334)
+    if (qdrantUrl.Contains(":6334"))
+    {
+        qdrantUrl = qdrantUrl.Replace(":6334", ":6333");
+    }
+    client.BaseAddress = new Uri(qdrantUrl);
+    client.Timeout = TimeSpan.FromMinutes(5);
+});
+
 // Core Services
 builder.Services.AddSingleton<IPathTranslationService, PathTranslationService>();
 builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
-builder.Services.AddSingleton<IVectorService, VectorService>();
 builder.Services.AddSingleton<IGraphService, GraphService>();
 builder.Services.AddSingleton<ICodeParser, RoslynParser>();
 builder.Services.AddScoped<IIndexingService, IndexingService>();
