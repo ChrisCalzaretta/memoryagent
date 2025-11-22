@@ -178,6 +178,21 @@ public class RoslynParser : ICodeParser
         // SEMANTIC CHUNKING: Extract validation logic (DataAnnotations + FluentValidation)
         ExtractValidationLogic(classDecl, fullName, filePath, context, result);
 
+        // SEMANTIC CHUNKING: Extract background jobs (Hangfire + IHostedService)
+        ExtractBackgroundJobs(classDecl, fullName, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract MediatR handlers (Commands/Queries/Events)
+        ExtractMediatRHandlers(classDecl, fullName, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract AutoMapper profiles
+        ExtractAutoMapperProfiles(classDecl, fullName, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract repository patterns
+        ExtractRepositoryPatterns(classDecl, fullName, context, result);
+
+        // SEMANTIC CHUNKING: Extract health checks
+        ExtractHealthChecks(classDecl, fullName, filePath, context, result);
+
         // Extract base classes and interfaces
         if (classDecl.BaseList != null)
         {
@@ -328,9 +343,21 @@ public class RoslynParser : ICodeParser
         
         // SEMANTIC CHUNKING: Enhance with EF query semantics
         EnhanceWithEFQuerySemantics(methodDecl, $"{fullClassName}.{methodName}", methodMemory, result, context);
+
+        // SEMANTIC CHUNKING: Enhance with filters/caching/rate limiting
+        EnhanceMethodWithAttributes(methodDecl, methodMemory, result, context);
         
         // SEMANTIC CHUNKING: Extract DI registrations (for Program.cs/Startup.cs)
         ExtractDIRegistrations(methodDecl, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract middleware pipeline
+        ExtractMiddlewarePipeline(methodDecl, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract authorization policies
+        ExtractAuthorizationPolicies(methodDecl, filePath, context, result);
+
+        // SEMANTIC CHUNKING: Extract configuration binding
+        ExtractConfigurationBinding(methodDecl, filePath, context, result);
     }
 
     private void ExtractProperty(
@@ -1739,6 +1766,664 @@ public class RoslynParser : ICodeParser
         };
         
         return validationAttributes.Contains(attributeName);
+    }
+
+    #endregion
+
+    #region Phase 3 - Advanced Patterns
+
+    /// <summary>
+    /// Extract middleware pipeline from Program.cs
+    /// Tracks app.Use* method calls and their order
+    /// </summary>
+    private void ExtractMiddlewarePipeline(
+        MethodDeclarationSyntax methodDecl,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var fileName = Path.GetFileName(filePath);
+        if (!fileName.Contains("Program") && !fileName.Contains("Startup"))
+            return;
+        
+        if (methodDecl.Body == null)
+            return;
+        
+        var invocations = methodDecl.Body.DescendantNodes().OfType<InvocationExpressionSyntax>().ToList();
+        var middlewareStack = new List<(string name, int order, int lineNumber)>();
+        int order = 1;
+        
+        foreach (var invocation in invocations)
+        {
+            var methodName = ExtractMethodNameFromInvocation(invocation);
+            
+            if (IsMiddlewareMethod(methodName))
+            {
+                var lineNumber = invocation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                middlewareStack.Add((methodName, order++, lineNumber));
+            }
+        }
+        
+        if (middlewareStack.Any())
+        {
+            // Create middleware pipeline chunk
+            var pipelineChunk = new CodeMemory
+            {
+                Type = CodeMemoryType.Other,
+                Name = "MiddlewarePipeline",
+                Content = string.Join("\n", middlewareStack.Select(m => $"{m.order}. {m.name}")),
+                FilePath = filePath,
+                Context = context,
+                LineNumber = middlewareStack.First().lineNumber,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["chunk_type"] = "middleware_pipeline",
+                    ["middleware_stack"] = middlewareStack.Select(m => m.name).ToList(),
+                    ["middleware_count"] = middlewareStack.Count,
+                    ["framework"] = "aspnet-core",
+                    ["layer"] = "Infra"
+                }
+            };
+            result.CodeElements.Add(pipelineChunk);
+            
+            // Create relationships for middleware execution order
+            for (int i = 0; i < middlewareStack.Count; i++)
+            {
+                var middleware = middlewareStack[i];
+                
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = "MiddlewarePipeline",
+                    ToName = middleware.name,
+                    Type = RelationshipType.UsesMiddleware,
+                    Context = context,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["order"] = middleware.order
+                    }
+                });
+                
+                // Create PRECEDES relationship between consecutive middleware
+                if (i < middlewareStack.Count - 1)
+                {
+                    result.Relationships.Add(new CodeRelationship
+                    {
+                        FromName = middleware.name,
+                        ToName = middlewareStack[i + 1].name,
+                        Type = RelationshipType.Precedes,
+                        Context = context
+                    });
+                }
+            }
+        }
+    }
+
+    private bool IsMiddlewareMethod(string methodName)
+    {
+        var middlewareMethods = new[]
+        {
+            "UseHttpsRedirection", "UseStaticFiles", "UseRouting", "UseCors",
+            "UseAuthentication", "UseAuthorization", "UseSession", "UseResponseCaching",
+            "UseResponseCompression", "UseHsts", "UseForwardedHeaders", "UseRateLimiter",
+            "UseEndpoints", "MapControllers", "MapRazorPages", "MapHub", "MapFallback",
+            "UseExceptionHandler", "UseDeveloperExceptionPage", "UseStatusCodePages"
+        };
+        
+        return middlewareMethods.Contains(methodName);
+    }
+
+    /// <summary>
+    /// Extract background job definitions (Hangfire, IHostedService)
+    /// </summary>
+    private void ExtractBackgroundJobs(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        // Check for IHostedService or BackgroundService
+        var implementsHostedService = classDecl.BaseList?.Types
+            .Any(t => t.Type.ToString().Contains("IHostedService") || 
+                     t.Type.ToString().Contains("BackgroundService")) ?? false;
+        
+        if (implementsHostedService)
+        {
+            ExtractHostedService(classDecl, fullClassName, filePath, context, result);
+        }
+        
+        // Check for Hangfire job attributes
+        var methods = classDecl.Members.OfType<MethodDeclarationSyntax>();
+        foreach (var method in methods)
+        {
+            ExtractHangfireJob(method, fullClassName, filePath, context, result);
+        }
+    }
+
+    private void ExtractHostedService(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        
+        var jobChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"BackgroundService: {fullClassName}",
+            Content = classDecl.ToString(),
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "background_service",
+                ["service_name"] = fullClassName,
+                ["framework"] = "aspnet-core",
+                ["layer"] = "Infra",
+                ["job_type"] = "IHostedService"
+            }
+        };
+        result.CodeElements.Add(jobChunk);
+        
+        result.Relationships.Add(new CodeRelationship
+        {
+            FromName = "Program",
+            ToName = fullClassName,
+            Type = RelationshipType.Schedules,
+            Context = context,
+            Properties = new Dictionary<string, object>
+            {
+                ["job_type"] = "HostedService"
+            }
+        });
+    }
+
+    private void ExtractHangfireJob(
+        MethodDeclarationSyntax methodDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var attributes = methodDecl.AttributeLists.SelectMany(al => al.Attributes).ToList();
+        var isHangfireJob = attributes.Any(a => 
+            a.Name.ToString().Contains("AutomaticRetry") ||
+            a.Name.ToString().Contains("DisableConcurrentExecution") ||
+            a.Name.ToString().Contains("Queue"));
+        
+        if (isHangfireJob)
+        {
+            var methodName = methodDecl.Identifier.Text;
+            var lineNumber = methodDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            
+            var jobChunk = new CodeMemory
+            {
+                Type = CodeMemoryType.Other,
+                Name = $"HangfireJob: {fullClassName}.{methodName}",
+                Content = methodDecl.ToString(),
+                FilePath = filePath,
+                Context = context,
+                LineNumber = lineNumber,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["chunk_type"] = "hangfire_job",
+                    ["job_name"] = $"{fullClassName}.{methodName}",
+                    ["framework"] = "hangfire",
+                    ["layer"] = "Infra"
+                }
+            };
+            result.CodeElements.Add(jobChunk);
+            
+            result.Relationships.Add(new CodeRelationship
+            {
+                FromName = "Hangfire",
+                ToName = $"{fullClassName}.{methodName}",
+                Type = RelationshipType.Schedules,
+                Context = context,
+                Properties = new Dictionary<string, object>
+                {
+                    ["job_type"] = "Hangfire"
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Extract MediatR handlers (Commands, Queries, Events)
+    /// </summary>
+    private void ExtractMediatRHandlers(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var baseTypes = classDecl.BaseList?.Types.Select(t => t.Type.ToString()).ToList() ?? new List<string>();
+        
+        foreach (var baseType in baseTypes)
+        {
+            // IRequestHandler<TRequest, TResponse>
+            var requestHandlerMatch = System.Text.RegularExpressions.Regex.Match(baseType, @"IRequestHandler<([^,]+),\s*([^>]+)>");
+            if (requestHandlerMatch.Success)
+            {
+                var requestType = requestHandlerMatch.Groups[1].Value.Trim();
+                var responseType = requestHandlerMatch.Groups[2].Value.Trim();
+                var messageType = DetermineMessageType(requestType);
+                
+                var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                
+                var handlerChunk = new CodeMemory
+                {
+                    Type = CodeMemoryType.Other,
+                    Name = $"Handler: {fullClassName}",
+                    Content = classDecl.ToString(),
+                    FilePath = filePath,
+                    Context = context,
+                    LineNumber = lineNumber,
+                    Metadata = new Dictionary<string, object>
+                    {
+                        ["chunk_type"] = "mediatr_handler",
+                        ["handler"] = fullClassName,
+                        ["message"] = requestType,
+                        ["message_type"] = messageType,
+                        ["return_type"] = responseType,
+                        ["framework"] = "mediatr",
+                        ["layer"] = "Domain",
+                        ["pattern"] = "CQRS"
+                    }
+                };
+                result.CodeElements.Add(handlerChunk);
+                
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = fullClassName,
+                    ToName = requestType,
+                    Type = RelationshipType.Handles,
+                    Context = context,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["message_type"] = messageType,
+                        ["response_type"] = responseType
+                    }
+                });
+            }
+            
+            // INotificationHandler<TNotification>
+            var notificationHandlerMatch = System.Text.RegularExpressions.Regex.Match(baseType, @"INotificationHandler<([^>]+)>");
+            if (notificationHandlerMatch.Success)
+            {
+                var notificationType = notificationHandlerMatch.Groups[1].Value.Trim();
+                
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = fullClassName,
+                    ToName = notificationType,
+                    Type = RelationshipType.Handles,
+                    Context = context,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["message_type"] = "Event"
+                    }
+                });
+            }
+        }
+    }
+
+    private string DetermineMessageType(string requestType)
+    {
+        if (requestType.Contains("Command")) return "Command";
+        if (requestType.Contains("Query")) return "Query";
+        if (requestType.Contains("Event")) return "Event";
+        return "Request";
+    }
+
+    /// <summary>
+    /// Extract AutoMapper profiles
+    /// </summary>
+    private void ExtractAutoMapperProfiles(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var inheritsProfile = classDecl.BaseList?.Types
+            .Any(t => t.Type.ToString() == "Profile") ?? false;
+        
+        if (!inheritsProfile)
+            return;
+        
+        var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        
+        var profileChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"AutoMapper: {fullClassName}",
+            Content = classDecl.ToString(),
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "automapper_profile",
+                ["profile_name"] = fullClassName,
+                ["framework"] = "automapper",
+                ["layer"] = "Domain"
+            }
+        };
+        result.CodeElements.Add(profileChunk);
+        
+        // Extract CreateMap calls
+        var createMapCalls = classDecl.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(i => ExtractMethodNameFromInvocation(i) == "CreateMap")
+            .ToList();
+        
+        foreach (var createMap in createMapCalls)
+        {
+            var (sourceType, destType) = ExtractCreateMapTypes(createMap);
+            if (!string.IsNullOrEmpty(sourceType) && !string.IsNullOrEmpty(destType))
+            {
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = sourceType,
+                    ToName = destType,
+                    Type = RelationshipType.Projects,
+                    Context = context,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["mapper"] = "AutoMapper",
+                        ["profile"] = fullClassName
+                    }
+                });
+            }
+        }
+    }
+
+    private (string sourceType, string destType) ExtractCreateMapTypes(InvocationExpressionSyntax invocation)
+    {
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+            memberAccess.Name is GenericNameSyntax genericName)
+        {
+            var typeArgs = genericName.TypeArgumentList.Arguments;
+            if (typeArgs.Count == 2)
+            {
+                return (typeArgs[0].ToString(), typeArgs[1].ToString());
+            }
+        }
+        return (string.Empty, string.Empty);
+    }
+
+    /// <summary>
+    /// Extract authorization policy definitions
+    /// </summary>
+    private void ExtractAuthorizationPolicies(
+        MethodDeclarationSyntax methodDecl,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var fileName = Path.GetFileName(filePath);
+        if (!fileName.Contains("Program") && !fileName.Contains("Startup"))
+            return;
+        
+        if (methodDecl.Body == null)
+            return;
+        
+        // Look for AddAuthorization calls
+        var authCalls = methodDecl.Body.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(i => ExtractMethodNameFromInvocation(i) == "AddAuthorization")
+            .ToList();
+        
+        foreach (var authCall in authCalls)
+        {
+            // Look for AddPolicy calls within the lambda
+            var policyDefs = authCall.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Where(i => ExtractMethodNameFromInvocation(i) == "AddPolicy")
+                .ToList();
+            
+            foreach (var policyDef in policyDefs)
+            {
+                var policyName = ExtractPolicyName(policyDef);
+                if (!string.IsNullOrEmpty(policyName))
+                {
+                    var lineNumber = policyDef.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    
+                    var policyChunk = new CodeMemory
+                    {
+                        Type = CodeMemoryType.Other,
+                        Name = $"Policy: {policyName}",
+                        Content = policyDef.ToString(),
+                        FilePath = filePath,
+                        Context = context,
+                        LineNumber = lineNumber,
+                        Metadata = new Dictionary<string, object>
+                        {
+                            ["chunk_type"] = "auth_policy",
+                            ["policy_name"] = policyName,
+                            ["framework"] = "aspnet-core",
+                            ["layer"] = "Infra"
+                        }
+                    };
+                    result.CodeElements.Add(policyChunk);
+                    
+                    result.Relationships.Add(new CodeRelationship
+                    {
+                        FromName = "Program",
+                        ToName = policyName,
+                        Type = RelationshipType.DefinesPolicy,
+                        Context = context
+                    });
+                }
+            }
+        }
+    }
+
+    private string ExtractPolicyName(InvocationExpressionSyntax invocation)
+    {
+        var args = invocation.ArgumentList?.Arguments;
+        if (args != null && args.Value.Count > 0)
+        {
+            return args.Value[0].ToString().Trim('"');
+        }
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Extract configuration binding (IOptions)
+    /// </summary>
+    private void ExtractConfigurationBinding(
+        MethodDeclarationSyntax methodDecl,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var fileName = Path.GetFileName(filePath);
+        if (!fileName.Contains("Program") && !fileName.Contains("Startup"))
+            return;
+        
+        if (methodDecl.Body == null)
+            return;
+        
+        var configureCalls = methodDecl.Body.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(i => ExtractMethodNameFromInvocation(i) == "Configure")
+            .ToList();
+        
+        foreach (var configureCall in configureCalls)
+        {
+            var configType = ExtractConfigureType(configureCall);
+            if (!string.IsNullOrEmpty(configType))
+            {
+                var lineNumber = configureCall.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                
+                var configChunk = new CodeMemory
+                {
+                    Type = CodeMemoryType.Other,
+                    Name = $"Config: {configType}",
+                    Content = configureCall.ToString(),
+                    FilePath = filePath,
+                    Context = context,
+                    LineNumber = lineNumber,
+                    Metadata = new Dictionary<string, object>
+                    {
+                        ["chunk_type"] = "configuration_binding",
+                        ["config_class"] = configType,
+                        ["binding_method"] = "IOptions",
+                        ["framework"] = "aspnet-core",
+                        ["layer"] = "Infra"
+                    }
+                };
+                result.CodeElements.Add(configChunk);
+                
+                result.Relationships.Add(new CodeRelationship
+                {
+                    FromName = "Program",
+                    ToName = configType,
+                    Type = RelationshipType.BindsConfig,
+                    Context = context
+                });
+            }
+        }
+    }
+
+    private string ExtractConfigureType(InvocationExpressionSyntax invocation)
+    {
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+            memberAccess.Name is GenericNameSyntax genericName)
+        {
+            var typeArgs = genericName.TypeArgumentList.Arguments;
+            if (typeArgs.Count == 1)
+            {
+                return typeArgs[0].ToString();
+            }
+        }
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Extract repository pattern implementations
+    /// </summary>
+    private void ExtractRepositoryPatterns(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string context,
+        ParseResult result)
+    {
+        if (!fullClassName.Contains("Repository"))
+            return;
+        
+        var implements = classDecl.BaseList?.Types
+            .Select(t => t.Type.ToString())
+            .Where(t => t.StartsWith("I") && t.Contains("Repository"))
+            .ToList() ?? new List<string>();
+        
+        foreach (var interfaceType in implements)
+        {
+            result.Relationships.Add(new CodeRelationship
+            {
+                FromName = fullClassName,
+                ToName = interfaceType,
+                Type = RelationshipType.Implements,
+                Context = context,
+                Properties = new Dictionary<string, object>
+                {
+                    ["pattern"] = "Repository"
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Extract Health Check implementations
+    /// </summary>
+    private void ExtractHealthChecks(
+        ClassDeclarationSyntax classDecl,
+        string fullClassName,
+        string filePath,
+        string context,
+        ParseResult result)
+    {
+        var implementsHealthCheck = classDecl.BaseList?.Types
+            .Any(t => t.Type.ToString() == "IHealthCheck") ?? false;
+        
+        if (!implementsHealthCheck)
+            return;
+        
+        var lineNumber = classDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        
+        var healthCheckChunk = new CodeMemory
+        {
+            Type = CodeMemoryType.Other,
+            Name = $"HealthCheck: {fullClassName}",
+            Content = classDecl.ToString(),
+            FilePath = filePath,
+            Context = context,
+            LineNumber = lineNumber,
+            Metadata = new Dictionary<string, object>
+            {
+                ["chunk_type"] = "health_check",
+                ["check_name"] = fullClassName,
+                ["framework"] = "aspnet-core",
+                ["layer"] = "Infra"
+            }
+        };
+        result.CodeElements.Add(healthCheckChunk);
+        
+        result.Relationships.Add(new CodeRelationship
+        {
+            FromName = "HealthChecks",
+            ToName = fullClassName,
+            Type = RelationshipType.Monitors,
+            Context = context
+        });
+    }
+
+    /// <summary>
+    /// Enhance method with filter/caching/attribute metadata
+    /// </summary>
+    private void EnhanceMethodWithAttributes(
+        MethodDeclarationSyntax methodDecl,
+        CodeMemory methodMemory,
+        ParseResult result,
+        string context)
+    {
+        var attributes = methodDecl.AttributeLists.SelectMany(al => al.Attributes).ToList();
+        
+        // Response Caching
+        var responseCacheAttr = attributes.FirstOrDefault(a => a.Name.ToString().Contains("ResponseCache"));
+        if (responseCacheAttr != null)
+        {
+            methodMemory.Metadata["has_response_cache"] = true;
+            methodMemory.Metadata["cache_framework"] = "aspnet-core";
+        }
+        
+        // Service Filter / Type Filter
+        var filterAttrs = attributes.Where(a => 
+            a.Name.ToString().Contains("ServiceFilter") ||
+            a.Name.ToString().Contains("TypeFilter") ||
+            a.Name.ToString().Contains("Filter")).ToList();
+        
+        if (filterAttrs.Any())
+        {
+            methodMemory.Metadata["has_filters"] = true;
+            methodMemory.Metadata["filter_count"] = filterAttrs.Count;
+        }
+        
+        // Rate Limiting
+        var rateLimitAttr = attributes.FirstOrDefault(a => 
+            a.Name.ToString().Contains("RateLimit") ||
+            a.Name.ToString().Contains("EnableRateLimiting"));
+        
+        if (rateLimitAttr != null)
+        {
+            methodMemory.Metadata["has_rate_limiting"] = true;
+        }
     }
 
     #endregion
