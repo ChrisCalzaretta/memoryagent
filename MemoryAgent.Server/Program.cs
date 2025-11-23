@@ -39,7 +39,7 @@ builder.Services.AddSingleton<IGraphService, GraphService>();
 builder.Services.AddSingleton<ICodeParser, RoslynParser>();
 builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();
-builder.Services.AddScoped<IMcpService, McpService>();  // Changed from Singleton to Scoped
+builder.Services.AddScoped<IMcpService, McpService>();
 builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
 
 // TODO and Plan Management
@@ -115,6 +115,21 @@ using (var scope = app.Services.CreateScope())
         // Initialize
         await vectorService.InitializeCollectionsAsync();
         await graphService.InitializeDatabaseAsync();
+
+        // Pre-warm Ollama model (load into memory on startup)
+        if (ollamaHealthy)
+        {
+            try
+            {
+                logger.LogInformation("Pre-loading Ollama embedding model...");
+                await embeddingService.GenerateEmbeddingAsync("test", CancellationToken.None);
+                logger.LogInformation("Ollama model pre-loaded successfully");
+            }
+            catch (Exception warmupEx)
+            {
+                logger.LogWarning(warmupEx, "Failed to pre-load Ollama model, it will load on first use");
+            }
+        }
 
         logger.LogInformation("Databases initialized successfully");
     }

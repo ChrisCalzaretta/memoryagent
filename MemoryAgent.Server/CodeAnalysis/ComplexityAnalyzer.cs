@@ -54,7 +54,6 @@ public static class ComplexityAnalyzer
     public static int CalculateCognitiveComplexity(MethodDeclarationSyntax method)
     {
         var complexity = 0;
-        var nestingLevel = 0;
 
         void Visit(SyntaxNode node, int nesting)
         {
@@ -64,12 +63,20 @@ public static class ComplexityAnalyzer
                 node is ForEachStatementSyntax)
             {
                 complexity += 1 + nesting; // Increment by 1 + nesting level
-                Visit(node, nesting + 1);
+                // Visit children with increased nesting level
+                foreach (var child in node.ChildNodes())
+                {
+                    Visit(child, nesting + 1);
+                }
             }
             else if (node is SwitchStatementSyntax)
             {
                 complexity += 1 + nesting;
-                Visit(node, nesting + 1);
+                // Visit children with increased nesting level
+                foreach (var child in node.ChildNodes())
+                {
+                    Visit(child, nesting + 1);
+                }
             }
             else
             {
