@@ -311,6 +311,21 @@ docker logs {project-name}-agent-server -f
 
 ---
 
+## 📚 Documentation
+
+All documentation has been moved to the `/docs` directory:
+
+- **[📖 Documentation Index](docs/INDEX.md)** - Complete documentation catalog
+- **[🔍 Pattern Validation Guide](docs/PATTERN_VALIDATION_AND_RECOMMENDATIONS.md)** - Quality scoring & recommendations
+- **[🤖 AI Agent Patterns](docs/AI_AGENT_PATTERNS_DEEP_CRAWL_COMPLETE.md)** - 60 AI agent patterns
+- **[☁️ Azure Patterns](docs/AZURE_PATTERNS_COMPREHENSIVE.md)** - 33 Azure best practice patterns
+- **[🔧 Smart Search API](docs/SMART_SEARCH_API.md)** - Advanced search features
+- **[📦 MCP Integration](docs/MCP_CURSOR_INTEGRATION.md)** - Cursor setup guide
+
+**Total:** 42 documentation files covering all aspects of the system.
+
+---
+
 ## 📦 Repository
 
 https://github.com/ChrisCalzaretta/memoryagent
