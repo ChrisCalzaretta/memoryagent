@@ -910,9 +910,34 @@ public class GraphService : IGraphService, IDisposable
             FilePath = props["filePath"].As<string>(),
             LineNumber = props["lineNumber"].As<int>(),
             AssignedTo = props["assignedTo"].As<string>(),
-            CreatedAt = props["createdAt"].As<DateTime>(),
-            CompletedAt = props.ContainsKey("completedAt") ? props["completedAt"].As<DateTime?>() : null
+            CreatedAt = props.ContainsKey("createdAt") ? ConvertNeo4jDateTime(props["createdAt"]) : DateTime.UtcNow,
+            CompletedAt = props.ContainsKey("completedAt") ? ConvertNeo4jDateTime(props["completedAt"]) : null
         };
+    }
+
+    private DateTime ConvertNeo4jDateTime(object value)
+    {
+        if (value == null) return DateTime.UtcNow;
+        
+        // Neo4j returns ZonedDateTime or LocalDateTime objects
+        if (value is ZonedDateTime zonedDateTime)
+        {
+            return zonedDateTime.ToDateTimeOffset().UtcDateTime;
+        }
+        else if (value is LocalDateTime localDateTime)
+        {
+            return localDateTime.ToDateTime();
+        }
+        else if (value is DateTime dt)
+        {
+            return dt;
+        }
+        else if (value is string str && DateTime.TryParse(str, out var parsed))
+        {
+            return parsed;
+        }
+        
+        return DateTime.UtcNow;
     }
 
     private DevelopmentPlan MapPlanFromNode(INode node)
@@ -925,8 +950,8 @@ public class GraphService : IGraphService, IDisposable
             Name = props["name"].As<string>(),
             Description = props["description"].As<string>(),
             Status = Enum.Parse<PlanStatus>(props["status"].As<string>()),
-            CreatedAt = props["createdAt"].As<DateTime>(),
-            CompletedAt = props.ContainsKey("completedAt") ? props["completedAt"].As<DateTime?>() : null,
+            CreatedAt = props.ContainsKey("createdAt") ? ConvertNeo4jDateTime(props["createdAt"]) : DateTime.UtcNow,
+            CompletedAt = props.ContainsKey("completedAt") ? ConvertNeo4jDateTime(props["completedAt"]) : null,
             Tasks = new List<PlanTask>()
         };
     }
@@ -941,7 +966,7 @@ public class GraphService : IGraphService, IDisposable
             Description = props["description"].As<string>(),
             Status = Enum.Parse<TaskStatusModel>(props["status"].As<string>()),
             OrderIndex = props["orderIndex"].As<int>(),
-            CompletedAt = props.ContainsKey("completedAt") ? props["completedAt"].As<DateTime?>() : null,
+            CompletedAt = props.ContainsKey("completedAt") ? ConvertNeo4jDateTime(props["completedAt"]) : null,
             Dependencies = new List<string>()
         };
     }

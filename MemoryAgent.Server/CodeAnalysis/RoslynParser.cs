@@ -24,6 +24,7 @@ public class RoslynParser : ICodeParser
     {
         return fileName == "package.json" ||
                fileName == "package-lock.json" ||
+               fileName == "config.json" ||
                fileName.StartsWith("appsettings") ||
                fileName == "tsconfig.json";
     }
@@ -54,6 +55,8 @@ public class RoslynParser : ICodeParser
                 ".yml" or ".yaml" when fileName.Contains("docker-compose") => await Task.Run(() => DockerfileParser.ParseDockerfile(filePath, context), cancellationToken),
                 ".config" when fileName == "web.config" => await Task.Run(() => ConfigFileParser.ParseConfigFile(filePath, context), cancellationToken),
                 _ when fileName == "dockerfile" || fileName.EndsWith(".dockerfile") => await Task.Run(() => DockerfileParser.ParseDockerfile(filePath, context), cancellationToken),
+                ".bicep" => await new BicepParser(_loggerFactory.CreateLogger<BicepParser>()).ParseFileAsync(filePath, context, cancellationToken),
+                ".json" when !IsConfigFile(fileName) => await new JsonParser(_loggerFactory.CreateLogger<JsonParser>()).ParseFileAsync(filePath, context, cancellationToken),
                 ".cs" => await ParseCSharpFileAsync(filePath, context, cancellationToken),
                 _ => new ParseResult { Errors = { $"Unsupported file type: {extension}" } }
             };

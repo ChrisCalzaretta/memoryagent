@@ -67,6 +67,7 @@ public class ReindexService : IReindexService
                 "*.js", "*.jsx", "*.ts", "*.tsx",
                 "*.csproj", "*.vbproj", "*.fsproj", "*.sln",
                 "*.json", "*.yml", "*.yaml", "*.config",
+                "*.bicep",
                 "Dockerfile", "*.dockerfile"
             };
             var currentFiles = patterns

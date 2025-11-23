@@ -134,6 +134,7 @@ public class IndexingService : IIndexingService
                 "*.js", "*.jsx", "*.ts", "*.tsx",
                 "*.csproj", "*.vbproj", "*.fsproj", "*.sln",
                 "*.json", "*.yml", "*.yaml", "*.config",
+                "*.bicep",
                 "Dockerfile", "*.dockerfile"
             };
             
