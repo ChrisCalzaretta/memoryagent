@@ -58,6 +58,42 @@ public class IndexingService : IIndexingService
                 return result;
             }
 
+            // Step 1.5: Extract and index detected patterns
+            var detectedPatterns = new List<CodePattern>();
+            if (parseResult.CodeElements.Any() && 
+                parseResult.CodeElements.First().Metadata.TryGetValue("detected_patterns", out var patternsObj) &&
+                patternsObj is List<CodePattern> patterns)
+            {
+                detectedPatterns = patterns;
+                _logger.LogDebug("Found {Count} detected patterns in {FilePath}", detectedPatterns.Count, containerPath);
+                
+                // Convert patterns to CodeMemory objects
+                foreach (var pattern in detectedPatterns)
+                {
+                    var patternMemory = new CodeMemory
+                    {
+                        Type = CodeMemoryType.Pattern,
+                        Name = pattern.Name,
+                        Content = pattern.Content,
+                        FilePath = containerPath,
+                        LineNumber = pattern.LineNumber,
+                        Context = context ?? "default",
+                        Metadata = new Dictionary<string, object>
+                        {
+                            ["pattern_type"] = pattern.Type.ToString(),
+                            ["pattern_category"] = pattern.Category.ToString(),
+                            ["implementation"] = pattern.Implementation,
+                            ["best_practice"] = pattern.BestPractice,
+                            ["azure_url"] = pattern.AzureBestPracticeUrl,
+                            ["confidence"] = pattern.Confidence,
+                            ["language"] = pattern.Language,
+                            ["is_positive_pattern"] = pattern.IsPositivePattern
+                        }
+                    };
+                    parseResult.CodeElements.Add(patternMemory);
+                }
+            }
+
             // Step 2: Generate embeddings for all code elements
             var textsToEmbed = parseResult.CodeElements.Select(e => e.Content).ToList();
             var embeddings = await _embeddingService.GenerateEmbeddingsAsync(textsToEmbed, cancellationToken);
@@ -78,6 +114,16 @@ public class IndexingService : IIndexingService
             if (parseResult.Relationships.Any())
             {
                 await _graphService.CreateRelationshipsAsync(parseResult.Relationships, cancellationToken);
+            }
+
+            // Step 5: Store pattern nodes in Neo4j
+            if (detectedPatterns.Any())
+            {
+                foreach (var pattern in detectedPatterns)
+                {
+                    await _graphService.StorePatternNodeAsync(pattern, cancellationToken);
+                }
+                _logger.LogDebug("Stored {Count} pattern nodes in Neo4j for {FilePath}", detectedPatterns.Count, containerPath);
             }
 
             // Update result

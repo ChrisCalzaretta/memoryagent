@@ -54,6 +54,27 @@ public class PythonParser
             
             // Extract decorators
             ExtractDecorators(lines, filePath, context, result);
+            
+            // PATTERN DETECTION: Detect Python code patterns
+            try
+            {
+                var patternDetector = new PythonPatternDetector();
+                var detectedPatterns = patternDetector.DetectPatterns(content, filePath, context);
+                
+                if (detectedPatterns.Any())
+                {
+                    // Store patterns in result metadata for indexing service to process
+                    if (!result.CodeElements.First().Metadata.ContainsKey("detected_patterns"))
+                    {
+                        result.CodeElements.First().Metadata["detected_patterns"] = detectedPatterns;
+                    }
+                }
+            }
+            catch (Exception patternEx)
+            {
+                // Don't fail the whole parse if pattern detection fails
+                result.Errors.Add($"Warning: Failed to detect patterns: {patternEx.Message}");
+            }
         }
         catch (Exception ex)
         {

@@ -970,5 +970,117 @@ public class GraphService : IGraphService, IDisposable
             Dependencies = new List<string>()
         };
     }
+
+    public async Task StorePatternNodeAsync(CodePattern pattern, CancellationToken cancellationToken = default)
+    {
+        await using var session = _driver.AsyncSession();
+        
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            // Create Pattern node
+            var cypher = @"
+                MERGE (p:Pattern {id: $id})
+                SET p.name = $name,
+                    p.type = $type,
+                    p.category = $category,
+                    p.implementation = $implementation,
+                    p.language = $language,
+                    p.filePath = $filePath,
+                    p.lineNumber = $lineNumber,
+                    p.content = $content,
+                    p.bestPractice = $bestPractice,
+                    p.azureUrl = $azureUrl,
+                    p.confidence = $confidence,
+                    p.context = $context,
+                    p.isPositivePattern = $isPositivePattern,
+                    p.detectedAt = datetime($detectedAt)";
+            
+            var parameters = new
+            {
+                id = $"{pattern.FilePath}:{pattern.LineNumber}:{pattern.Name}",
+                name = pattern.Name,
+                type = pattern.Type.ToString(),
+                category = pattern.Category.ToString(),
+                implementation = pattern.Implementation,
+                language = pattern.Language,
+                filePath = pattern.FilePath,
+                lineNumber = pattern.LineNumber,
+                content = pattern.Content,
+                bestPractice = pattern.BestPractice,
+                azureUrl = pattern.AzureBestPracticeUrl,
+                confidence = pattern.Confidence,
+                context = pattern.Context,
+                isPositivePattern = pattern.IsPositivePattern,
+                detectedAt = pattern.DetectedAt.ToString("O")
+            };
+
+            await tx.RunAsync(cypher, parameters);
+
+            // Create relationship to file
+            var relCypher = @"
+                MATCH (p:Pattern {id: $patternId})
+                MERGE (f:File {path: $filePath})
+                ON CREATE SET f.context = $context
+                MERGE (f)-[:CONTAINS_PATTERN]->(p)";
+            
+            await tx.RunAsync(relCypher, new 
+            { 
+                patternId = $"{pattern.FilePath}:{pattern.LineNumber}:{pattern.Name}",
+                filePath = pattern.FilePath,
+                context = pattern.Context
+            });
+        });
+
+        _logger.LogDebug("Stored pattern node: {PatternName} in {FilePath}", pattern.Name, pattern.FilePath);
+    }
+
+    public async Task<List<CodePattern>> GetPatternsByTypeAsync(PatternType type, string? context = null, CancellationToken cancellationToken = default)
+    {
+        await using var session = _driver.AsyncSession();
+        
+        return await session.ExecuteReadAsync(async tx =>
+        {
+            var conditions = new List<string> { "p.type = $type" };
+            var parameters = new Dictionary<string, object> { ["type"] = type.ToString() };
+
+            if (!string.IsNullOrWhiteSpace(context))
+            {
+                conditions.Add("p.context = $context");
+                parameters["context"] = context;
+            }
+
+            var whereClause = "WHERE " + string.Join(" AND ", conditions);
+            var cypher = $"MATCH (p:Pattern) {whereClause} RETURN p ORDER BY p.confidence DESC LIMIT 100";
+            
+            var cursor = await tx.RunAsync(cypher, parameters);
+            var patterns = new List<CodePattern>();
+
+            await foreach (var record in cursor)
+            {
+                var node = record["p"].As<INode>();
+                var props = node.Properties;
+                
+                patterns.Add(new CodePattern
+                {
+                    Name = props["name"].As<string>(),
+                    Type = Enum.Parse<PatternType>(props["type"].As<string>()),
+                    Category = Enum.Parse<PatternCategory>(props["category"].As<string>()),
+                    Implementation = props["implementation"].As<string>(),
+                    Language = props["language"].As<string>(),
+                    FilePath = props["filePath"].As<string>(),
+                    LineNumber = props["lineNumber"].As<int>(),
+                    Content = props["content"].As<string>(),
+                    BestPractice = props["bestPractice"].As<string>(),
+                    AzureBestPracticeUrl = props["azureUrl"].As<string>(),
+                    Confidence = props["confidence"].As<float>(),
+                    Context = props["context"].As<string>(),
+                    IsPositivePattern = props["isPositivePattern"].As<bool>(),
+                    DetectedAt = ConvertNeo4jDateTime(props["detectedAt"])
+                });
+            }
+
+            return patterns;
+        });
+    }
 }
 

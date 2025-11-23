@@ -139,6 +139,29 @@ public class RoslynParser : ICodeParser
                 }
             }
 
+            // PATTERN DETECTION: Detect code patterns using enhanced detector
+            try
+            {
+                var patternDetector = new CSharpPatternDetectorEnhanced();
+                var detectedPatterns = patternDetector.DetectPatterns(code, filePath, context);
+                
+                if (detectedPatterns.Any())
+                {
+                    _logger.LogDebug("Detected {Count} patterns in {FilePath}", detectedPatterns.Count, filePath);
+                    
+                    // Store patterns in result metadata for indexing service to process
+                    if (!result.CodeElements.First().Metadata.ContainsKey("detected_patterns"))
+                    {
+                        result.CodeElements.First().Metadata["detected_patterns"] = detectedPatterns;
+                    }
+                }
+            }
+            catch (Exception patternEx)
+            {
+                _logger.LogWarning(patternEx, "Failed to detect patterns in {FilePath}", filePath);
+                // Don't fail the whole parse if pattern detection fails
+            }
+
             return Task.FromResult(result);
         }
         catch (Exception ex)

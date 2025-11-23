@@ -16,6 +16,10 @@ public class McpService : IMcpService
     private readonly ITodoService _todoService;
     private readonly IPlanService _planService;
     private readonly ITaskValidationService _validationService;
+    private readonly IPatternIndexingService _patternService;
+    private readonly IBestPracticeValidationService _bestPracticeValidation;
+    private readonly IRecommendationService _recommendationService;
+    private readonly IPatternValidationService _patternValidationService;
     private readonly ILogger<McpService> _logger;
 
     public McpService(
@@ -26,6 +30,10 @@ public class McpService : IMcpService
         ITodoService todoService,
         IPlanService planService,
         ITaskValidationService validationService,
+        IPatternIndexingService patternService,
+        IBestPracticeValidationService bestPracticeValidation,
+        IRecommendationService recommendationService,
+        IPatternValidationService patternValidationService,
         ILogger<McpService> logger)
     {
         _indexingService = indexingService;
@@ -35,6 +43,10 @@ public class McpService : IMcpService
         _todoService = todoService;
         _planService = planService;
         _validationService = validationService;
+        _patternService = patternService;
+        _bestPracticeValidation = bestPracticeValidation;
+        _recommendationService = recommendationService;
+        _patternValidationService = patternValidationService;
         _logger = logger;
     }
 
@@ -339,6 +351,147 @@ public class McpService : IMcpService
                     },
                     required = new[] { "planId", "taskId" }
                 }
+            },
+            
+            // PATTERN DETECTION TOOLS
+            new McpTool
+            {
+                Name = "search_patterns",
+                Description = "Search for code patterns (caching, retry logic, validation, etc.) using semantic search. Returns detected patterns with confidence scores and Azure best practice links.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string", description = "Pattern search query (e.g., 'caching patterns', 'retry logic', 'validation')" },
+                        context = new { type = "string", description = "Optional context to search within" },
+                        limit = new { type = "number", description = "Maximum results", @default = 20 }
+                    },
+                    required = new[] { "query" }
+                }
+            },
+            new McpTool
+            {
+                Name = "validate_best_practices",
+                Description = "Validate a project against Azure best practices. Returns compliance score, which practices are implemented, and which are missing with recommendations.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context to validate" },
+                        bestPractices = new { type = "array", description = "Specific practices to check (optional, defaults to all 21 practices)", items = new { type = "string" } },
+                        includeExamples = new { type = "boolean", description = "Include code examples in results", @default = true },
+                        maxExamplesPerPractice = new { type = "number", description = "Maximum examples per practice", @default = 5 }
+                    },
+                    required = new[] { "context" }
+                }
+            },
+            new McpTool
+            {
+                Name = "get_recommendations",
+                Description = "Analyze a project and get prioritized recommendations for missing or weak patterns. Returns health score and actionable recommendations with code examples.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context to analyze" },
+                        categories = new { type = "array", description = "Focus on specific categories (optional)", items = new { type = "string" } },
+                        includeLowPriority = new { type = "boolean", description = "Include low-priority recommendations", @default = false },
+                        maxRecommendations = new { type = "number", description = "Maximum recommendations to return", @default = 10 }
+                    },
+                    required = new[] { "context" }
+                }
+            },
+            new McpTool
+            {
+                Name = "get_available_best_practices",
+                Description = "Get list of all available Azure best practices that can be validated.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new { }
+                }
+            },
+            
+            // PATTERN VALIDATION TOOLS (NEW)
+            new McpTool
+            {
+                Name = "validate_pattern_quality",
+                Description = "Deep validation of a specific pattern's implementation quality. Returns quality score (1-10), grade (A-F), issues found, and auto-fix code if available.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        pattern_id = new { type = "string", description = "Pattern ID to validate" },
+                        context = new { type = "string", description = "Project context (optional)" },
+                        include_auto_fix = new { type = "boolean", description = "Include auto-fix code", @default = true },
+                        min_severity = new { type = "string", description = "Minimum severity to report (low|medium|high|critical)", @default = "low" }
+                    },
+                    required = new[] { "pattern_id" }
+                }
+            },
+            new McpTool
+            {
+                Name = "find_anti_patterns",
+                Description = "Find all anti-patterns and badly implemented patterns in a project. Returns patterns with issues, security vulnerabilities, and overall security score.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context to search" },
+                        min_severity = new { type = "string", description = "Minimum severity (low|medium|high|critical)", @default = "medium" },
+                        include_legacy = new { type = "boolean", description = "Include legacy/deprecated patterns", @default = true }
+                    },
+                    required = new[] { "context" }
+                }
+            },
+            new McpTool
+            {
+                Name = "validate_security",
+                Description = "Security audit of detected patterns. Returns overall security score, vulnerabilities found, and remediation steps.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context to validate" },
+                        pattern_types = new { type = "array", description = "Specific pattern types to check (optional)", items = new { type = "string" } }
+                    },
+                    required = new[] { "context" }
+                }
+            },
+            new McpTool
+            {
+                Name = "get_migration_path",
+                Description = "Get step-by-step migration path for legacy/deprecated patterns. Returns detailed migration instructions, code examples, and effort estimate.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        pattern_id = new { type = "string", description = "Pattern ID to get migration path for" },
+                        include_code_example = new { type = "boolean", description = "Include before/after code example", @default = true }
+                    },
+                    required = new[] { "pattern_id" }
+                }
+            },
+            new McpTool
+            {
+                Name = "validate_project",
+                Description = "Comprehensive project validation. Returns overall quality/security scores, all pattern validations, vulnerabilities, legacy patterns, and top recommendations.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context to validate" }
+                    },
+                    required = new[] { "context" }
+                }
             }
         };
 
@@ -372,6 +525,15 @@ public class McpService : IMcpService
                 "complete_plan" => await CompletePlanToolAsync(toolCall.Arguments, cancellationToken),
                 "search_plans" => await SearchPlansToolAsync(toolCall.Arguments, cancellationToken),
                 "validate_task" => await ValidateTaskToolAsync(toolCall.Arguments, cancellationToken),
+                "search_patterns" => await SearchPatternsToolAsync(toolCall.Arguments, cancellationToken),
+                "validate_best_practices" => await ValidateBestPracticesToolAsync(toolCall.Arguments, cancellationToken),
+                "get_recommendations" => await GetRecommendationsToolAsync(toolCall.Arguments, cancellationToken),
+                "get_available_best_practices" => await GetAvailableBestPracticesToolAsync(toolCall.Arguments, cancellationToken),
+                "validate_pattern_quality" => await ValidatePatternQualityToolAsync(toolCall.Arguments, cancellationToken),
+                "find_anti_patterns" => await FindAntiPatternsToolAsync(toolCall.Arguments, cancellationToken),
+                "validate_security" => await ValidateSecurityToolAsync(toolCall.Arguments, cancellationToken),
+                "get_migration_path" => await GetMigrationPathToolAsync(toolCall.Arguments, cancellationToken),
+                "validate_project" => await ValidateProjectToolAsync(toolCall.Arguments, cancellationToken),
                 _ => new McpToolResult
                 {
                     IsError = true,
@@ -1074,7 +1236,7 @@ public class McpService : IMcpService
                         }
                         
                         var totalCount = failure.ActionableContext.ContainsKey("method_count") 
-                            ? Convert.ToInt32(failure.ActionableContext["method_count"]) 
+                            ? SafeParseInt(failure.ActionableContext["method_count"], 0) 
                             : 0;
                         if (totalCount > 5)
                         {
@@ -1145,6 +1307,684 @@ public class McpService : IMcpService
                 new McpContent { Type = "text", Text = $"Error: {message}" }
             }
         };
+    }
+
+    // PATTERN DETECTION TOOL IMPLEMENTATIONS
+
+    private async Task<McpToolResult> SearchPatternsToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var query = args?.GetValueOrDefault("query")?.ToString() ?? "";
+        var context = args?.GetValueOrDefault("context")?.ToString();
+        
+        // Safely parse limit from args (handles JsonElement)
+        var limit = 20;
+        if (args?.TryGetValue("limit", out var limitObj) == true && limitObj != null)
+        {
+            var limitStr = limitObj.ToString();
+            if (int.TryParse(limitStr, out var parsedLimit))
+            {
+                limit = parsedLimit;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return ErrorResult("Query is required");
+        }
+
+        var patterns = await _patternService.SearchPatternsAsync(query, context, limit, cancellationToken);
+
+        if (!patterns.Any())
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"No patterns found for query: '{query}'" }
+                }
+            };
+        }
+
+        var text = $"🔍 Found {patterns.Count} pattern(s) for '{query}':\n\n";
+        
+        foreach (var pattern in patterns)
+        {
+            text += $"📊 {pattern.Name}\n";
+            text += $"   Type: {pattern.Type} ({pattern.Category})\n";
+            text += $"   Implementation: {pattern.Implementation}\n";
+            text += $"   Language: {pattern.Language}\n";
+            text += $"   File: {pattern.FilePath}:{pattern.LineNumber}\n";
+            text += $"   Confidence: {pattern.Confidence:P0}\n";
+            text += $"   Best Practice: {pattern.BestPractice}\n";
+            if (!string.IsNullOrEmpty(pattern.AzureBestPracticeUrl))
+            {
+                text += $"   📚 Azure Docs: {pattern.AzureBestPracticeUrl}\n";
+            }
+            text += $"\n   Code:\n   {TruncateCode(pattern.Content, 200)}\n\n";
+        }
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> ValidateBestPracticesToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString();
+        var includeExamples = args?.TryGetValue("includeExamples", out var includeEx) == true ? SafeParseBool(includeEx, true) : true;
+        var maxExamples = args?.TryGetValue("maxExamplesPerPractice", out var maxEx) == true ? SafeParseInt(maxEx, 5) : 5;
+
+        if (string.IsNullOrWhiteSpace(context))
+        {
+            return ErrorResult("Context is required");
+        }
+
+        var bestPractices = new List<string>();
+        if (args?.TryGetValue("bestPractices", out var bpObj) == true && bpObj is IEnumerable<object> bpList)
+        {
+            bestPractices = bpList.Select(bp => bp.ToString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+        }
+
+        var request = new BestPracticeValidationRequest
+        {
+            Context = context,
+            BestPractices = bestPractices.Any() ? bestPractices : null,
+            IncludeExamples = includeExamples,
+            MaxExamplesPerPractice = maxExamples
+        };
+
+        var result = await _bestPracticeValidation.ValidateBestPracticesAsync(request, cancellationToken);
+
+        var text = $"📋 Best Practice Validation for '{context}'\n\n";
+        text += $"Overall Score: {result.OverallScore:P0} ({result.PracticesImplemented}/{result.TotalPracticesChecked} practices)\n";
+        text += $"✅ Implemented: {result.PracticesImplemented}\n";
+        text += $"❌ Missing: {result.PracticesMissing}\n\n";
+
+        text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+
+        // Group by implemented/missing
+        var implemented = result.Results.Where(r => r.Implemented).ToList();
+        var missing = result.Results.Where(r => !r.Implemented).ToList();
+
+        if (implemented.Any())
+        {
+            text += "✅ IMPLEMENTED PRACTICES:\n\n";
+            foreach (var practice in implemented.OrderByDescending(p => p.Count))
+            {
+                text += $"• {practice.Practice} ({practice.PatternType})\n";
+                text += $"  Count: {practice.Count} instances\n";
+                text += $"  Avg Confidence: {practice.AverageConfidence:P0}\n";
+
+                if (includeExamples && practice.Examples.Any())
+                {
+                    text += "  Examples:\n";
+                    foreach (var example in practice.Examples.Take(3))
+                    {
+                        text += $"    - {example.FilePath}:{example.LineNumber} ({example.Implementation})\n";
+                    }
+                }
+                text += "\n";
+            }
+        }
+
+        if (missing.Any())
+        {
+            text += "\n❌ MISSING PRACTICES:\n\n";
+            foreach (var practice in missing)
+            {
+                text += $"• {practice.Practice} ({practice.PatternType})\n";
+                text += $"  Recommendation: {practice.Recommendation}\n";
+                if (!string.IsNullOrEmpty(practice.AzureUrl))
+                {
+                    text += $"  📚 Learn more: {practice.AzureUrl}\n";
+                }
+                text += "\n";
+            }
+        }
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> GetRecommendationsToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString();
+        var includeLowPriority = args?.TryGetValue("includeLowPriority", out var incLow) == true ? SafeParseBool(incLow, false) : false;
+        var maxRecommendations = args?.TryGetValue("maxRecommendations", out var maxRec) == true ? SafeParseInt(maxRec, 10) : 10;
+
+        if (string.IsNullOrWhiteSpace(context))
+        {
+            return ErrorResult("Context is required");
+        }
+
+        var categories = new List<PatternCategory>();
+        if (args?.TryGetValue("categories", out var catObj) == true && catObj is IEnumerable<object> catList)
+        {
+            foreach (var cat in catList)
+            {
+                if (Enum.TryParse<PatternCategory>(cat.ToString(), out var category))
+                {
+                    categories.Add(category);
+                }
+            }
+        }
+
+        var request = new RecommendationRequest
+        {
+            Context = context,
+            Categories = categories.Any() ? categories : null,
+            IncludeLowPriority = includeLowPriority,
+            MaxRecommendations = maxRecommendations
+        };
+
+        var result = await _recommendationService.AnalyzeAndRecommendAsync(request, cancellationToken);
+
+        var text = $"🎯 Architecture Recommendations for '{context}'\n\n";
+        text += $"Overall Health: {result.OverallHealth:P0}\n";
+        text += $"Patterns Detected: {result.TotalPatternsDetected}\n";
+        text += $"Recommendations: {result.Recommendations.Count}\n\n";
+
+        text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+
+        if (!result.Recommendations.Any())
+        {
+            text += "✅ No critical recommendations! Your project looks good.\n";
+        }
+        else
+        {
+            // Group by priority
+            var critical = result.Recommendations.Where(r => r.Priority == "CRITICAL").ToList();
+            var high = result.Recommendations.Where(r => r.Priority == "HIGH").ToList();
+            var medium = result.Recommendations.Where(r => r.Priority == "MEDIUM").ToList();
+            var low = result.Recommendations.Where(r => r.Priority == "LOW").ToList();
+
+            if (critical.Any())
+            {
+                text += "🚨 CRITICAL PRIORITY:\n\n";
+                foreach (var rec in critical)
+                {
+                    text += FormatRecommendation(rec);
+                }
+            }
+
+            if (high.Any())
+            {
+                text += "\n⚠️  HIGH PRIORITY:\n\n";
+                foreach (var rec in high)
+                {
+                    text += FormatRecommendation(rec);
+                }
+            }
+
+            if (medium.Any())
+            {
+                text += "\n📌 MEDIUM PRIORITY:\n\n";
+                foreach (var rec in medium)
+                {
+                    text += FormatRecommendation(rec);
+                }
+            }
+
+            if (low.Any() && includeLowPriority)
+            {
+                text += "\n💡 LOW PRIORITY:\n\n";
+                foreach (var rec in low)
+                {
+                    text += FormatRecommendation(rec);
+                }
+            }
+        }
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> GetAvailableBestPracticesToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var practices = await _bestPracticeValidation.GetAvailableBestPracticesAsync(cancellationToken);
+
+        var text = "📚 Available Azure Best Practices (21 total):\n\n";
+        
+        var grouped = practices.GroupBy(p => GetCategoryFromPracticeName(p));
+        
+        foreach (var group in grouped.OrderBy(g => g.Key))
+        {
+            text += $"{group.Key}:\n";
+            foreach (var practice in group.OrderBy(p => p))
+            {
+                text += $"  • {practice}\n";
+            }
+            text += "\n";
+        }
+
+        text += "\nUsage: Call validate_best_practices with specific practice names,\n";
+        text += "or omit to check all 21 practices.\n";
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> ValidatePatternQualityToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var patternId = args?.GetValueOrDefault("pattern_id")?.ToString() ?? "";
+        var context = args?.GetValueOrDefault("context")?.ToString();
+        var includeAutoFix = args?.GetValueOrDefault("include_auto_fix") as bool? ?? true;
+        var minSeverityStr = args?.GetValueOrDefault("min_severity")?.ToString() ?? "low";
+        
+        var minSeverity = minSeverityStr.ToLower() switch
+        {
+            "critical" => IssueSeverity.Critical,
+            "high" => IssueSeverity.High,
+            "medium" => IssueSeverity.Medium,
+            _ => IssueSeverity.Low
+        };
+
+        var result = await _patternValidationService.ValidatePatternQualityAsync(patternId, context, includeAutoFix, cancellationToken);
+
+        var text = $"🔍 Pattern Quality Validation\n\n";
+        text += $"Pattern: {result.Pattern.Name}\n";
+        text += $"Quality Score: {result.Score}/10 (Grade: {result.Grade})\n";
+        text += $"Security Score: {result.SecurityScore}/10\n\n";
+
+        if (result.Issues.Any())
+        {
+            text += "❌ Issues Found:\n\n";
+            foreach (var issue in result.Issues.Where(i => i.Severity >= minSeverity))
+            {
+                var icon = issue.Severity switch
+                {
+                    IssueSeverity.Critical => "🚨",
+                    IssueSeverity.High => "❌",
+                    IssueSeverity.Medium => "⚠️",
+                    _ => "ℹ️"
+                };
+                text += $"{icon} {issue.Severity}: {issue.Message}\n";
+                if (issue.FixGuidance != null)
+                    text += $"   💡 Fix: {issue.FixGuidance}\n";
+                text += "\n";
+            }
+        }
+
+        if (result.Recommendations.Any())
+        {
+            text += "📋 Recommendations:\n";
+            foreach (var rec in result.Recommendations)
+            {
+                text += $"• {rec}\n";
+            }
+            text += "\n";
+        }
+
+        if (!string.IsNullOrEmpty(result.AutoFixCode))
+        {
+            text += "🔧 Auto-Fix Code:\n\n```\n" + result.AutoFixCode + "\n```\n\n";
+        }
+
+        text += $"Summary: {result.Summary}\n";
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> FindAntiPatternsToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString() ?? "";
+        var minSeverityStr = args?.GetValueOrDefault("min_severity")?.ToString() ?? "medium";
+        var includeLegacy = args?.GetValueOrDefault("include_legacy") as bool? ?? true;
+
+        var minSeverity = minSeverityStr.ToLower() switch
+        {
+            "critical" => IssueSeverity.Critical,
+            "high" => IssueSeverity.High,
+            "low" => IssueSeverity.Low,
+            _ => IssueSeverity.Medium
+        };
+
+        var result = await _patternValidationService.FindAntiPatternsAsync(context, minSeverity, includeLegacy, cancellationToken);
+
+        var text = $"🚨 Anti-Pattern Analysis for {context}\n\n";
+        text += $"Total Anti-Patterns Found: {result.TotalCount}\n";
+        text += $"Critical Issues: {result.CriticalCount}\n";
+        text += $"Overall Security Score: {result.OverallSecurityScore}/10\n\n";
+
+        if (result.AntiPatterns.Any())
+        {
+            text += "📋 Anti-Patterns Detected:\n\n";
+            foreach (var antiPattern in result.AntiPatterns.Take(10))
+            {
+                text += $"• {antiPattern.Pattern.Name} (Score: {antiPattern.Score}/10)\n";
+                text += $"  File: {antiPattern.Pattern.FilePath}\n";
+                if (antiPattern.Issues.Any())
+                {
+                    var topIssue = antiPattern.Issues.OrderByDescending(i => i.Severity).First();
+                    text += $"  🚨 {topIssue.Severity}: {topIssue.Message}\n";
+                }
+                text += "\n";
+            }
+
+            if (result.AntiPatterns.Count > 10)
+            {
+                text += $"... and {result.AntiPatterns.Count - 10} more\n\n";
+            }
+        }
+
+        text += $"Summary: {result.Summary}\n";
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> ValidateSecurityToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString() ?? "";
+
+        var result = await _patternValidationService.ValidateSecurityAsync(context, null, cancellationToken);
+
+        var text = $"🔒 Security Validation for {context}\n\n";
+        text += $"Security Score: {result.SecurityScore}/10 ({result.Grade})\n";
+        text += $"Vulnerabilities Found: {result.Vulnerabilities.Count}\n\n";
+
+        if (result.Vulnerabilities.Any())
+        {
+            text += "🚨 Security Vulnerabilities:\n\n";
+            foreach (var vuln in result.Vulnerabilities.Take(10))
+            {
+                var icon = vuln.Severity switch
+                {
+                    IssueSeverity.Critical => "🚨",
+                    IssueSeverity.High => "❗",
+                    IssueSeverity.Medium => "⚠️",
+                    _ => "ℹ️"
+                };
+                text += $"{icon} {vuln.Severity} - {vuln.PatternName}\n";
+                text += $"  Description: {vuln.Description}\n";
+                text += $"  File: {vuln.FilePath}\n";
+                if (!string.IsNullOrEmpty(vuln.Reference))
+                    text += $"  Reference: {vuln.Reference}\n";
+                text += $"  🔧 Remediation: {vuln.Remediation}\n\n";
+            }
+        }
+
+        if (result.RemediationSteps.Any())
+        {
+            text += "📋 Priority Remediation Steps:\n";
+            foreach (var step in result.RemediationSteps.Take(5))
+            {
+                text += $"• {step}\n";
+            }
+            text += "\n";
+        }
+
+        text += $"Summary: {result.Summary}\n";
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> GetMigrationPathToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var patternId = args?.GetValueOrDefault("pattern_id")?.ToString() ?? "";
+        var includeCodeExample = args?.GetValueOrDefault("include_code_example") as bool? ?? true;
+
+        var result = await _patternValidationService.GetMigrationPathAsync(patternId, includeCodeExample, cancellationToken);
+
+        if (result == null)
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"No migration path available for pattern {patternId}" }
+                }
+            };
+        }
+
+        var text = $"🔄 Migration Path\n\n";
+        text += $"Current Pattern: {result.CurrentPattern}\n";
+        text += $"Target Pattern: {result.TargetPattern}\n";
+        text += $"Status: {result.Status}\n";
+        text += $"Effort Estimate: {result.EffortEstimate}\n";
+        text += $"Complexity: {result.Complexity}\n\n";
+
+        text += "📋 Migration Steps:\n\n";
+        foreach (var step in result.Steps)
+        {
+            text += $"{step.StepNumber}. {step.Title}\n";
+            text += $"   {step.Instructions}\n";
+            if (step.FilesToModify.Any())
+                text += $"   Files: {string.Join(", ", step.FilesToModify)}\n";
+            text += "\n";
+        }
+
+        if (result.CodeExample != null)
+        {
+            text += "💡 Code Example:\n\n";
+            text += $"{result.CodeExample.Description}\n\n";
+            text += "Before:\n```\n" + result.CodeExample.Before + "\n```\n\n";
+            text += "After:\n```\n" + result.CodeExample.After + "\n```\n\n";
+        }
+
+        if (result.Benefits.Any())
+        {
+            text += "✅ Benefits:\n";
+            foreach (var benefit in result.Benefits)
+            {
+                text += $"• {benefit}\n";
+            }
+            text += "\n";
+        }
+
+        if (result.Risks.Any())
+        {
+            text += "⚠️ Risks of NOT Migrating:\n";
+            foreach (var risk in result.Risks)
+            {
+                text += $"• {risk}\n";
+            }
+            text += "\n";
+        }
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> ValidateProjectToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString() ?? "";
+
+        var result = await _patternValidationService.ValidateProjectAsync(context, cancellationToken);
+
+        var text = $"📊 Project Validation Report - {context}\n\n";
+        text += $"Overall Quality Score: {result.OverallScore}/10\n";
+        text += $"Security Score: {result.SecurityScore}/10\n";
+        text += $"Total Patterns: {result.TotalPatterns}\n\n";
+
+        text += "📈 Patterns by Grade:\n";
+        foreach (var grade in result.PatternsByGrade.OrderBy(g => g.Key))
+        {
+            text += $"  Grade {grade.Key}: {grade.Value} patterns\n";
+        }
+        text += "\n";
+
+        if (result.CriticalIssues.Any())
+        {
+            text += $"🚨 Critical Issues ({result.CriticalIssues.Count}):\n";
+            foreach (var issue in result.CriticalIssues.Take(5))
+            {
+                text += $"  • {issue.Message}\n";
+            }
+            if (result.CriticalIssues.Count > 5)
+                text += $"  ... and {result.CriticalIssues.Count - 5} more\n";
+            text += "\n";
+        }
+
+        if (result.SecurityVulnerabilities.Any())
+        {
+            text += $"🔒 Security Vulnerabilities ({result.SecurityVulnerabilities.Count}):\n";
+            foreach (var vuln in result.SecurityVulnerabilities.Take(5))
+            {
+                text += $"  {vuln.Severity}: {vuln.Description}\n";
+            }
+            if (result.SecurityVulnerabilities.Count > 5)
+                text += $"  ... and {result.SecurityVulnerabilities.Count - 5} more\n";
+            text += "\n";
+        }
+
+        if (result.LegacyPatterns.Any())
+        {
+            text += $"⚠️ Legacy Patterns Needing Migration ({result.LegacyPatterns.Count}):\n";
+            foreach (var legacy in result.LegacyPatterns.Take(5))
+            {
+                text += $"  • {legacy.CurrentPattern} → {legacy.TargetPattern} ({legacy.EffortEstimate})\n";
+            }
+            if (result.LegacyPatterns.Count > 5)
+                text += $"  ... and {result.LegacyPatterns.Count - 5} more\n";
+            text += "\n";
+        }
+
+        if (result.TopRecommendations.Any())
+        {
+            text += "📋 Top Recommendations:\n";
+            foreach (var rec in result.TopRecommendations)
+            {
+                text += $"  {rec}\n";
+            }
+            text += "\n";
+        }
+
+        text += $"Summary: {result.Summary}\n";
+        text += $"Generated: {result.GeneratedAt:yyyy-MM-dd HH:mm:ss} UTC\n";
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    // Helper methods
+
+    private string TruncateCode(string code, int maxLength)
+    {
+        if (code.Length <= maxLength)
+        {
+            return code.Replace("\n", "\n   ");
+        }
+
+        return code.Substring(0, maxLength - 3).Replace("\n", "\n   ") + "...";
+    }
+
+    private string FormatRecommendation(PatternRecommendation rec)
+    {
+        var text = $"• {rec.Issue}\n";
+        text += $"  Category: {rec.Category} ({rec.PatternType})\n";
+        text += $"  Recommendation: {rec.Recommendation}\n";
+        text += $"  Impact: {rec.Impact}\n";
+
+        if (rec.AffectedFiles.Any())
+        {
+            text += $"  Affected Files: {string.Join(", ", rec.AffectedFiles.Take(3))}{(rec.AffectedFiles.Count > 3 ? "..." : "")}\n";
+        }
+
+        if (!string.IsNullOrEmpty(rec.AzureUrl))
+        {
+            text += $"  📚 Learn more: {rec.AzureUrl}\n";
+        }
+
+        if (!string.IsNullOrEmpty(rec.CodeExample))
+        {
+            text += $"  Example:\n{IndentCode(rec.CodeExample, 4)}\n";
+        }
+
+        text += "\n";
+        return text;
+    }
+
+    private string IndentCode(string code, int spaces)
+    {
+        var indent = new string(' ', spaces);
+        return indent + code.Replace("\n", "\n" + indent);
+    }
+
+    private string GetCategoryFromPracticeName(string practice)
+    {
+        if (practice.Contains("cache")) return "Performance (Caching)";
+        if (practice.Contains("retry") || practice.Contains("circuit") || practice.Contains("timeout")) return "Reliability (Resilience)";
+        if (practice.Contains("validation")) return "Security (Validation)";
+        if (practice.Contains("auth") || practice.Contains("encryption")) return "Security";
+        if (practice.Contains("pagination") || practice.Contains("versioning") || practice.Contains("rate")) return "API Design";
+        if (practice.Contains("health") || practice.Contains("logging") || practice.Contains("metrics")) return "Observability";
+        if (practice.Contains("background") || practice.Contains("message")) return "Performance (Background Processing)";
+        if (practice.Contains("configuration") || practice.Contains("feature")) return "Configuration";
+        return "General";
+    }
+
+    // Helper methods to safely parse arguments (handles JsonElement)
+    private int SafeParseInt(object? value, int defaultValue)
+    {
+        if (value == null) return defaultValue;
+        
+        var str = value.ToString();
+        if (int.TryParse(str, out var result))
+        {
+            return result;
+        }
+        
+        return defaultValue;
+    }
+
+    private bool SafeParseBool(object? value, bool defaultValue)
+    {
+        if (value == null) return defaultValue;
+        
+        var str = value.ToString();
+        if (bool.TryParse(str, out var result))
+        {
+            return result;
+        }
+        
+        return defaultValue;
     }
 }
 

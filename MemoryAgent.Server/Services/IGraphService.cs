@@ -48,6 +48,16 @@ public interface IGraphService
     Task<List<List<string>>> FindCircularDependenciesAsync(string? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Store a detected code pattern as a node in the graph
+    /// </summary>
+    Task StorePatternNodeAsync(CodePattern pattern, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get patterns by type from Neo4j
+    /// </summary>
+    Task<List<CodePattern>> GetPatternsByTypeAsync(PatternType type, string? context = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Get classes following a specific pattern
     /// </summary>
     Task<List<string>> GetClassesFollowingPatternAsync(string patternName, CancellationToken cancellationToken = default);

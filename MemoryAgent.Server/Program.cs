@@ -41,6 +41,10 @@ builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();
 builder.Services.AddScoped<IMcpService, McpService>();
 builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
+builder.Services.AddScoped<IPatternIndexingService, PatternIndexingService>();
+builder.Services.AddScoped<IBestPracticeValidationService, BestPracticeValidationService>();
+builder.Services.AddScoped<IRecommendationService, RecommendationService>();
+builder.Services.AddScoped<IPatternValidationService, PatternValidationService>();
 
 // TODO and Plan Management
 builder.Services.AddScoped<ITodoService, TodoService>();

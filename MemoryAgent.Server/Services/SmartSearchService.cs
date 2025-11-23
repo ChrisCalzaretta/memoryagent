@@ -12,6 +12,7 @@ public class SmartSearchService : ISmartSearchService
     private readonly IEmbeddingService _embeddingService;
     private readonly IVectorService _vectorService;
     private readonly IGraphService _graphService;
+    private readonly IPatternIndexingService _patternService;
     private readonly ILogger<SmartSearchService> _logger;
 
     // Graph query patterns
@@ -28,15 +29,37 @@ public class SmartSearchService : ISmartSearchService
         "with attribute", "with annotation"
     };
 
+    // Pattern query keywords
+    private static readonly string[] PatternKeywords = new[]
+    {
+        "pattern", "patterns",
+        "caching", "cache",
+        "retry", "retries",
+        "validation", "validate",
+        "authentication", "auth",
+        "authorization",
+        "logging", "logs",
+        "monitoring", "health check",
+        "background job", "background task",
+        "circuit breaker",
+        "rate limit", "throttling",
+        "pagination",
+        "versioning",
+        "encryption",
+        "best practice", "best practices"
+    };
+
     public SmartSearchService(
         IEmbeddingService embeddingService,
         IVectorService vectorService,
         IGraphService graphService,
+        IPatternIndexingService patternService,
         ILogger<SmartSearchService> logger)
     {
         _embeddingService = embeddingService;
         _vectorService = vectorService;
         _graphService = graphService;
+        _patternService = patternService;
         _logger = logger;
     }
 
@@ -59,6 +82,7 @@ public class SmartSearchService : ISmartSearchService
             // Execute search based on strategy
             List<SmartSearchResult> results = strategy switch
             {
+                "pattern-search" => await ExecutePatternSearchAsync(request, cancellationToken),
                 "graph-first" => await ExecuteGraphFirstSearchAsync(request, cancellationToken),
                 "semantic-first" => await ExecuteSemanticFirstSearchAsync(request, cancellationToken),
                 "hybrid" => await ExecuteHybridSearchAsync(request, cancellationToken),
@@ -96,6 +120,14 @@ public class SmartSearchService : ISmartSearchService
     private string ClassifyQuery(string query)
     {
         var lowerQuery = query.ToLowerInvariant();
+
+        // Check for pattern queries first (highest priority)
+        var patternScore = PatternKeywords.Count(keyword => lowerQuery.Contains(keyword));
+        if (patternScore >= 1)
+        {
+            _logger.LogDebug("Detected pattern query: {PatternScore} pattern keywords found", patternScore);
+            return "pattern-search";
+        }
 
         // Check for graph patterns
         var graphScore = GraphPatterns.Count(pattern => lowerQuery.Contains(pattern));
@@ -414,6 +446,72 @@ public class SmartSearchService : ISmartSearchService
         }
 
         return relationships;
+    }
+
+    private async Task<List<SmartSearchResult>> ExecutePatternSearchAsync(
+        SmartSearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<SmartSearchResult>();
+
+        try
+        {
+            _logger.LogInformation("Executing pattern search for query: {Query}", request.Query);
+
+            // Search patterns using semantic search
+            var patterns = await _patternService.SearchPatternsAsync(
+                request.Query,
+                request.Context,
+                request.Limit * 2, // Get more results for better filtering
+                cancellationToken);
+
+            _logger.LogDebug("Found {Count} patterns", patterns.Count);
+
+            // Convert patterns to SmartSearchResult
+            foreach (var pattern in patterns)
+            {
+                var result = new SmartSearchResult
+                {
+                    Name = pattern.Name,
+                    Type = "Pattern",
+                    FilePath = pattern.FilePath,
+                    LineNumber = pattern.LineNumber,
+                    Content = pattern.Content,
+                    SemanticScore = pattern.Confidence,
+                    GraphScore = pattern.Confidence,
+                    Metadata = new Dictionary<string, object>
+                    {
+                        ["pattern_type"] = pattern.Type.ToString(),
+                        ["pattern_category"] = pattern.Category.ToString(),
+                        ["implementation"] = pattern.Implementation,
+                        ["best_practice"] = pattern.BestPractice,
+                        ["azure_url"] = pattern.AzureBestPracticeUrl,
+                        ["language"] = pattern.Language,
+                        ["is_positive_pattern"] = pattern.IsPositivePattern,
+                        ["detected_at"] = pattern.DetectedAt.ToString("O")
+                    }
+                };
+
+                // Add relationship information if requested
+                if (request.IncludeRelationships)
+                {
+                    result.Relationships = new Dictionary<string, List<string>>
+                    {
+                        ["file"] = new List<string> { pattern.FilePath }
+                    };
+                }
+
+                results.Add(result);
+            }
+
+            _logger.LogInformation("Pattern search returned {Count} results", results.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing pattern search");
+        }
+
+        return results;
     }
 
     private class GraphQueryResult
