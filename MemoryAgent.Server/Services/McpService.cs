@@ -20,6 +20,7 @@ public class McpService : IMcpService
     private readonly IBestPracticeValidationService _bestPracticeValidation;
     private readonly IRecommendationService _recommendationService;
     private readonly IPatternValidationService _patternValidationService;
+    private readonly ICodeComplexityService _complexityService;
     private readonly ILogger<McpService> _logger;
 
     public McpService(
@@ -34,6 +35,7 @@ public class McpService : IMcpService
         IBestPracticeValidationService bestPracticeValidation,
         IRecommendationService recommendationService,
         IPatternValidationService patternValidationService,
+        ICodeComplexityService complexityService,
         ILogger<McpService> logger)
     {
         _indexingService = indexingService;
@@ -47,6 +49,7 @@ public class McpService : IMcpService
         _bestPracticeValidation = bestPracticeValidation;
         _recommendationService = recommendationService;
         _patternValidationService = patternValidationService;
+        _complexityService = complexityService;
         _logger = logger;
     }
 
@@ -492,6 +495,21 @@ public class McpService : IMcpService
                     },
                     required = new[] { "context" }
                 }
+            },
+            new McpTool
+            {
+                Name = "analyze_code_complexity",
+                Description = "Analyze code complexity metrics (cyclomatic, cognitive, LOC, nesting, code smells) for a file or specific method. Returns detailed complexity scores with grades and recommendations.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        filePath = new { type = "string", description = "Path to the file to analyze" },
+                        methodName = new { type = "string", description = "Optional: specific method name to analyze (if omitted, analyzes all methods in file)" }
+                    },
+                    required = new[] { "filePath" }
+                }
             }
         };
 
@@ -534,6 +552,7 @@ public class McpService : IMcpService
                 "validate_security" => await ValidateSecurityToolAsync(toolCall.Arguments, cancellationToken),
                 "get_migration_path" => await GetMigrationPathToolAsync(toolCall.Arguments, cancellationToken),
                 "validate_project" => await ValidateProjectToolAsync(toolCall.Arguments, cancellationToken),
+                "analyze_code_complexity" => await AnalyzeCodeComplexityToolAsync(toolCall.Arguments, cancellationToken),
                 _ => new McpToolResult
                 {
                     IsError = true,
@@ -1893,6 +1912,138 @@ public class McpService : IMcpService
 
         text += $"Summary: {result.Summary}\n";
         text += $"Generated: {result.GeneratedAt:yyyy-MM-dd HH:mm:ss} UTC\n";
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = text }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> AnalyzeCodeComplexityToolAsync(
+        Dictionary<string, object> args,
+        CancellationToken cancellationToken)
+    {
+        var filePath = args.GetValueOrDefault("filePath")?.ToString() ?? "";
+        var methodName = args.GetValueOrDefault("methodName")?.ToString();
+
+        var result = await _complexityService.AnalyzeFileAsync(filePath, methodName, cancellationToken);
+
+        if (!result.Success)
+        {
+            return new McpToolResult
+            {
+                IsError = true,
+                Content = new List<McpContent>
+                {
+                    new McpContent
+                    {
+                        Type = "text",
+                        Text = $"Error analyzing code complexity:\n{string.Join("\n", result.Errors)}"
+                    }
+                }
+            };
+        }
+
+        var text = $"📊 Code Complexity Analysis\n";
+        text += $"File: {result.FilePath}\n";
+        if (!string.IsNullOrEmpty(result.MethodName))
+        {
+            text += $"Method: {result.MethodName}\n";
+        }
+        text += $"\n";
+
+        // Summary
+        text += $"📈 Summary (Overall Grade: {result.Summary.OverallGrade})\n";
+        text += $"  Total Methods: {result.Summary.TotalMethods}\n";
+        text += $"  Avg Cyclomatic Complexity: {result.Summary.AverageCyclomaticComplexity}\n";
+        text += $"  Avg Cognitive Complexity: {result.Summary.AverageCognitiveComplexity}\n";
+        text += $"  Avg Lines of Code: {result.Summary.AverageLinesOfCode}\n";
+        text += $"  Max Cyclomatic Complexity: {result.Summary.MaxCyclomaticComplexity}\n";
+        text += $"  Max Cognitive Complexity: {result.Summary.MaxCognitiveComplexity}\n";
+        text += $"  Methods with High Complexity: {result.Summary.MethodsWithHighComplexity}\n";
+        text += $"  Methods with Code Smells: {result.Summary.MethodsWithCodeSmells}\n";
+        text += $"\n";
+
+        if (result.Summary.FileRecommendations.Any())
+        {
+            text += $"📋 File-Level Recommendations:\n";
+            foreach (var rec in result.Summary.FileRecommendations)
+            {
+                text += $"  {rec}\n";
+            }
+            text += $"\n";
+        }
+
+        // Method details
+        if (result.Methods.Any())
+        {
+            text += $"🔍 Method Details:\n\n";
+            
+            // Sort by grade (worst first) then by complexity
+            var sortedMethods = result.Methods
+                .OrderBy(m => m.Grade switch { "F" => 1, "D" => 2, "C" => 3, "B" => 4, "A" => 5, _ => 6 })
+                .ThenByDescending(m => m.CyclomaticComplexity)
+                .ToList();
+
+            foreach (var method in sortedMethods)
+            {
+                var gradeEmoji = method.Grade switch
+                {
+                    "A" => "✅",
+                    "B" => "✅",
+                    "C" => "⚠️",
+                    "D" => "❌",
+                    "F" => "🔴",
+                    _ => "❓"
+                };
+
+                text += $"{gradeEmoji} {method.ClassName}.{method.MethodName} (Grade: {method.Grade})\n";
+                text += $"  Lines: {method.StartLine}-{method.EndLine} ({method.LinesOfCode} LOC)\n";
+                text += $"  Cyclomatic Complexity: {method.CyclomaticComplexity}\n";
+                text += $"  Cognitive Complexity: {method.CognitiveComplexity}\n";
+                text += $"  Max Nesting Depth: {method.MaxNestingDepth}\n";
+                text += $"  Parameters: {method.ParameterCount}\n";
+                
+                if (method.DatabaseCalls > 0)
+                {
+                    text += $"  Database Calls: {method.DatabaseCalls}\n";
+                }
+                
+                if (method.HasHttpCalls)
+                {
+                    text += $"  Has HTTP Calls: Yes\n";
+                }
+                
+                if (method.IsPublic)
+                {
+                    text += $"  Visibility: Public API\n";
+                }
+                
+                if (method.CodeSmells.Any())
+                {
+                    text += $"  Code Smells: {string.Join(", ", method.CodeSmells)}\n";
+                }
+                
+                if (method.ExceptionTypes.Any())
+                {
+                    text += $"  Exception Types: {string.Join(", ", method.ExceptionTypes)}\n";
+                }
+
+                if (method.Recommendations.Any())
+                {
+                    text += $"  Recommendations:\n";
+                    foreach (var rec in method.Recommendations)
+                    {
+                        text += $"    {rec}\n";
+                    }
+                }
+                
+                text += $"\n";
+            }
+        }
 
         return new McpToolResult
         {

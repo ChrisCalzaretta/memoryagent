@@ -12,6 +12,9 @@ builder.Services.AddControllers()
     });
 builder.Services.AddEndpointsApiExplorer();
 
+// Memory Cache for MCP tool results
+builder.Services.AddMemoryCache();
+
 // HTTP Clients
 builder.Services.AddHttpClient("Ollama", client =>
 {
@@ -50,6 +53,9 @@ builder.Services.AddScoped<IPatternValidationService, PatternValidationService>(
 builder.Services.AddScoped<ITodoService, TodoService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<ITaskValidationService, TaskValidationService>();
+
+// Code Complexity Analysis
+builder.Services.AddScoped<ICodeComplexityService, CodeComplexityService>();
 
 // Background Services
 builder.Services.AddHostedService<AutoReindexService>();

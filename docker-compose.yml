@@ -13,6 +13,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5000
+      - ASPNETCORE_HTTP_PORTS=
       - Qdrant__Url=${QDRANT_URL:-http://${PROJECT_NAME:-memory}-agent-qdrant:6333}
       - Neo4j__Url=${NEO4J_URL:-bolt://${PROJECT_NAME:-memory}-agent-neo4j:7687}
       - Neo4j__User=${NEO4J_USER:-neo4j}
