@@ -11,12 +11,33 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const WORKSPACE_PATH = process.env.WORKSPACE_PATH;  // From Cursor via ${workspaceFolder}
 const MCP_PORT = 5000;  // Always port 5000 for shared stack
 const LOG_FILE = process.env.MCP_LOG_FILE || 'E:\\GitHub\\MemoryAgent\\mcp-wrapper.log';
 
-// Extract context from workspace path
-const CONTEXT_NAME = WORKSPACE_PATH ? path.basename(WORKSPACE_PATH) : 'default';
+// Detect workspace path from multiple sources
+let WORKSPACE_PATH = null;
+
+// 1. Try command-line argument (highest priority)
+if (process.argv.length > 2 && process.argv[2] !== '${workspaceFolder}') {
+  WORKSPACE_PATH = process.argv[2];
+  log(`Using workspace from command-line argument: ${WORKSPACE_PATH}`);
+}
+
+// 2. Try environment variable
+if (!WORKSPACE_PATH && process.env.WORKSPACE_PATH && process.env.WORKSPACE_PATH !== '${workspaceFolder}') {
+  WORKSPACE_PATH = process.env.WORKSPACE_PATH;
+  log(`Using workspace from environment variable: ${WORKSPACE_PATH}`);
+}
+
+// 3. Fallback: use a default (you'll need to manually specify workspace in queries)
+if (!WORKSPACE_PATH) {
+  WORKSPACE_PATH = 'unknown';
+  log('⚠️ WARNING: Could not detect workspace! Context will be "unknown"');
+  log('⚠️ Please update your Cursor MCP config to pass workspace folder');
+}
+
+// Extract context from workspace path (last directory name)
+const CONTEXT_NAME = path.basename(WORKSPACE_PATH);
 
 function log(message) {
   const timestamp = new Date().toISOString();
