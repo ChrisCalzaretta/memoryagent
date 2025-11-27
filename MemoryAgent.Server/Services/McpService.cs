@@ -2209,6 +2209,51 @@ public class McpService : IMcpService
                 _logger.LogWarning("  ⚠️ AutoReindexService not available - file watching disabled");
             }
 
+            // Step 4: Check if workspace is empty - if so, trigger initial full reindex
+            var filePaths = await vectorService.GetFilePathsForContextAsync(context, cancellationToken);
+            if (!filePaths.Any())
+            {
+                _logger.LogInformation("  🔍 Collections empty, triggering initial full reindex...");
+                
+                // Trigger background reindex (don't wait for it - can take a while)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var indexingService = _serviceProvider.GetRequiredService<IIndexingService>();
+                        await indexingService.IndexDirectoryAsync(
+                            workspacePath,
+                            true, // recursive
+                            context,
+                            CancellationToken.None
+                        );
+                        _logger.LogInformation("  ✅ Initial reindex completed for: {Context}", context);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "  ❌ Initial reindex failed for: {Context}", context);
+                    }
+                }, CancellationToken.None);
+
+                return new McpToolResult
+                {
+                    Content = new List<McpContent>
+                    {
+                        new McpContent
+                        {
+                            Type = "text",
+                            Text = $"✅ Workspace registered with isolated storage:\n" +
+                                   $"  Path: {workspacePath}\n" +
+                                   $"  Context: {context}\n" +
+                                   $"  Qdrant Collections: {context.ToLower()}_files, {context.ToLower()}_classes, {context.ToLower()}_methods, {context.ToLower()}_patterns\n" +
+                                   $"  Neo4j Database: {context.ToLower()}\n" +
+                                   $"  File Watcher: {(autoReindexService != null ? "Active" : "Disabled")}\n" +
+                                   $"\n🔄 Initial indexing started in background... This may take a few minutes."
+                        }
+                    }
+                };
+            }
+
             return new McpToolResult
             {
                 Content = new List<McpContent>
@@ -2221,7 +2266,8 @@ public class McpService : IMcpService
                                $"  Context: {context}\n" +
                                $"  Qdrant Collections: {context.ToLower()}_files, {context.ToLower()}_classes, {context.ToLower()}_methods, {context.ToLower()}_patterns\n" +
                                $"  Neo4j Database: {context.ToLower()}\n" +
-                               $"  File Watcher: {(autoReindexService != null ? "Active" : "Disabled")}"
+                               $"  File Watcher: {(autoReindexService != null ? "Active" : "Disabled")}\n" +
+                               $"  Indexed Files: {filePaths.Count}"
                     }
                 }
             };
