@@ -46,7 +46,7 @@ public class IndexingService : IIndexingService
             // Step 0: Delete existing data for this file (if any) to avoid duplicates
             _logger.LogInformation("Checking for existing data for file: {FilePath}", containerPath);
             await Task.WhenAll(
-                _vectorService.DeleteByFilePathAsync(containerPath, cancellationToken),
+                _vectorService.DeleteByFilePathAsync(containerPath, context, cancellationToken),
                 _graphService.DeleteByFilePathAsync(containerPath, cancellationToken)
             );
 

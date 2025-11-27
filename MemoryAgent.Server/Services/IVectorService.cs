@@ -41,7 +41,7 @@ public interface IVectorService
     /// <summary>
     /// Delete code memories by file path
     /// </summary>
-    Task DeleteByFilePathAsync(string filePath, CancellationToken cancellationToken = default);
+    Task DeleteByFilePathAsync(string filePath, string? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get all file paths indexed for a specific context

@@ -321,11 +321,11 @@ public class VectorService : IVectorService
         }
     }
 
-    public async Task DeleteByFilePathAsync(string filePath, CancellationToken cancellationToken = default)
+    public async Task DeleteByFilePathAsync(string filePath, string? context = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            var collections = new[] { GetFilesCollection(filePath), GetClassesCollection(filePath), GetMethodsCollection(filePath) };
+            var collections = new[] { GetFilesCollection(context), GetClassesCollection(context), GetMethodsCollection(context) };
 
             foreach (var collection in collections)
             {

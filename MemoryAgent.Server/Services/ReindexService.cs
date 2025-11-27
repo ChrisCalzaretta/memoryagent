@@ -124,7 +124,7 @@ public class ReindexService : IReindexService
                 {
                     try
                     {
-                        await _vectorService.DeleteByFilePathAsync(deletedFile, ct);
+                        await _vectorService.DeleteByFilePathAsync(deletedFile, context, ct);
                         await _graphService.DeleteByFilePathAsync(deletedFile, ct);
                         Interlocked.Increment(ref filesRemoved);
                     }
