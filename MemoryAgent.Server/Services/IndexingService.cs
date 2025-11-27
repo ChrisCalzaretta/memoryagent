@@ -14,6 +14,7 @@ public class IndexingService : IIndexingService
     private readonly IVectorService _vectorService;
     private readonly IGraphService _graphService;
     private readonly IPathTranslationService _pathTranslation;
+    private readonly ISemgrepService _semgrepService;
     private readonly ILogger<IndexingService> _logger;
 
     public IndexingService(
@@ -22,6 +23,7 @@ public class IndexingService : IIndexingService
         IVectorService vectorService,
         IGraphService graphService,
         IPathTranslationService pathTranslation,
+        ISemgrepService semgrepService,
         ILogger<IndexingService> logger)
     {
         _codeParser = codeParser;
@@ -29,6 +31,7 @@ public class IndexingService : IIndexingService
         _vectorService = vectorService;
         _graphService = graphService;
         _pathTranslation = pathTranslation;
+        _semgrepService = semgrepService;
         _logger = logger;
     }
 
@@ -126,12 +129,72 @@ public class IndexingService : IIndexingService
                 _logger.LogDebug("Stored {Count} pattern nodes in Neo4j for {FilePath}", detectedPatterns.Count, containerPath);
             }
 
+            // Step 6: Run Semgrep security scan
+            var securityIssuesFound = 0;
+            try
+            {
+                var semgrepReport = await _semgrepService.ScanFileAsync(containerPath, cancellationToken);
+                
+                if (semgrepReport.Success && semgrepReport.Findings.Any())
+                {
+                    _logger.LogInformation("Semgrep found {Count} security issues in {File}", 
+                        semgrepReport.Findings.Count, containerPath);
+
+                    // Store findings as security patterns
+                    foreach (var finding in semgrepReport.Findings)
+                    {
+                        var securityPattern = new CodePattern
+                        {
+                            Type = PatternType.Security,
+                            Category = PatternCategory.Security,
+                            Name = $"Semgrep_{finding.RuleId}_{Path.GetFileName(containerPath)}",
+                            Implementation = finding.Message,
+                            FilePath = containerPath,
+                            LineNumber = finding.StartLine,
+                            Content = finding.CodeSnippet,
+                            IsPositivePattern = false,  // Security findings are issues/anti-patterns
+                            Confidence = finding.Severity == "ERROR" ? 1.0f : 0.8f,
+                            Context = context ?? "default",
+                            BestPractice = finding.Metadata.OWASP ?? "OWASP Top 10",
+                            AzureBestPracticeUrl = "https://owasp.org/www-project-top-ten/",
+                            Metadata = new Dictionary<string, object>
+                            {
+                                ["semgrep_rule"] = finding.RuleId,
+                                ["cwe"] = finding.Metadata.CWE ?? "Unknown",
+                                ["owasp"] = finding.Metadata.OWASP ?? "Unknown",
+                                ["severity"] = finding.Severity,
+                                ["confidence"] = finding.Metadata.Confidence ?? "HIGH",
+                                ["fix"] = finding.Fix ?? "See Semgrep rule documentation",
+                                ["start_line"] = finding.StartLine,
+                                ["end_line"] = finding.EndLine,
+                                ["is_semgrep_finding"] = true
+                            }
+                        };
+
+                        await _graphService.StorePatternNodeAsync(securityPattern, cancellationToken);
+                        securityIssuesFound++;
+                    }
+
+                    _logger.LogDebug("Stored {Count} Semgrep findings as security patterns", securityIssuesFound);
+                }
+                else if (!semgrepReport.Success)
+                {
+                    _logger.LogWarning("Semgrep scan failed for {File}: {Errors}", 
+                        containerPath, string.Join(", ", semgrepReport.Errors));
+                }
+            }
+            catch (Exception semgrepEx)
+            {
+                _logger.LogWarning(semgrepEx, "Semgrep scan error for {File} - continuing without security scan", containerPath);
+                // Don't fail entire indexing if Semgrep fails
+            }
+
             // Update result
             result.Success = true;
             result.FilesIndexed = 1;
             result.ClassesFound = parseResult.CodeElements.Count(e => e.Type == CodeMemoryType.Class);
             result.MethodsFound = parseResult.CodeElements.Count(e => e.Type == CodeMemoryType.Method);
-            result.PatternsDetected = parseResult.CodeElements.Count(e => e.Type == CodeMemoryType.Pattern);
+            result.PatternsDetected = parseResult.CodeElements.Count(e => e.Type == CodeMemoryType.Pattern) + securityIssuesFound;
             result.Duration = stopwatch.Elapsed;
 
             _logger.LogInformation(

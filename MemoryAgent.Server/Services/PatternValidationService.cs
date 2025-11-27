@@ -9,13 +9,16 @@ namespace MemoryAgent.Server.Services;
 public class PatternValidationService : IPatternValidationService
 {
     private readonly IPatternIndexingService _patternIndexingService;
+    private readonly ISemgrepService _semgrepService;
     private readonly ILogger<PatternValidationService> _logger;
 
     public PatternValidationService(
         IPatternIndexingService patternIndexingService,
+        ISemgrepService semgrepService,
         ILogger<PatternValidationService> logger)
     {
         _patternIndexingService = patternIndexingService;
+        _semgrepService = semgrepService;
         _logger = logger;
     }
 
@@ -135,6 +138,7 @@ public class PatternValidationService : IPatternValidationService
 
         var vulnerabilities = new List<SecurityVulnerability>();
 
+        // 1. Validate existing detected patterns
         foreach (var type in patternTypes)
         {
             var patterns = await _patternIndexingService.GetPatternsByTypeAsync(type, context, 1000, cancellationToken);
@@ -159,10 +163,39 @@ public class PatternValidationService : IPatternValidationService
             }
         }
 
+        // 2. Also check for Semgrep-detected security issues
+        var semgrepPatterns = await _patternIndexingService.GetPatternsByTypeAsync(
+            PatternType.Security, context, 1000, cancellationToken);
+        
+        var semgrepFindings = semgrepPatterns.Where(p => 
+            p.Metadata.ContainsKey("is_semgrep_finding") && 
+            (bool)p.Metadata["is_semgrep_finding"]);
+        
+        foreach (var finding in semgrepFindings)
+        {
+            var severity = finding.Metadata.GetValueOrDefault("severity")?.ToString() switch
+            {
+                "ERROR" => IssueSeverity.Critical,
+                "WARNING" => IssueSeverity.High,
+                "INFO" => IssueSeverity.Medium,
+                _ => IssueSeverity.Low
+            };
+
+            vulnerabilities.Add(new SecurityVulnerability
+            {
+                Severity = severity,
+                PatternName = $"Semgrep: {finding.Metadata.GetValueOrDefault("semgrep_rule")}",
+                FilePath = finding.FilePath,
+                Description = finding.Implementation,
+                Reference = $"CWE: {finding.Metadata.GetValueOrDefault("cwe")}, OWASP: {finding.Metadata.GetValueOrDefault("owasp")}",
+                Remediation = finding.Metadata.GetValueOrDefault("fix")?.ToString() ?? "See Semgrep rule documentation"
+            });
+        }
+
         response.Vulnerabilities = vulnerabilities.OrderByDescending(v => v.Severity).ToList();
         response.SecurityScore = CalculateSecurityScore(vulnerabilities);
         response.RemediationSteps = GenerateRemediationSteps(vulnerabilities);
-        response.Summary = $"Security Score: {response.SecurityScore}/10 ({response.Grade}), {vulnerabilities.Count} vulnerabilities found";
+        response.Summary = $"Security Score: {response.SecurityScore}/10 ({response.Grade}), {vulnerabilities.Count} vulnerabilities found ({semgrepFindings.Count()} from Semgrep)";
 
         return response;
     }

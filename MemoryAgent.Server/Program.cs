@@ -41,6 +41,7 @@ builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
 builder.Services.AddSingleton<IGraphService, GraphService>();
 builder.Services.AddSingleton<ICodeParser, RoslynParser>();
 builder.Services.AddScoped<IIndexingService, IndexingService>();
+builder.Services.AddSingleton<ISemgrepService, SemgrepService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();
 builder.Services.AddScoped<IMcpService, McpService>();
 builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
