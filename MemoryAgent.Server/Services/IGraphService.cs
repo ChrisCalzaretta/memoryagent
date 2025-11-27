@@ -13,6 +13,11 @@ public interface IGraphService
     Task InitializeDatabaseAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Create a Neo4j database for a workspace context
+    /// </summary>
+    Task CreateDatabaseAsync(string context, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Store a code memory as a node in the graph
     /// </summary>
     Task StoreCodeNodeAsync(CodeMemory memory, CancellationToken cancellationToken = default);

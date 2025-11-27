@@ -47,6 +47,9 @@ builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
 builder.Services.AddScoped<IPatternIndexingService, PatternIndexingService>();
 builder.Services.AddScoped<IBestPracticeValidationService, BestPracticeValidationService>();
 builder.Services.AddScoped<IRecommendationService, RecommendationService>();
+builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.AutoReindexService>();
+builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.IAutoReindexService>(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
 builder.Services.AddScoped<IPatternValidationService, PatternValidationService>();
 
 // TODO and Plan Management

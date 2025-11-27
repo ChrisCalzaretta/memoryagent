@@ -3,13 +3,20 @@
 /**
  * MCP STDIO Wrapper for Memory Code Agent
  * Bridges Cursor's STDIO transport to our HTTP MCP server
+ * Supports multi-workspace with automatic context injection
  */
 
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 
-const MCP_PORT = process.env.MCP_PORT || 5098;
+// Configuration
+const WORKSPACE_PATH = process.env.WORKSPACE_PATH;  // From Cursor via ${workspaceFolder}
+const MCP_PORT = 5000;  // Always port 5000 for shared stack
 const LOG_FILE = process.env.MCP_LOG_FILE || 'E:\\GitHub\\MemoryAgent\\mcp-wrapper.log';
+
+// Extract context from workspace path
+const CONTEXT_NAME = WORKSPACE_PATH ? path.basename(WORKSPACE_PATH) : 'default';
 
 function log(message) {
   const timestamp = new Date().toISOString();
@@ -21,11 +28,26 @@ function log(message) {
   }
 }
 
-log('MCP Wrapper started');
+log('MCP Wrapper started (multi-workspace mode)');
+log(`  Workspace: ${WORKSPACE_PATH || 'not set'}`);
+log(`  Context: ${CONTEXT_NAME}`);
+log(`  MCP Port: ${MCP_PORT}`);
 
 // Function to send HTTP request to MCP server
 function sendToMcpServer(jsonRpcRequest) {
   return new Promise((resolve, reject) => {
+    
+    // Auto-inject context into tool calls (except workspace registration)
+    if (jsonRpcRequest.method === 'tools/call' && 
+        jsonRpcRequest.id !== 'register-workspace' &&
+        jsonRpcRequest.id !== 'unregister-workspace') {
+      const params = jsonRpcRequest.params;
+      if (params && params.arguments && !params.arguments.context && CONTEXT_NAME !== 'default') {
+        params.arguments.context = CONTEXT_NAME;
+        log(`Auto-injected context: ${CONTEXT_NAME}`);
+      }
+    }
+    
     const postData = JSON.stringify(jsonRpcRequest);
     
     const options = {
@@ -118,15 +140,76 @@ process.stdin.on('data', async (chunk) => {
   }
 });
 
+// Register workspace on startup
+async function registerWorkspace() {
+  if (!WORKSPACE_PATH) {
+    log('⚠️ WORKSPACE_PATH not set, skipping registration');
+    return;
+  }
+  
+  try {
+    const request = {
+      jsonrpc: '2.0',
+      id: 'register-workspace',
+      method: 'tools/call',
+      params: {
+        name: 'register_workspace',
+        arguments: {
+          workspacePath: WORKSPACE_PATH,
+          context: CONTEXT_NAME
+        }
+      }
+    };
+    
+    await sendToMcpServer(request);
+    log(`✅ Workspace registered: ${WORKSPACE_PATH} → ${CONTEXT_NAME}`);
+  } catch (err) {
+    log(`⚠️ Failed to register workspace: ${err.message}`);
+  }
+}
+
+// Unregister workspace on shutdown
+async function unregisterWorkspace() {
+  if (!WORKSPACE_PATH) {
+    return;
+  }
+  
+  try {
+    const request = {
+      jsonrpc: '2.0',
+      id: 'unregister-workspace',
+      method: 'tools/call',
+      params: {
+        name: 'unregister_workspace',
+        arguments: {
+          workspacePath: WORKSPACE_PATH
+        }
+      }
+    };
+    
+    await sendToMcpServer(request);
+    log(`✅ Workspace unregistered: ${WORKSPACE_PATH}`);
+  } catch (err) {
+    log(`⚠️ Failed to unregister workspace: ${err.message}`);
+  }
+}
+
+// Wait a bit for MCP server to be ready, then register
+setTimeout(() => {
+  registerWorkspace();
+}, 1000);
+
 process.stdin.on('end', () => {
   process.exit(0);
 });
 
 // Handle process signals
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
+  await unregisterWorkspace();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
+  await unregisterWorkspace();
   process.exit(0);
 });

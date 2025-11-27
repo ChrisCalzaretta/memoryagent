@@ -115,6 +115,7 @@ public enum PatternType
     
     // AI Agent Frameworks
     AgentFramework,      // Microsoft Agent Framework
+    AGUI,                // AG-UI Protocol Integration (Agent UI)
     SemanticKernel,      // Semantic Kernel (legacy, migrating to Agent Framework)
     AutoGen,             // AutoGen (legacy, migrating to Agent Framework)
     AgentLightning,      // Agent Lightning (RL-based optimization)

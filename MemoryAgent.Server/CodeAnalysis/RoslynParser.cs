@@ -74,7 +74,7 @@ public class RoslynParser : ICodeParser
         return await ParseCodeAsync(code, filePath, context, cancellationToken);
     }
 
-    public Task<ParseResult> ParseCodeAsync(string code, string filePath, string? context = null, CancellationToken cancellationToken = default)
+    public async Task<ParseResult> ParseCodeAsync(string code, string filePath, string? context = null, CancellationToken cancellationToken = default)
     {
         var result = new ParseResult();
 
@@ -139,20 +139,35 @@ public class RoslynParser : ICodeParser
                 }
             }
 
-            // PATTERN DETECTION: Detect code patterns using enhanced detector
+            // PATTERN DETECTION: Detect code patterns using multiple detectors
             try
             {
-                var patternDetector = new CSharpPatternDetectorEnhanced();
-                var detectedPatterns = patternDetector.DetectPatterns(code, filePath, context);
+                var allDetectedPatterns = new List<CodePattern>();
                 
-                if (detectedPatterns.Any())
+                // 1. Enhanced C# patterns (Azure best practices)
+                var enhancedDetector = new CSharpPatternDetectorEnhanced();
+                var enhancedPatterns = enhancedDetector.DetectPatterns(code, filePath, context);
+                allDetectedPatterns.AddRange(enhancedPatterns);
+                
+                // 2. Agent Framework patterns (Semantic Kernel, AutoGen, Agent Lightning, etc.)
+                var agentFrameworkDetector = new AgentFrameworkPatternDetector(_loggerFactory.CreateLogger<AgentFrameworkPatternDetector>());
+                var agentPatterns = await agentFrameworkDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
+                allDetectedPatterns.AddRange(agentPatterns);
+                
+                // 3. AG-UI patterns (Agent UI Protocol integration)
+                var aguiDetector = new AGUIPatternDetector(_loggerFactory.CreateLogger<AGUIPatternDetector>());
+                var aguiPatterns = await aguiDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
+                allDetectedPatterns.AddRange(aguiPatterns);
+                
+                if (allDetectedPatterns.Any())
                 {
-                    _logger.LogDebug("Detected {Count} patterns in {FilePath}", detectedPatterns.Count, filePath);
+                    _logger.LogDebug("Detected {Count} patterns in {FilePath} ({Enhanced} enhanced, {Agent} agent, {AGUI} AG-UI)", 
+                        allDetectedPatterns.Count, filePath, enhancedPatterns.Count, agentPatterns.Count, aguiPatterns.Count);
                     
                     // Store patterns in result metadata for indexing service to process
                     if (!result.CodeElements.First().Metadata.ContainsKey("detected_patterns"))
                     {
-                        result.CodeElements.First().Metadata["detected_patterns"] = detectedPatterns;
+                        result.CodeElements.First().Metadata["detected_patterns"] = allDetectedPatterns;
                     }
                 }
             }
@@ -162,13 +177,13 @@ public class RoslynParser : ICodeParser
                 // Don't fail the whole parse if pattern detection fails
             }
 
-            return Task.FromResult(result);
+            return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error parsing code for file: {FilePath}", filePath);
             result.Errors.Add($"Error parsing code: {ex.Message}");
-            return Task.FromResult(result);
+            return result;
         }
     }
 

@@ -39,6 +39,126 @@ public class GraphService : IGraphService, IDisposable
                 });
     }
 
+    /// <summary>
+    /// Create a session for a specific workspace database
+    /// Note: For Community Edition, this always returns the default database.
+    /// Context isolation is handled via Cypher query filtering.
+    /// </summary>
+    private IAsyncSession CreateSession(string? context = null)
+    {
+        // Always use default database (Community Edition doesn't support multiple databases)
+        // Context filtering is done at the query level using WHERE clauses
+        return _driver.AsyncSession();
+    }
+
+    /// <summary>
+    /// Create/initialize storage for a workspace context
+    /// Note: Neo4j Community Edition doesn't support multiple databases.
+    /// We use the default database with context-based filtering instead.
+    /// </summary>
+    public async Task CreateDatabaseAsync(string context, CancellationToken cancellationToken = default)
+    {
+        var dbName = context.ToLower();
+        
+        try
+        {
+            // Try to create database (Enterprise Edition only)
+            try
+            {
+                await using var session = _driver.AsyncSession(o => o.WithDatabase("system"));
+                
+                await session.ExecuteWriteAsync(async tx =>
+                {
+                    await tx.RunAsync($"CREATE DATABASE `{dbName}` IF NOT EXISTS");
+                });
+                
+                _logger.LogInformation("✅ Neo4j database created (Enterprise): {Database}", dbName);
+                
+                // Initialize constraints and indexes for this database
+                await InitializeDatabaseForContextAsync(context, cancellationToken);
+            }
+            catch (Exception dbEx)
+            {
+                // Community Edition - use default database with context filtering
+                _logger.LogInformation("ℹ️ Neo4j Community Edition detected - using context-based filtering for: {Context}", context);
+                _logger.LogDebug("Database creation not supported: {Message}", dbEx.Message);
+                
+                // Initialize indexes in default database (still useful for performance)
+                await InitializeDatabaseForContextAsync(null, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error initializing Neo4j for context: {Context}", context);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Initialize constraints and indexes for a specific database
+    /// </summary>
+    private async Task InitializeDatabaseForContextAsync(string context, CancellationToken cancellationToken = default)
+    {
+        await using var session = CreateSession(context);
+
+        try
+        {
+            // Create constraints (ensures uniqueness and creates indexes)
+            var constraints = new[]
+            {
+                "CREATE CONSTRAINT class_name IF NOT EXISTS FOR (c:Class) REQUIRE c.name IS UNIQUE",
+                "CREATE CONSTRAINT file_path IF NOT EXISTS FOR (f:File) REQUIRE f.path IS UNIQUE",
+                "CREATE CONSTRAINT pattern_name IF NOT EXISTS FOR (p:Pattern) REQUIRE p.name IS UNIQUE",
+                "CREATE CONSTRAINT namespace_name IF NOT EXISTS FOR (n:Namespace) REQUIRE n.name IS UNIQUE"
+            };
+
+            foreach (var constraint in constraints)
+            {
+                try
+                {
+                    await session.ExecuteWriteAsync(async tx =>
+                    {
+                        await tx.RunAsync(constraint);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("Constraint creation note: {Message}", ex.Message);
+                }
+            }
+
+            // Create indexes for performance
+            var indexes = new[]
+            {
+                "CREATE INDEX class_namespace IF NOT EXISTS FOR (c:Class) ON (c.namespace)",
+                "CREATE INDEX method_class IF NOT EXISTS FOR (m:Method) ON (m.class_name)",
+                "CREATE INDEX file_path_idx IF NOT EXISTS FOR (f:File) ON (f.path)"
+            };
+
+            foreach (var index in indexes)
+            {
+                try
+                {
+                    await session.ExecuteWriteAsync(async tx =>
+                    {
+                        await tx.RunAsync(index);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("Index creation note: {Message}", ex.Message);
+                }
+            }
+
+            _logger.LogInformation("✅ Neo4j database initialized for context: {Context}", context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error initializing Neo4j database for context: {Context}", context);
+            throw;
+        }
+    }
+
     public async Task InitializeDatabaseAsync(CancellationToken cancellationToken = default)
     {
         await using var session = _driver.AsyncSession();

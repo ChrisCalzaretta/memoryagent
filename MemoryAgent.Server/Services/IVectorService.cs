@@ -13,6 +13,11 @@ public interface IVectorService
     Task InitializeCollectionsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Initialize Qdrant collections for a specific workspace context
+    /// </summary>
+    Task InitializeCollectionsForContextAsync(string context, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Store a code memory with its embedding
     /// </summary>
     Task StoreCodeMemoryAsync(CodeMemory memory, CancellationToken cancellationToken = default);

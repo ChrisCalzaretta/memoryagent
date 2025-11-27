@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "code-memory": {
+      "command": "node",
+      "args": [
+        "E:\\GitHub\\MemoryAgent\\mcp-stdio-wrapper.js"
+      ],
+      "env": {
+        "WORKSPACE_PATH": "${workspaceFolder}"
+      }
+    }
+  }
+}
+

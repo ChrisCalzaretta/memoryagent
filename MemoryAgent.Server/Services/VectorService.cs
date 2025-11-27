@@ -18,10 +18,18 @@ public class VectorService : IVectorService
     private readonly AsyncRetryPolicy _retryPolicy;
     private readonly string _baseUrl;
 
-    private const string FilesCollection = "files";
-    private const string ClassesCollection = "classes";
-    private const string MethodsCollection = "methods";
-    private const string PatternsCollection = "patterns";
+    // Helper methods for per-workspace collection names
+    private static string GetFilesCollection(string? context) => 
+        string.IsNullOrWhiteSpace(context) ? "files" : $"{context.ToLower()}_files";
+    
+    private static string GetClassesCollection(string? context) => 
+        string.IsNullOrWhiteSpace(context) ? "classes" : $"{context.ToLower()}_classes";
+    
+    private static string GetMethodsCollection(string? context) => 
+        string.IsNullOrWhiteSpace(context) ? "methods" : $"{context.ToLower()}_methods";
+    
+    private static string GetPatternsCollection(string? context) => 
+        string.IsNullOrWhiteSpace(context) ? "patterns" : $"{context.ToLower()}_patterns";
 
     public VectorService(
         IConfiguration configuration,
@@ -60,12 +68,40 @@ public class VectorService : IVectorService
 
     public async Task InitializeCollectionsAsync(CancellationToken cancellationToken = default)
     {
-        await CreateCollectionIfNotExistsAsync(FilesCollection, cancellationToken);
-        await CreateCollectionIfNotExistsAsync(ClassesCollection, cancellationToken);
-        await CreateCollectionIfNotExistsAsync(MethodsCollection, cancellationToken);
-        await CreateCollectionIfNotExistsAsync(PatternsCollection, cancellationToken);
+        // Initialize default collections (for backward compatibility)
+        await CreateCollectionIfNotExistsAsync(GetFilesCollection(null), cancellationToken);
+        await CreateCollectionIfNotExistsAsync(GetClassesCollection(null), cancellationToken);
+        await CreateCollectionIfNotExistsAsync(GetMethodsCollection(null), cancellationToken);
+        await CreateCollectionIfNotExistsAsync(GetPatternsCollection(null), cancellationToken);
 
-        _logger.LogInformation("Qdrant collections initialized successfully");
+        _logger.LogInformation("Qdrant default collections initialized successfully");
+    }
+
+    /// <summary>
+    /// Initialize collections for a specific workspace context
+    /// </summary>
+    public async Task InitializeCollectionsForContextAsync(string context, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(context))
+        {
+            _logger.LogWarning("Cannot initialize collections for empty context");
+            return;
+        }
+
+        var normalized = context.ToLower();
+        _logger.LogInformation("Initializing Qdrant collections for context: {Context}", normalized);
+
+        await CreateCollectionIfNotExistsAsync(GetFilesCollection(context), cancellationToken);
+        await CreateCollectionIfNotExistsAsync(GetClassesCollection(context), cancellationToken);
+        await CreateCollectionIfNotExistsAsync(GetMethodsCollection(context), cancellationToken);
+        await CreateCollectionIfNotExistsAsync(GetPatternsCollection(context), cancellationToken);
+
+        _logger.LogInformation("✅ Qdrant collections initialized for {Context}: {Files}, {Classes}, {Methods}, {Patterns}",
+            normalized,
+            GetFilesCollection(context),
+            GetClassesCollection(context),
+            GetMethodsCollection(context),
+            GetPatternsCollection(context));
     }
 
     private async Task CreateCollectionIfNotExistsAsync(string collectionName, CancellationToken cancellationToken)
@@ -121,9 +157,12 @@ public class VectorService : IVectorService
             // Group by type for batch insertion
             var grouped = memories.GroupBy(m => m.Type);
 
+            // Extract context from first memory (all should have same context)
+            var memoryContext = memories.FirstOrDefault()?.Context;
+
             foreach (var group in grouped)
             {
-                var collectionName = GetCollectionName(group.Key);
+                var collectionName = GetCollectionName(group.Key, memoryContext);
                 var points = new List<object>();
 
                 foreach (var memory in group)
@@ -201,26 +240,13 @@ public class VectorService : IVectorService
         {
             var results = new List<CodeExample>();
             var collections = type.HasValue
-                ? new[] { GetCollectionName(type.Value) }
-                : new[] { FilesCollection, ClassesCollection, MethodsCollection, PatternsCollection };
+                ? new[] { GetCollectionName(type.Value, context) }
+                : new[] { GetFilesCollection(context), GetClassesCollection(context), GetMethodsCollection(context), GetPatternsCollection(context) };
 
             foreach (var collection in collections)
             {
+                // No need for context filtering anymore since collections are per-context
                 object? filter = null;
-                if (!string.IsNullOrWhiteSpace(context))
-                {
-                    filter = new
-                    {
-                        must = new[]
-                        {
-                            new
-                            {
-                                key = "context",
-                                match = new { value = context }
-                            }
-                        }
-                    };
-                }
 
                 var searchRequest = new
                 {
@@ -299,7 +325,7 @@ public class VectorService : IVectorService
     {
         try
         {
-            var collections = new[] { FilesCollection, ClassesCollection, MethodsCollection };
+            var collections = new[] { GetFilesCollection(filePath), GetClassesCollection(filePath), GetMethodsCollection(filePath) };
 
             foreach (var collection in collections)
             {
@@ -355,26 +381,16 @@ public class VectorService : IVectorService
     public async Task<List<string>> GetFilePathsForContextAsync(string? context = null, CancellationToken cancellationToken = default)
     {
         var filePaths = new HashSet<string>();
-        var collections = new[] { FilesCollection, ClassesCollection, MethodsCollection, PatternsCollection };
+        var collections = new[] { GetFilesCollection(context), GetClassesCollection(context), GetMethodsCollection(context), GetPatternsCollection(context) };
 
         try
         {
             foreach (var collection in collections)
             {
                 // Scroll through all points in the collection
+                // No filter needed since collections are per-context
                 var scrollRequest = new
                 {
-                    filter = context != null ? new
-                    {
-                        must = new[]
-                        {
-                            new
-                            {
-                                key = "context",
-                                match = new { value = context }
-                            }
-                        }
-                    } : null as object,
                     limit = 1000, // Scroll in batches
                     with_payload = new[] { "file_path" },
                     with_vector = false
@@ -445,7 +461,9 @@ public class VectorService : IVectorService
             var searchJson = JsonSerializer.Serialize(searchRequest);
             var searchContent = new StringContent(searchJson, Encoding.UTF8, "application/json");
 
-            var searchResponse = await _httpClient.PostAsync($"/collections/{FilesCollection}/points/scroll", searchContent, cancellationToken);
+            // Extract context from filePath if needed (for per-workspace collections)
+            // For now, assume context is embedded in filePath or passed separately
+            var searchResponse = await _httpClient.PostAsync($"/collections/{GetFilesCollection(null)}/points/scroll", searchContent, cancellationToken);
 
             if (searchResponse.IsSuccessStatusCode)
             {
@@ -478,25 +496,32 @@ public class VectorService : IVectorService
         }
     }
 
-    private static string GetCollectionName(CodeMemoryType type) => type switch
+    private static string GetCollectionName(CodeMemoryType type, string? context) => type switch
     {
-        CodeMemoryType.File => FilesCollection,
-        CodeMemoryType.Class => ClassesCollection,
-        CodeMemoryType.Method => MethodsCollection,
-        CodeMemoryType.Property => MethodsCollection, // Properties go with methods
-        CodeMemoryType.Interface => ClassesCollection, // Interfaces go with classes
-        CodeMemoryType.Pattern => PatternsCollection,
+        CodeMemoryType.File => GetFilesCollection(context),
+        CodeMemoryType.Class => GetClassesCollection(context),
+        CodeMemoryType.Method => GetMethodsCollection(context),
+        CodeMemoryType.Property => GetMethodsCollection(context), // Properties go with methods
+        CodeMemoryType.Interface => GetClassesCollection(context), // Interfaces go with classes
+        CodeMemoryType.Pattern => GetPatternsCollection(context),
         _ => throw new ArgumentException($"Unknown code memory type: {type}")
     };
 
-    private static CodeMemoryType GetCodeMemoryType(string collection) => collection switch
+    private static CodeMemoryType GetCodeMemoryType(string collection)
     {
-        FilesCollection => CodeMemoryType.File,
-        ClassesCollection => CodeMemoryType.Class,
-        MethodsCollection => CodeMemoryType.Method,
-        PatternsCollection => CodeMemoryType.Pattern,
-        _ => throw new ArgumentException($"Unknown collection: {collection}")
-    };
+        // Remove context prefix if present (e.g., "memoryagent_files" -> "files")
+        var parts = collection.Split('_');
+        var baseName = parts.Length > 1 ? parts[^1] : collection;
+        
+        return baseName switch
+        {
+            "files" => CodeMemoryType.File,
+            "classes" => CodeMemoryType.Class,
+            "methods" => CodeMemoryType.Method,
+            "patterns" => CodeMemoryType.Pattern,
+            _ => throw new ArgumentException($"Unknown collection: {collection}")
+        };
+    }
 
     private static string GetPayloadString(Dictionary<string, JsonElement> payload, string key)
     {

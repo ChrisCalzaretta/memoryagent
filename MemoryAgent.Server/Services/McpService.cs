@@ -21,6 +21,7 @@ public class McpService : IMcpService
     private readonly IRecommendationService _recommendationService;
     private readonly IPatternValidationService _patternValidationService;
     private readonly ICodeComplexityService _complexityService;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<McpService> _logger;
 
     public McpService(
@@ -36,6 +37,7 @@ public class McpService : IMcpService
         IRecommendationService recommendationService,
         IPatternValidationService patternValidationService,
         ICodeComplexityService complexityService,
+        IServiceProvider serviceProvider,
         ILogger<McpService> logger)
     {
         _indexingService = indexingService;
@@ -50,6 +52,7 @@ public class McpService : IMcpService
         _recommendationService = recommendationService;
         _patternValidationService = patternValidationService;
         _complexityService = complexityService;
+        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
@@ -510,6 +513,35 @@ public class McpService : IMcpService
                     },
                     required = new[] { "filePath" }
                 }
+            },
+            new McpTool
+            {
+                Name = "register_workspace",
+                Description = "Register a workspace directory for file watching (auto-reindex). Called automatically by wrapper on startup.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        workspacePath = new { type = "string", description = "Full path to workspace directory" },
+                        context = new { type = "string", description = "Context name for this workspace" }
+                    },
+                    required = new[] { "workspacePath", "context" }
+                }
+            },
+            new McpTool
+            {
+                Name = "unregister_workspace",
+                Description = "Unregister a workspace directory from file watching. Called automatically by wrapper on shutdown.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        workspacePath = new { type = "string", description = "Full path to workspace directory" }
+                    },
+                    required = new[] { "workspacePath" }
+                }
             }
         };
 
@@ -553,6 +585,8 @@ public class McpService : IMcpService
                 "get_migration_path" => await GetMigrationPathToolAsync(toolCall.Arguments, cancellationToken),
                 "validate_project" => await ValidateProjectToolAsync(toolCall.Arguments, cancellationToken),
                 "analyze_code_complexity" => await AnalyzeCodeComplexityToolAsync(toolCall.Arguments, cancellationToken),
+                "register_workspace" => await RegisterWorkspaceToolAsync(toolCall.Arguments, cancellationToken),
+                "unregister_workspace" => await UnregisterWorkspaceToolAsync(toolCall.Arguments, cancellationToken),
                 _ => new McpToolResult
                 {
                     IsError = true,
@@ -2136,6 +2170,120 @@ public class McpService : IMcpService
         }
         
         return defaultValue;
+    }
+
+    private async Task<McpToolResult> RegisterWorkspaceToolAsync(
+        Dictionary<string, object>? args,
+        CancellationToken cancellationToken)
+    {
+        var workspacePath = args?.GetValueOrDefault("workspacePath")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString();
+
+        if (string.IsNullOrWhiteSpace(workspacePath) || string.IsNullOrWhiteSpace(context))
+        {
+            return ErrorResult("workspacePath and context are required");
+        }
+
+        _logger.LogInformation("🔧 Registering workspace: {Path} → {Context}", workspacePath, context);
+
+        try
+        {
+            // Step 1: Create isolated Qdrant collections for this workspace
+            var vectorService = _serviceProvider.GetRequiredService<IVectorService>();
+            await vectorService.InitializeCollectionsForContextAsync(context, cancellationToken);
+            _logger.LogInformation("  ✅ Qdrant collections created for: {Context}", context);
+
+            // Step 2: Create isolated Neo4j database for this workspace
+            await _graphService.CreateDatabaseAsync(context, cancellationToken);
+            _logger.LogInformation("  ✅ Neo4j database created for: {Context}", context);
+
+            // Step 3: Register file watcher for auto-reindex
+            var autoReindexService = _serviceProvider.GetService<FileWatcher.IAutoReindexService>();
+            if (autoReindexService != null)
+            {
+                await autoReindexService.RegisterWorkspaceAsync(workspacePath, context);
+                _logger.LogInformation("  ✅ File watcher started for: {Context}", context);
+            }
+            else
+            {
+                _logger.LogWarning("  ⚠️ AutoReindexService not available - file watching disabled");
+            }
+
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent
+                    {
+                        Type = "text",
+                        Text = $"✅ Workspace registered with isolated storage:\n" +
+                               $"  Path: {workspacePath}\n" +
+                               $"  Context: {context}\n" +
+                               $"  Qdrant Collections: {context.ToLower()}_files, {context.ToLower()}_classes, {context.ToLower()}_methods, {context.ToLower()}_patterns\n" +
+                               $"  Neo4j Database: {context.ToLower()}\n" +
+                               $"  File Watcher: {(autoReindexService != null ? "Active" : "Disabled")}"
+                    }
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error registering workspace: {Context}", context);
+            return new McpToolResult
+            {
+                IsError = true,
+                Content = new List<McpContent>
+                {
+                    new McpContent
+                    {
+                        Type = "text",
+                        Text = $"❌ Error registering workspace: {ex.Message}"
+                    }
+                }
+            };
+        }
+    }
+
+    private async Task<McpToolResult> UnregisterWorkspaceToolAsync(
+        Dictionary<string, object>? args,
+        CancellationToken cancellationToken)
+    {
+        var workspacePath = args?.GetValueOrDefault("workspacePath")?.ToString();
+
+        if (string.IsNullOrWhiteSpace(workspacePath))
+        {
+            return ErrorResult("workspacePath is required");
+        }
+
+        var autoReindexService = _serviceProvider.GetService<FileWatcher.IAutoReindexService>();
+        if (autoReindexService == null)
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent
+                    {
+                        Type = "text",
+                        Text = "⚠️ AutoReindexService not available"
+                    }
+                }
+            };
+        }
+
+        await autoReindexService.UnregisterWorkspaceAsync(workspacePath);
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent
+                {
+                    Type = "text",
+                    Text = $"✅ Workspace unregistered:\n  Path: {workspacePath}"
+                }
+            }
+        };
     }
 }
 
