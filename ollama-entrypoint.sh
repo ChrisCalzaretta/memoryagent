@@ -21,4 +21,3 @@ fi
 
 # Keep the server running
 wait $OLLAMA_PID
-
