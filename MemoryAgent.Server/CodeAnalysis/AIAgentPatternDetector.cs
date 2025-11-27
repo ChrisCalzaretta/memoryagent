@@ -84,6 +84,19 @@ public class AIAgentPatternDetector
             // CATEGORY 7: FinOps / Cost Control
             patterns.AddRange(DetectTokenMetering(root, filePath, context, sourceCode));
             patterns.AddRange(DetectCostBudgetGuardrail(root, filePath, context, sourceCode));
+            
+            // CATEGORY 8: Observability & Evaluation (MISSING - NOW ADDED)
+            patterns.AddRange(DetectAgentTracing(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectAgentEvaluation(root, filePath, context, sourceCode));
+            
+            // CATEGORY 9: Advanced Multi-Agent Patterns (MISSING - NOW ADDED)
+            patterns.AddRange(DetectGroupChatPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectSequentialOrchestration(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectControlPlanePattern(root, filePath, context, sourceCode));
+            
+            // CATEGORY 10: Agent Lifecycle (MISSING - NOW ADDED)
+            patterns.AddRange(DetectAgentFactory(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectSelfImprovingAgent(root, filePath, context, sourceCode));
         }
         catch (Exception ex)
         {
@@ -809,6 +822,1271 @@ public class AIAgentPatternDetector
 
     #endregion
 
+    #region Category 4: Planning, Autonomy & Loops
+
+    private List<CodePattern> DetectTaskPlanner(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Plan/Step classes
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className == "Plan" || className.Contains("Planner") || 
+                className == "Step" || className.Contains("TaskList") ||
+                className.Contains("Subtask"))
+            {
+                var lineNumber = GetLineNumber(root, classDecl, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_TaskPlanner",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.AIAgents,
+                    implementation: $"Task planner: {className}",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(classDecl, sourceCode, 10),
+                    bestPractice: "Task planning decomposes goals into steps. LLM generates plans that the agent executes sequentially.",
+                    azureUrl: SemanticKernelUrl,
+                    context: context,
+                    confidence: 0.90f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["class_name"] = className,
+                        ["pattern"] = "Task Planning",
+                        ["significance"] = "HIGH - Enables multi-step agent reasoning"
+                    }
+                ));
+                break;
+            }
+        }
+
+        // Pattern: Semantic Kernel Planner (even if deprecated, still used)
+        if (sourceCode.Contains("FunctionCallingStepwisePlanner") || 
+            sourceCode.Contains("HandlebarsPlanner") ||
+            sourceCode.Contains("CreatePlanAsync"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_SemanticKernelPlanner",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Semantic Kernel Planner usage",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Semantic Kernel Planner detected",
+                bestPractice: "Semantic Kernel Planners (now deprecated) enabled automatic planning. Consider migrating to Agent Framework workflows.",
+                azureUrl: SemanticKernelUrl,
+                context: context,
+                confidence: 0.95f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["framework"] = "Semantic Kernel",
+                    ["status"] = "Deprecated (consider migration)",
+                    ["alternative"] = "Agent Framework Workflows"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectActionLoop(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: While loops with LLM calls (ReAct pattern indicator)
+        var whileStatements = root.DescendantNodes().OfType<WhileStatementSyntax>();
+        
+        foreach (var whileStmt in whileStatements)
+        {
+            var loopBody = whileStmt.Statement.ToString();
+            
+            // Check for LLM-like calls inside loop
+            if ((loopBody.Contains("Completion") || loopBody.Contains("Chat") || 
+                 loopBody.Contains("llm") || loopBody.Contains("LLM")) &&
+                (loopBody.Contains("await") || loopBody.Contains("Async")))
+            {
+                var lineNumber = GetLineNumber(root, whileStmt, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_ActionLoop",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.AIAgents,
+                    implementation: "Agent action loop (potential ReAct pattern)",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(whileStmt, sourceCode, 12),
+                    bestPractice: "ReAct loops (Reason → Act → Observe) enable autonomous agents. Loop until goal achieved or max iterations reached.",
+                    azureUrl: "https://arxiv.org/abs/2210.03629",
+                    context: context,
+                    confidence: 0.82f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["pattern"] = "Agent Loop",
+                        ["significance"] = "CRITICAL - Distinguishes autonomous agent from single call",
+                        ["pattern_type"] = "ReAct or similar"
+                    }
+                ));
+                break; // One detection sufficient
+            }
+        }
+
+        // Pattern: Do-while loops with refinement
+        var doStatements = root.DescendantNodes().OfType<DoStatementSyntax>();
+        
+        foreach (var doStmt in doStatements)
+        {
+            var loopBody = doStmt.Statement.ToString();
+            
+            if (loopBody.Contains("refinement") || loopBody.Contains("improve") || 
+                loopBody.Contains("feedback"))
+            {
+                var lineNumber = GetLineNumber(root, doStmt, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_IterativeRefinementLoop",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.AIAgents,
+                    implementation: "Iterative refinement loop",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(doStmt, sourceCode, 10),
+                    bestPractice: "Iterative refinement loops improve agent outputs through multiple LLM iterations.",
+                    azureUrl: AzureOpenAIPromptUrl,
+                    context: context,
+                    confidence: 0.78f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["pattern"] = "Iterative Refinement"
+                    }
+                ));
+                break;
+            }
+        }
+
+        // Pattern: maxIterations parameter (common in agent loops)
+        if (sourceCode.Contains("maxIterations") || sourceCode.Contains("max_iterations") ||
+            sourceCode.Contains("MaxSteps"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_MaxIterationsPattern",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Max iterations control (agent loop termination)",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Max iterations detected",
+                bestPractice: "Always set max iterations to prevent infinite agent loops. Typical values: 5-20 depending on task complexity.",
+                azureUrl: AzureOpenAIPromptUrl,
+                context: context,
+                confidence: 0.85f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Loop Termination",
+                    ["best_practice"] = "Prevent runaway costs"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectMultiAgentOrchestrator(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Multiple agent instances
+        var agentRoles = new[] { "Planner", "Executor", "Critic", "Reviewer", "Manager", "Orchestrator" };
+        var detectedRoles = agentRoles.Where(role => sourceCode.Contains(role + "Agent")).ToList();
+        
+        if (detectedRoles.Count >= 2)
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_MultiAgentSystem",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.MultiAgentOrchestration,
+                implementation: $"Multi-agent system: {string.Join(", ", detectedRoles)}",
+                filePath: filePath,
+                lineNumber: 1,
+                content: $"// Multi-agent roles detected: {string.Join(", ", detectedRoles)}",
+                bestPractice: "Multi-agent systems assign specialized roles (Planner, Executor, Critic) for complex tasks. AutoGen and Agent Framework support this pattern.",
+                azureUrl: "https://microsoft.github.io/autogen/",
+                context: context,
+                confidence: 0.92f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["agent_roles"] = detectedRoles,
+                    ["pattern"] = "Multi-Agent Orchestration",
+                    ["significance"] = "ADVANCED - Sophisticated agent system"
+                }
+            ));
+        }
+
+        // Pattern: AgentOrchestrator/AgentManager classes
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("AgentOrchestrator") || className.Contains("AgentManager") ||
+                className.Contains("MultiAgentSystem"))
+            {
+                var lineNumber = GetLineNumber(root, classDecl, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_AgentOrchestrator",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.MultiAgentOrchestration,
+                    implementation: $"Agent orchestrator: {className}",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(classDecl, sourceCode, 10),
+                    bestPractice: "Orchestrators coordinate multiple agents, routing tasks based on specialization.",
+                    azureUrl: "https://microsoft.github.io/autogen/",
+                    context: context,
+                    confidence: 0.95f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["class_name"] = className,
+                        ["pattern"] = "Orchestration"
+                    }
+                ));
+                break;
+            }
+        }
+
+        // Pattern: ConversableAgent (AutoGen)
+        if (sourceCode.Contains("ConversableAgent"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_AutoGenConversableAgent",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.MultiAgentOrchestration,
+                implementation: "AutoGen ConversableAgent usage",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// AutoGen ConversableAgent detected",
+                bestPractice: "AutoGen's ConversableAgent enables multi-agent conversations. Agents can autonomously collaborate to solve tasks.",
+                azureUrl: "https://microsoft.github.io/autogen/",
+                context: context,
+                confidence: 0.98f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["framework"] = "AutoGen",
+                    ["pattern"] = "Multi-Agent Conversation"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectSelfReflection(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Critique/Review methods
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodName = method.Identifier.Text;
+            
+            if (methodName.Contains("Critique") || methodName.Contains("Review") ||
+                methodName.Contains("Reflect") || methodName.Contains("Improve") ||
+                methodName.Contains("SelfEvaluate"))
+            {
+                var lineNumber = GetLineNumber(root, method, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_SelfReflection",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.AIAgents,
+                    implementation: $"Self-reflection: {methodName}",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(method, sourceCode, 10),
+                    bestPractice: "Self-reflection enables agents to critique their own outputs and iterate for improvement. Common in advanced reasoning systems.",
+                    azureUrl: AzureOpenAIPromptUrl,
+                    context: context,
+                    confidence: 0.85f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["method_name"] = methodName,
+                        ["pattern"] = "Self-Reflection",
+                        ["use_case"] = "Quality improvement through iteration"
+                    }
+                ));
+                break;
+            }
+        }
+
+        // Pattern: Reflection prompts
+        var reflectionKeywords = new[] { "review your", "critique your", "what's wrong", "what could be improved" };
+        
+        if (reflectionKeywords.Any(k => sourceCode.Contains(k, StringComparison.OrdinalIgnoreCase)))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_ReflectionPrompt",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Reflection prompt pattern",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Reflection prompt detected",
+                bestPractice: "Reflection prompts ask the LLM to critique its own output. Effective for iterative improvement.",
+                azureUrl: AzureOpenAIPromptUrl,
+                context: context,
+                confidence: 0.78f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Reflection Prompt"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region Category 5: RAG & Knowledge Integration
+
+    private List<CodePattern> DetectEmbeddingGeneration(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Azure OpenAI embedding calls
+        if (sourceCode.Contains("GetEmbeddings") || sourceCode.Contains("GenerateEmbedding") ||
+            sourceCode.Contains("text-embedding"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_EmbeddingGeneration",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Embedding generation for vector storage",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Embedding generation detected",
+                bestPractice: "Generate embeddings for semantic search and RAG. Use Azure OpenAI text-embedding-ada-002 or text-embedding-3-large.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/embeddings",
+                context: context,
+                confidence: 0.95f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Embedding Generation",
+                    ["use_case"] = "Vector search, RAG",
+                    ["recommended_models"] = new[] { "text-embedding-ada-002", "text-embedding-3-large" }
+                }
+            ));
+        }
+
+        // Pattern: Semantic Kernel text embedding
+        if (sourceCode.Contains("ITextEmbeddingGeneration") || sourceCode.Contains("TextEmbedding"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_SemanticKernelEmbedding",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Semantic Kernel text embedding generation",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Semantic Kernel embedding detected",
+                bestPractice: "Semantic Kernel abstracts embedding generation across providers. Enables easy switching between Azure OpenAI, OpenAI, etc.",
+                azureUrl: SemanticKernelUrl,
+                context: context,
+                confidence: 0.98f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["framework"] = "Semantic Kernel"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectVectorSearchRAG(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Retrieve → Augment → Generate pipeline
+        var hasEmbedding = sourceCode.Contains("embedding") || sourceCode.Contains("Embedding");
+        var hasSearch = sourceCode.Contains("Search") || sourceCode.Contains("search") || 
+                       sourceCode.Contains("Similarity") || sourceCode.Contains("Recall");
+        var hasContextInjection = sourceCode.Contains("context") && sourceCode.Contains("prompt");
+        
+        if (hasEmbedding && hasSearch && hasContextInjection)
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_RAGPipeline",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "RAG pipeline: Retrieve → Augment → Generate",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// RAG pipeline detected",
+                bestPractice: "RAG (Retrieval-Augmented Generation) extends agent knowledge beyond training data. Essential pattern for production agents.",
+                azureUrl: AzureAISearchUrl,
+                context: context,
+                confidence: 0.88f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "RAG Pipeline",
+                    ["significance"] = "HIGH - Enables agent knowledge beyond training cutoff",
+                    ["steps"] = new[] { "Retrieve", "Augment", "Generate" }
+                }
+            ));
+        }
+
+        // Pattern: Semantic Kernel memory search
+        if (sourceCode.Contains("SearchAsync") && 
+            (sourceCode.Contains("memory") || sourceCode.Contains("Memory")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_SemanticMemorySearch",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Semantic Kernel memory search for RAG",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Semantic memory search detected",
+                bestPractice: "Semantic Kernel memory connectors enable RAG with minimal code. Supports Azure AI Search, Qdrant, Pinecone, and more.",
+                azureUrl: SemanticKernelUrl,
+                context: context,
+                confidence: 0.95f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["framework"] = "Semantic Kernel",
+                    ["pattern"] = "Semantic Search"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectRAGOrchestrator(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Conditional RAG (decision whether to retrieve)
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodBody = method.Body?.ToString() ?? "";
+            
+            if ((methodBody.Contains("RequiresKnowledge") || methodBody.Contains("ShouldRetrieve") ||
+                 methodBody.Contains("NeedsContext")) &&
+                methodBody.Contains("if"))
+            {
+                var lineNumber = GetLineNumber(root, method, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_ConditionalRAG",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.AIAgents,
+                    implementation: "Conditional RAG orchestration",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(method, sourceCode, 12),
+                    bestPractice: "Conditional RAG optimizes costs by only retrieving when necessary. Use LLM or heuristics to decide if external knowledge is needed.",
+                    azureUrl: AzureAISearchUrl,
+                    context: context,
+                    confidence: 0.85f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["pattern"] = "Conditional RAG",
+                        ["benefit"] = "Cost optimization"
+                    }
+                ));
+                break;
+            }
+        }
+
+        // Pattern: Hybrid search (vector + keyword)
+        if ((sourceCode.Contains("vector") && sourceCode.Contains("keyword")) ||
+            (sourceCode.Contains("hybrid") && sourceCode.Contains("search")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_HybridSearch",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Hybrid search (vector + keyword)",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Hybrid search detected",
+                bestPractice: "Hybrid search combines semantic (vector) and lexical (keyword) search for better retrieval quality. Azure AI Search supports this natively.",
+                azureUrl: AzureAISearchUrl,
+                context: context,
+                confidence: 0.90f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Hybrid Search",
+                    ["types"] = new[] { "Vector (semantic)", "Keyword (lexical)" }
+                }
+            ));
+        }
+
+        // Pattern: Reranking
+        if (sourceCode.Contains("Rerank") || sourceCode.Contains("rerank"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_Reranking",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Result reranking for improved retrieval",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Reranking detected",
+                bestPractice: "Reranking refines initial search results using cross-encoders or LLMs for better relevance. Common in production RAG systems.",
+                azureUrl: AzureAISearchUrl,
+                context: context,
+                confidence: 0.88f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Reranking"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region Category 6: Safety & Governance
+
+    private List<CodePattern> DetectContentModeration(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Azure Content Safety
+        if (sourceCode.Contains("ContentSafetyClient") || sourceCode.Contains("AnalyzeText"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_ContentModeration",
+                type: PatternType.Security,
+                category: PatternCategory.Security,
+                implementation: "Azure Content Safety integration",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Azure Content Safety detected",
+                bestPractice: "Use Azure Content Safety to moderate harmful content (hate, violence, sexual, self-harm) before and after LLM calls.",
+                azureUrl: AzureContentSafetyUrl,
+                context: context,
+                confidence: 0.98f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["service"] = "Azure Content Safety",
+                    ["categories"] = new[] { "Hate", "Violence", "Sexual", "Self-harm" },
+                    ["significance"] = "CRITICAL - Production safety requirement"
+                }
+            ));
+        }
+
+        // Pattern: Generic moderation calls
+        if (sourceCode.Contains("Moderate") || sourceCode.Contains("moderation"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_GenericModeration",
+                type: PatternType.Security,
+                category: PatternCategory.Security,
+                implementation: "Content moderation implementation",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Moderation detected",
+                bestPractice: "Implement content moderation for user inputs and LLM outputs. Consider Azure Content Safety for comprehensive protection.",
+                azureUrl: AzureContentSafetyUrl,
+                context: context,
+                confidence: 0.82f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Moderation"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectPIIScrubber(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Presidio (Microsoft PII library)
+        if (sourceCode.Contains("Presidio") || sourceCode.Contains("RecognizePii"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_PIIDetection",
+                type: PatternType.Security,
+                category: PatternCategory.Security,
+                implementation: "PII detection and scrubbing (Presidio or Azure AI Language)",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// PII detection detected",
+                bestPractice: "Use Microsoft Presidio or Azure AI Language to detect and redact PII (emails, SSNs, phone numbers) before sending to LLMs.",
+                azureUrl: "https://github.com/microsoft/presidio",
+                context: context,
+                confidence: 0.95f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["library"] = "Presidio or Azure AI Language",
+                    ["entities"] = new[] { "Email", "SSN", "Phone", "Credit Card", "Name", "Address" },
+                    ["significance"] = "CRITICAL - Compliance requirement"
+                }
+            ));
+        }
+
+        // Pattern: Regex-based scrubbing
+        var emailRegex = new Regex(@"@""\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b""");
+        var ssnRegex = new Regex(@"@""\\b\\d{3}-\\d{2}-\\d{4}\\b""");
+        
+        if ((emailRegex.IsMatch(sourceCode) || ssnRegex.IsMatch(sourceCode)) &&
+            (sourceCode.Contains("Regex.Replace") || sourceCode.Contains("[EMAIL]") || sourceCode.Contains("[SSN]")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_RegexPIIScrubber",
+                type: PatternType.Security,
+                category: PatternCategory.Security,
+                implementation: "Regex-based PII scrubbing",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Regex PII scrubbing detected",
+                bestPractice: "Regex-based PII scrubbing is a good start. For production, consider Microsoft Presidio for comprehensive entity recognition.",
+                azureUrl: "https://github.com/microsoft/presidio",
+                context: context,
+                confidence: 0.88f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["method"] = "Regex patterns",
+                    ["recommendation"] = "Upgrade to Presidio for better accuracy"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectTenantDataBoundary(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Tenant ID in collection/index names
+        var tenantPattern = new Regex(@"""tenant[_-]?\{[^}]+\}""");
+        if (tenantPattern.IsMatch(sourceCode) || sourceCode.Contains("tenant_id"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_TenantDataBoundary",
+                type: PatternType.Security,
+                category: PatternCategory.Security,
+                implementation: "Tenant data boundary enforcement",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Tenant isolation detected",
+                bestPractice: "Enforce tenant data boundaries in vector stores, databases, and caches. Prevents cross-tenant data leakage in multi-tenant AI systems.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/guide/multitenant/overview",
+                context: context,
+                confidence: 0.85f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Tenant Isolation",
+                    ["significance"] = "CRITICAL - Multi-tenant security"
+                }
+            ));
+        }
+
+        // Pattern: Row-level security
+        if (sourceCode.Contains("WHERE tenant_id") || sourceCode.Contains("filter: \"tenant_id"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_RowLevelSecurity",
+                type: PatternType.Security,
+                category: PatternCategory.Security,
+                implementation: "Row-level security for tenant data",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Row-level security detected",
+                bestPractice: "Implement row-level security to filter data by tenant ID in all queries.",
+                azureUrl: "https://learn.microsoft.com/en-us/sql/relational-databases/security/row-level-security",
+                context: context,
+                confidence: 0.88f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Row-Level Security"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectTokenBudgetEnforcement(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Token counting (tiktoken)
+        if (sourceCode.Contains("tiktoken") || sourceCode.Contains("Tiktoken") ||
+            sourceCode.Contains("CountTokens") || sourceCode.Contains("Encode"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_TokenCounting",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Cost,
+                implementation: "Token counting implementation",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Token counting detected",
+                bestPractice: "Count tokens to estimate costs and enforce budgets. Use tiktoken library for accurate OpenAI token counts.",
+                azureUrl: "https://github.com/openai/tiktoken",
+                context: context,
+                confidence: 0.95f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["library"] = "tiktoken",
+                    ["use_cases"] = new[] { "Cost estimation", "Budget enforcement", "Context window management" }
+                }
+            ));
+        }
+
+        // Pattern: Budget enforcement
+        if ((sourceCode.Contains("budget") || sourceCode.Contains("Budget")) &&
+            (sourceCode.Contains("token") || sourceCode.Contains("Token")) &&
+            (sourceCode.Contains(">") || sourceCode.Contains("Exceeded")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_TokenBudgetEnforcement",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Cost,
+                implementation: "Token budget enforcement",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Token budget enforcement detected",
+                bestPractice: "Enforce token budgets to prevent runaway costs. Set per-user, per-agent, or per-project limits.",
+                azureUrl: AzureOpenAIPromptUrl,
+                context: context,
+                confidence: 0.90f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Budget Enforcement",
+                    ["significance"] = "HIGH - FinOps requirement"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectPromptLoggingWithRedaction(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Redacted logging
+        if ((sourceCode.Contains("Log") || sourceCode.Contains("_logger")) &&
+            (sourceCode.Contains("Redact") || sourceCode.Contains("Sanitize") || sourceCode.Contains("Mask")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_RedactedLogging",
+                type: PatternType.Security,
+                category: PatternCategory.Operational,
+                implementation: "Redacted prompt/response logging",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Redacted logging detected",
+                bestPractice: "Always redact PII from logs. Log prompts and responses for debugging, but protect sensitive data.",
+                azureUrl: "https://learn.microsoft.com/en-us/dotnet/core/extensions/logging",
+                context: context,
+                confidence: 0.85f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Redacted Logging",
+                    ["compliance"] = new[] { "GDPR", "HIPAA", "SOC 2" }
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region Category 7: FinOps / Cost Control
+
+    private List<CodePattern> DetectTokenMetering(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Usage tracking
+        if (sourceCode.Contains("Usage") && 
+            (sourceCode.Contains("TotalTokens") || sourceCode.Contains("PromptTokens") || sourceCode.Contains("CompletionTokens")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_TokenMetering",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Cost,
+                implementation: "Token usage metering",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Token metering detected",
+                bestPractice: "Track token usage per user, agent, and project for cost attribution and chargeback.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/manage-costs",
+                context: context,
+                confidence: 0.92f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Token Metering",
+                    ["metrics"] = new[] { "Prompt tokens", "Completion tokens", "Total tokens", "Cost" },
+                    ["significance"] = "HIGH - FinOps requirement"
+                }
+            ));
+        }
+
+        // Pattern: Cost calculation
+        if (sourceCode.Contains("cost") && sourceCode.Contains("token"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_CostCalculation",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Cost,
+                implementation: "Cost calculation from token usage",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Cost calculation detected",
+                bestPractice: "Calculate costs from token usage for billing and budget tracking. Update pricing regularly as Azure OpenAI prices change.",
+                azureUrl: "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+                context: context,
+                confidence: 0.88f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Cost Calculation"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectCostBudgetGuardrail(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Budget checks
+        if ((sourceCode.Contains("monthlyBudget") || sourceCode.Contains("budget")) &&
+            (sourceCode.Contains("currentCost") || sourceCode.Contains("spend")) &&
+            (sourceCode.Contains(">") || sourceCode.Contains("Exceeded")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_CostBudgetGuardrail",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Cost,
+                implementation: "Cost budget guardrail",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Budget guardrail detected",
+                bestPractice: "Implement budget guardrails with alerts (80%, 90%) and hard limits (100%). Auto-disable agents that exceed budget.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/cost-mgt-alerts-monitor-usage-spending",
+                context: context,
+                confidence: 0.90f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Budget Guardrail",
+                    ["best_practices"] = new[] { "Soft alerts at 80%", "Hard limit at 100%", "Auto-disable on breach" },
+                    ["significance"] = "CRITICAL - Prevents runaway costs"
+                }
+            ));
+        }
+
+        // Pattern: Auto-disable logic
+        if (sourceCode.Contains("Disable") && (sourceCode.Contains("budget") || sourceCode.Contains("cost")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_AutoDisableOnBudget",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Cost,
+                implementation: "Auto-disable on budget exceeded",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Auto-disable on budget detected",
+                bestPractice: "Auto-disable agents when budget is exceeded to prevent cost overruns. Notify stakeholders and require manual re-enable.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/cost-management-billing/",
+                context: context,
+                confidence: 0.88f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Auto-Disable",
+                    ["benefit"] = "Prevents runaway costs"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region Category 8: Observability & Evaluation (NEW - Critical Gap Filled)
+
+    private List<CodePattern> DetectAgentTracing(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: OpenTelemetry integration
+        if (sourceCode.Contains("OpenTelemetry") || sourceCode.Contains("ActivitySource") ||
+            sourceCode.Contains("Tracer"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_AgentTracing",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Operational,
+                implementation: "OpenTelemetry agent tracing",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Agent tracing detected",
+                bestPractice: "Implement OpenTelemetry for end-to-end agent tracing. Track LLM calls, tool executions, and decision flows for debugging and optimization.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-overview",
+                context: context,
+                confidence: 0.95f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Observability - Tracing",
+                    ["framework"] = "OpenTelemetry",
+                    ["significance"] = "CRITICAL - Production observability requirement",
+                    ["tracks"] = new[] { "LLM calls", "Tool executions", "Decision flows", "Latency" }
+                }
+            ));
+        }
+
+        // Pattern: Agent-specific logging with correlation
+        if ((sourceCode.Contains("_logger") || sourceCode.Contains("ILogger")) &&
+            (sourceCode.Contains("correlationId") || sourceCode.Contains("traceId") || sourceCode.Contains("spanId")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_CorrelatedLogging",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Operational,
+                implementation: "Correlated agent logging",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Correlated logging detected",
+                bestPractice: "Log agent activities with correlation IDs to trace multi-step workflows across LLM calls, tool invocations, and retries.",
+                azureUrl: "https://learn.microsoft.com/en-us/dotnet/core/extensions/logging",
+                context: context,
+                confidence: 0.90f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Observability - Logging",
+                    ["benefit"] = "End-to-end request tracing"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectAgentEvaluation(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Eval harness / test sets
+        if ((sourceCode.Contains("EvaluationDataset") || sourceCode.Contains("TestSet") || 
+             sourceCode.Contains("GroundTruth")) &&
+            (sourceCode.Contains("agent") || sourceCode.Contains("Agent")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_AgentEvalHarness",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Operational,
+                implementation: "Agent evaluation harness with test datasets",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Agent evaluation harness detected",
+                bestPractice: "Use evaluation datasets to measure agent quality, accuracy, and consistency. Track metrics over time to detect regressions.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/ai-studio/how-to/evaluate-generative-ai-app",
+                context: context,
+                confidence: 0.88f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Agent Evaluation",
+                    ["metrics"] = new[] { "Accuracy", "Consistency", "Latency", "Cost per task" },
+                    ["significance"] = "HIGH - Quality assurance"
+                }
+            ));
+        }
+
+        // Pattern: A/B testing for agents
+        if ((sourceCode.Contains("ABTest") || sourceCode.Contains("Experiment")) &&
+            sourceCode.Contains("variant"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_AgentABTesting",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Operational,
+                implementation: "A/B testing for agent variants",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Agent A/B testing detected",
+                bestPractice: "A/B test different agent configurations (prompts, models, parameters) to optimize for quality and cost.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/ai-studio/",
+                context: context,
+                confidence: 0.85f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Experimentation",
+                    ["use_case"] = "Optimize prompts and configurations"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region Category 9: Advanced Multi-Agent Patterns (NEW - Critical Gap Filled)
+
+    private List<CodePattern> DetectGroupChatPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: GroupChat (AutoGen-style)
+        if (sourceCode.Contains("GroupChat") || sourceCode.Contains("ConversableAgent"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_GroupChatOrchestration",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.MultiAgentOrchestration,
+                implementation: "Group chat multi-agent orchestration (AutoGen pattern)",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Group chat orchestration detected",
+                bestPractice: "Group chat enables multiple agents to communicate in a shared environment. AutoGen's pattern allows agents to self-organize and collaborate.",
+                azureUrl: "https://microsoft.github.io/autogen/docs/tutorial/conversation-patterns",
+                context: context,
+                confidence: 0.95f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Group Chat",
+                    ["framework"] = "AutoGen",
+                    ["significance"] = "ADVANCED - Multi-agent collaboration",
+                    ["benefits"] = new[] { "Self-organization", "Emergent behavior", "Flexible collaboration" }
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectSequentialOrchestration(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Sequential agent execution
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodBody = method.Body?.ToString() ?? "";
+            
+            // Look for sequential agent calls
+            var agentCallPattern = new Regex(@"await\s+\w*[Aa]gent\w*\..*Async");
+            var matches = agentCallPattern.Matches(methodBody);
+            
+            if (matches.Count >= 2)
+            {
+                var lineNumber = GetLineNumber(root, method, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_SequentialOrchestration",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.MultiAgentOrchestration,
+                    implementation: "Sequential multi-agent orchestration",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(method, sourceCode, 10),
+                    bestPractice: "Sequential orchestration chains agent outputs. Agent A's result feeds into Agent B, creating a pipeline.",
+                    azureUrl: "https://learn.microsoft.com/en-us/training/modules/agent-orchestration-patterns/",
+                    context: context,
+                    confidence: 0.85f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["pattern"] = "Sequential Orchestration",
+                        ["agent_calls"] = matches.Count,
+                        ["use_case"] = "Agent pipelines and workflows"
+                    }
+                ));
+                break;
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectControlPlanePattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Control plane as tool (modular tool routing)
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if ((className.Contains("ControlPlane") || className.Contains("ToolRouter") || 
+                 className.Contains("ToolDispatcher")) &&
+                classDecl.ToString().Contains("Tool"))
+            {
+                var lineNumber = GetLineNumber(root, classDecl, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_ControlPlaneAsATool",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.ToolIntegration,
+                    implementation: $"Control plane as tool pattern: {className}",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(classDecl, sourceCode, 10),
+                    bestPractice: "Control plane pattern encapsulates modular tool routing logic behind a single tool interface. Improves scalability, safety, and extensibility.",
+                    azureUrl: "https://arxiv.org/abs/2505.06817",
+                    context: context,
+                    confidence: 0.88f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["class_name"] = className,
+                        ["pattern"] = "Control Plane",
+                        ["benefits"] = new[] { "Scalability", "Safety", "Extensibility", "Modular tool routing" }
+                    }
+                ));
+                break;
+            }
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region Category 10: Agent Lifecycle (NEW - Critical Gap Filled)
+
+    private List<CodePattern> DetectAgentFactory(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Agent factory for dynamic instantiation
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("AgentFactory") || className.Contains("AgentBuilder"))
+            {
+                var lineNumber = GetLineNumber(root, classDecl, sourceCode);
+                patterns.Add(CreatePattern(
+                    name: "AI_AgentFactory",
+                    type: PatternType.AgentLightning,
+                    category: PatternCategory.AIAgents,
+                    implementation: $"Agent factory pattern: {className}",
+                    filePath: filePath,
+                    lineNumber: lineNumber,
+                    content: GetContextAroundNode(classDecl, sourceCode, 10),
+                    bestPractice: "Agent factory pattern enables standardized agent creation with consistent configuration, initialization, and dependency injection.",
+                    azureUrl: "https://devblogs.microsoft.com/ise/multi-agent-systems-at-scale/",
+                    context: context,
+                    confidence: 0.92f,
+                    metadata: new Dictionary<string, object>
+                    {
+                        ["class_name"] = className,
+                        ["pattern"] = "Factory Pattern",
+                        ["benefits"] = new[] { "Standardized onboarding", "Flexible instantiation", "Consistent configuration" }
+                    }
+                ));
+                break;
+            }
+        }
+
+        // Pattern: Agent builder (fluent API)
+        if (sourceCode.Contains("AgentBuilder") || 
+            (sourceCode.Contains("WithModel") && sourceCode.Contains("WithTools") && sourceCode.Contains("Build")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_AgentBuilder",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Agent builder pattern (fluent API)",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Agent builder pattern detected",
+                bestPractice: "Builder pattern with fluent API enables readable, testable agent configuration. Example: new AgentBuilder().WithModel(model).WithTools(tools).Build()",
+                azureUrl: "https://learn.microsoft.com/en-us/semantic-kernel/",
+                context: context,
+                confidence: 0.88f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Builder Pattern",
+                    ["benefit"] = "Readable configuration"
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectSelfImprovingAgent(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Self-improving agent with retraining
+        if ((sourceCode.Contains("Retrain") || sourceCode.Contains("FineTune") || sourceCode.Contains("UpdateModel")) &&
+            (sourceCode.Contains("performance") || sourceCode.Contains("accuracy") || sourceCode.Contains("degradation")))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_SelfImprovingAgent",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.AIAgents,
+                implementation: "Self-improving agent with automatic retraining",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Self-improving agent detected",
+                bestPractice: "Self-improving agents monitor their performance, detect accuracy degradation, and trigger retraining pipelines automatically.",
+                azureUrl: "https://www.shakudo.io/blog/5-agentic-ai-design-patterns-transforming-enterprise-operations-in-2025",
+                context: context,
+                confidence: 0.85f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Self-Improvement",
+                    ["capabilities"] = new[] { "Performance monitoring", "Degradation detection", "Automatic retraining" },
+                    ["significance"] = "ADVANCED - Continuous improvement"
+                }
+            ));
+        }
+
+        // Pattern: Performance monitoring for agents
+        if ((sourceCode.Contains("MetricsCollector") || sourceCode.Contains("PerformanceMonitor")) &&
+            sourceCode.Contains("agent"))
+        {
+            patterns.Add(CreatePattern(
+                name: "AI_AgentPerformanceMonitoring",
+                type: PatternType.AgentLightning,
+                category: PatternCategory.Operational,
+                implementation: "Agent performance monitoring",
+                filePath: filePath,
+                lineNumber: 1,
+                content: "// Agent performance monitoring detected",
+                bestPractice: "Monitor agent performance metrics (accuracy, latency, cost) to detect issues and optimize over time.",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/ai-studio/how-to/evaluate-generative-ai-app",
+                context: context,
+                confidence: 0.90f,
+                metadata: new Dictionary<string, object>
+                {
+                    ["pattern"] = "Performance Monitoring",
+                    ["metrics"] = new[] { "Accuracy", "Latency", "Cost", "Success rate" }
+                }
+            ));
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private bool ContainsInstructionKeywords(string text)
@@ -865,11 +2143,10 @@ public class AIAgentPatternDetector
             LineNumber = lineNumber,
             Content = content,
             BestPractice = bestPractice,
-            AzureUrl = azureUrl,
+            AzureBestPracticeUrl = azureUrl,
             DetectedAt = DateTime.UtcNow,
             Context = context ?? "",
             Confidence = confidence,
-            IsPositive = isPositive,
             Metadata = metadata ?? new Dictionary<string, object>()
         };
     }

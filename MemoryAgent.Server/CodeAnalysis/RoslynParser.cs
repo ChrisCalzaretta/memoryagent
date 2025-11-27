@@ -159,6 +159,11 @@ public class RoslynParser : ICodeParser
                 var aguiPatterns = await aguiDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
                 allDetectedPatterns.AddRange(aguiPatterns);
                 
+                // AI AGENT CORE PATTERN DETECTION: Detect AI agent patterns (prompts, memory, tools, RAG, safety, cost)
+                var aiAgentDetector = new AIAgentPatternDetector(_loggerFactory.CreateLogger<AIAgentPatternDetector>());
+                var aiAgentPatterns = await aiAgentDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
+                allDetectedPatterns.AddRange(aiAgentPatterns);
+                
                 if (allDetectedPatterns.Any())
                 {
                     _logger.LogDebug("Detected {Count} patterns in {FilePath} ({Enhanced} enhanced, {Agent} agent, {AGUI} AG-UI)", 

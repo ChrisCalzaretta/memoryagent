@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MemoryAgent.Server", "MemoryAgent.Server\MemoryAgent.Server.csproj", "{D6DC751E-AC8A-447D-96E0-65EE3F4F8256}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MemoryAgent.Server.Tests", "MemoryAgent.Server.Tests\MemoryAgent.Server.Tests.csproj", "{0219609D-EC1A-47A8-A9DD-2856286BF4BF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,18 @@ Global
 		{D6DC751E-AC8A-447D-96E0-65EE3F4F8256}.Release|x64.Build.0 = Release|Any CPU
 		{D6DC751E-AC8A-447D-96E0-65EE3F4F8256}.Release|x86.ActiveCfg = Release|Any CPU
 		{D6DC751E-AC8A-447D-96E0-65EE3F4F8256}.Release|x86.Build.0 = Release|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Debug|x64.Build.0 = Debug|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Debug|x86.Build.0 = Debug|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Release|x64.ActiveCfg = Release|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Release|x64.Build.0 = Release|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Release|x86.ActiveCfg = Release|Any CPU
+		{0219609D-EC1A-47A8-A9DD-2856286BF4BF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
