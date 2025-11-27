@@ -164,6 +164,11 @@ public class RoslynParser : ICodeParser
                 var aiAgentPatterns = await aiAgentDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
                 allDetectedPatterns.AddRange(aiAgentPatterns);
                 
+                // PLUGIN ARCHITECTURE PATTERN DETECTION: Detect plugin patterns (loading, MEF, lifecycle, communication, security, versioning)
+                var pluginDetector = new PluginArchitecturePatternDetector(_loggerFactory.CreateLogger<PluginArchitecturePatternDetector>());
+                var pluginPatterns = await pluginDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
+                allDetectedPatterns.AddRange(pluginPatterns);
+                
                 if (allDetectedPatterns.Any())
                 {
                     _logger.LogDebug("Detected {Count} patterns in {FilePath} ({Enhanced} enhanced, {Agent} agent, {AGUI} AG-UI)", 

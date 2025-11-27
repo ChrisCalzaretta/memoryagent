@@ -118,7 +118,10 @@ public enum PatternType
     AGUI,                // AG-UI Protocol Integration (Agent UI)
     SemanticKernel,      // Semantic Kernel (legacy, migrating to Agent Framework)
     AutoGen,             // AutoGen (legacy, migrating to Agent Framework)
-    AgentLightning,      // Agent Lightning (RL-based optimization)
+    AgentLightning,      // AI Agent Core Patterns (prompt, memory, RAG, planning, safety, FinOps)
+    
+    // Plugin Architecture Patterns
+    PluginArchitecture,  // Plugin loading, discovery, composition, lifecycle, communication, security
     
     Unknown
 }
@@ -143,7 +146,18 @@ public enum PatternCategory
     Interceptors,                // Middleware, filters, safety checks
     HumanInLoop,                 // Human interaction patterns
     AgentOptimization,           // RL-based agent training and optimization (Agent Lightning)
-    AntiPatterns                 // Anti-patterns and migration recommendations
+    AntiPatterns,                // Anti-patterns and migration recommendations
+    Observability,               // Tracing, logging, evaluation, A/B testing
+    AdvancedMultiAgent,          // Group chat, sequential orchestration, control plane
+    AgentLifecycle,              // Agent factory, builder, self-improvement, performance monitoring
+    
+    // Plugin Architecture specific categories
+    PluginLoading,               // Assembly loading, isolation, dependency resolution
+    PluginComposition,           // MEF, discovery, lazy loading, registry
+    PluginLifecycle,             // Initialization, health checks, start/stop, DI
+    PluginCommunication,         // Event bus, shared services, pipeline, context
+    PluginSecurity,              // Gatekeeper, sandboxing, circuit breaker, bulkhead, signing
+    PluginVersioning             // SemVer, compatibility, side-by-side versioning
 }
 
 /// <summary>

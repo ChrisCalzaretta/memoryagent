@@ -4,534 +4,134 @@ alwaysApply: true
 
 # Memory Agent - AI-Powered Code Intelligence Rules
 
-## Workflow & Communication Rules
+## Core Workflow Rules
 
-**ALWAYS** Review and understand code/context first, then **DISCUSS** the proposed changes with the user before implementing
+**ALWAYS** Review/understand first, then DISCUSS changes before implementing
+**ALWAYS** Search with `smartsearch` first for any question - try different terms if no results
+**ALWAYS** After tasks: reindex files (`index_file`), update memory, ensure tests pass
+**ALWAYS** Build and compile after every file change
+**ALWAYS** Call `dependency_chain`, `impact_analysis`, `find_circular_dependencies` when analyzing
+**ALWAYS** Summarize at 65% context and re-add rules
+**ALWAYS** Keep files under 800 lines - refactor if exceeding
 
-**ALWAYS** When any question is asked, search and query the MCP tools first to find relevant code and context
+## Database & Export Rules
 
-**ALWAYS** When you search, use `smartsearch` always. If you do not get results, try different search terms to get results
+**ALWAYS** Generate export scripts DYNAMICALLY from `INFORMATION_SCHEMA` - NEVER hardcode schemas
+**ALWAYS** Handle missing tables/columns gracefully (log warnings, don't error)
+**ALWAYS** Ensure table queries work 100% of the time
 
-**ALWAYS** After every task completes:
-1. Reindex all modified files using `index_file`
-2. Update memory if needed
-3. Rechunk files that were modified
+## Plugin Architecture
 
-**ALWAYS** Follow the plan in full - after every task is done, a test must be written and must pass before continuing
+**ALWAYS** Check `ProjectPluginActivations` - plugins must be ACTIVATED before use
+**ALWAYS** Use `PluginManager.GetActivePluginAsync(projectId, pluginId)` - returns initialized instances
+**ALWAYS** On plugin config changes: Save → `InvalidatePluginCacheAsync` → `RefreshPluginAsync` → Verify
+**ALWAYS** Store config in `Configuration` JSON: connection strings, API keys, endpoints
+**ALWAYS** PluginType enums: `LLM`, `Embedding`, `VectorSearch`, `DataSource`
 
-**ALWAYS** When you change a file you must build and ensure it compiles
+**DataSource Plugins - TWO Data Stores:**
+1. `PluginActivation.Configuration` JSON = REAL connection string
+2. `DataSource.ConnectionString` JSON = TABLE METADATA (Schema, TableName, WhereClause)
 
-**ALWAYS** When you are thinking you need to call `dependency_chain`, `impact_analysis` and `find_circular_dependencies` to improve your context
+**NEVER** Try to decrypt `DataSource.ConnectionString` - it's JSON metadata, not encrypted!
+**NEVER** Query `ProjectPluginActivations` from UI - use `PluginManager`
+**NEVER** Assume plugin is active - always verify with `GetActivePluginAsync()`
 
-**ALWAYS** Always summarize when context gets to 65%
+## Prompt Templates
 
-**ALWAYS** When you summarize, re-add the rules to the context
+**ALWAYS** Use `IPromptTemplateService.RenderPromptAsync(promptKey, variables, companyId)` - NEVER hardcode prompts
+**ALWAYS** Prompt key format: `"category.purpose"` (e.g., `"embedding.field_description"`)
+**ALWAYS** 3-tier hierarchy: Project Override > Company Override > System Default
+**ALWAYS** Define new prompts in `DatabaseSeeder.cs` with `CompanyId = null`
 
----
+## Testing
 
-## Code Organization Rules
+**ALWAYS** Write integration tests ONLY - no mocks
+**ALWAYS** Every method must have integration tests covering: happy path, errors, edge cases, timeouts, concurrency
+**ALWAYS** Tests must pass before continuing
+**ALWAYS** Use `search_patterns` to find test patterns first
 
-**ALWAYS** Keep files under 800 lines maximum - refactor and split if exceeding this limit
----
+## Code Complexity
 
-## Database Export & Schema Rules
+**ALWAYS** Use `analyze_code_complexity` before: commits, code review, refactoring, merging, after file save
 
-**ALWAYS** Generate database export scripts DYNAMICALLY from actual schema, NOT from hardcoded templates
+## Pattern Validation Workflow
 
-**ALWAYS** When exporting database objects (tables, procedures, views):
-- Query `INFORMATION_SCHEMA` to get actual current schema
-- Generate CREATE TABLE scripts from actual columns, data types, constraints
-- Handle missing tables/columns gracefully (skip, don't error)
-- Never hardcode schema assumptions (models evolve, schemas change)
+### On File Save (.cs, .py, .vb):
+1. `index_file` → 2. `search_patterns` → 3. `validate_pattern_quality` for each pattern
 
-**ALWAYS** ensure table queries work 100% of the time.
+### Quality Thresholds:
+- **9-10 (A)**: ✅ Ship it
+- **8 (B)**: ✅ Good
+- **7 (C)**: ⚠️ Address before release
+- **6 (D)**: ❌ FIX BEFORE CONTINUING
+- **0-5 (F)**: 🚨 CRITICAL - FIX IMMEDIATELY
 
-**ALWAYS** Log warnings for schema mismatches instead of throwing errors
+### Security Thresholds:
+- **< 8/10**: STOP and fix high/critical vulnerabilities
+- **8-9/10**: Acceptable for development
+- **10/10**: Maintain vigilance
 
-**NEVER** Use hardcoded CREATE TABLE scripts in export logic - they become stale immediately
+### Pattern Implementation Checklist:
 
----
+**Caching:** Expiration policy, null checks, concurrency protection, key prefixes
+**Retry:** Exponential backoff, circuit breaker, logging, timeout policies
+**Agent Framework:** Timeout/CancellationToken, input validation, retry, telemetry
+**Validation:** Descriptive errors, DataAnnotations/FluentValidation, validate all inputs
+**Security:** Auth, input sanitization, secrets in config, HTTPS
 
-## Plugin Management Rules
+### Before Major Refactoring:
+1. `impact_analysis` → 2. `dependency_chain` → 3. `find_circular_dependencies` → 4. Get confirmation if > 10 files affected
 
-**ALWAYS** Plugins must be ACTIVATED before they can be used - check `ProjectPluginActivations` table
+## MCP Tool Priority
 
-**ALWAYS** Use `PluginManager.GetActivePluginAsync(projectId, pluginId)` to retrieve plugin instances
-- This method returns initialized, configured, and STARTED plugin instances
-- Plugins have their configuration loaded from `ProjectPluginActivations.Configuration` JSON
-- The plugin cache key format is: `"{projectId}_{pluginId}"`
+### Analysis Order:
+`smartsearch` → `search_patterns` → `dependency_chain` → `impact_analysis` → `validate_pattern_quality` → `get_recommendations`
 
-**ALWAYS** Verify plugin activation status before attempting to use a plugin:
-```csharp
-var plugin = await _pluginManager.GetActivePluginAsync(projectId, "llm.azureopenai");
-if (plugin == null || plugin is not ILLMPlugin llmPlugin)
-{
-    throw new InvalidOperationException("LLM plugin not found or not activated for this project");
-}
-```
+### After Changes:
+Build ✅ → `index_file` → `validate_security` → `find_anti_patterns` → `get_recommendations`
 
-**ALWAYS** When creating/updating plugin activations:
-1. Save to `ProjectPluginActivations` table with `IsActive = true`
-2. Call `PluginManager.InvalidatePluginCacheAsync(projectId, pluginId)` to clear old cached instance
-3. Call `PluginManager.RefreshPluginAsync(projectId, pluginId)` to reload with new configuration
-4. Verify the plugin started successfully before proceeding
+## Validation Triggers
 
-**ALWAYS** Store plugin configuration in `ProjectPluginActivations.Configuration` as JSON:
-- Connection strings (for DataSource plugins)
-- API keys (for LLM/Embedding plugins)
-- Endpoint URLs (for Azure AI Search, etc.)
-- Plugin-specific settings
+**ALWAYS** After indexing: `get_recommendations`
+**ALWAYS** Before task complete: `validate_best_practices`
+**ALWAYS** Before deploying: `validate_security`
+**ALWAYS** When refactoring: `find_anti_patterns`
+**ALWAYS** After major feature: `validate_project`
+**ALWAYS** Weekly/before releases: Full project validation + security audit
 
-**ALWAYS** Use the correct PluginType enum values:
-- `LLM` - Large Language Model plugins (Azure OpenAI, etc.)
-- `Embedding` - Embedding generation plugins
-- `VectorSearch` - Vector storage/search plugins (Azure AI Search, SQL Server Vector)
-- `DataSource` - Data source plugins (SQL Server, PostgreSQL, etc.)
+## 🚨 BLOCKING CONDITIONS - STOP if:
 
-**NEVER** Query `ProjectPluginActivations` directly from UI code - always use `PluginManager`
+1. Security score < 8/10 or CRITICAL severity issues
+2. Pattern quality score < 6 (Grade D/F)
+3. Breaking changes > 10 files without approval
+4. Missing critical patterns (no auth/validation)
+5. Legacy patterns in new code (AutoGen, old SK Planners)
 
-**NEVER** Assume a plugin is active - always check with `GetActivePluginAsync()`
+### Plugin Architecture - BLOCK if:
+- Security score < 8/10
+- Signature verification missing
+- No process isolation for untrusted plugins
+- No circuit breaker/bulkhead patterns
+- Mutable state in stateless plugins
 
-**NEVER** Store sensitive data (API keys, passwords) in plain text - use encryption or Azure Key Vault
+## Plugin Anti-Patterns (Avoid):
 
----
+❌ Tight coupling, mutable shared state, no isolation, no error handling
+❌ Hardcoded paths, no versioning, no disposal, synchronous loading
+❌ No health checks, no signature verification
 
-## DataSource Plugin Architecture
+## Quick Reference
 
-**ALWAYS** Understand that DataSource plugins have TWO data stores:
+**Stuck?** `smartsearch` examples → `search_patterns` → `get_recommendations` → check `/docs`
+**Learning?** Search patterns → show scores → explain why → provide examples
+**Context:** Always include `"context": "project_name"` in MCP calls
 
-1. **PluginActivation.Configuration** (JSON) - Contains the REAL database connection string:
-   ```json
-   {
-     "ConnectionString": "Server=xxx;Database=yyy;User Id=zzz;Password=aaa",
-     "Timeout": 30,
-     "MaxRetries": 3
-   }
-   ```
+## Success Metrics
 
-2. **DataSource.ConnectionString** (in project DB) - Contains TABLE METADATA as JSON:
-   ```json
-   {
-     "Schema": "dbo",
-     "TableName": "Attendance", 
-     "WhereClause": "",
-     "RowLimit": null
-   }
-   ```
+Track: Pattern scores ↑, Security > 8/10, Critical issues → 0, Test coverage ↑, Legacy patterns ↓
 
-**ALWAYS** When syncing/embedding data:
-- Get the plugin instance: `var plugin = await PluginManager.GetActivePluginAsync(projectId, pluginId)`
-- Plugin knows its connection string from its `Configuration`
-- Load the `DataSource` record to get table/schema metadata
-- Plugin uses its connection string + the metadata to query source table
-
-**ALWAYS** When exporting databases:
-- Get connection string from `PluginActivation.Configuration` JSON (parse with `System.Text.Json.JsonDocument`)
-- Get table/schema metadata from `DataSource.ConnectionString` JSON
-- Combine both to generate OPENDATASOURCE statements in sync procedures
-
-**NEVER** Try to decrypt `DataSource.ConnectionString` - it's NOT encrypted, it's JSON metadata!
-
-**NEVER** Assume `DataSource.ConnectionString` is a SQL connection string - parse it as JSON first
+**Celebrate:** Grade A pattern 🎉, Security 10/10 🔒✅, Zero critical issues ✨, All recommendations addressed 🚀
 
 ---
 
-## Testing Rules
-
-**ALWAYS** Write integration tests ONLY - no mock tests allowed
-
-**ALWAYS** Every method must have integration tests
-
-**ALWAYS** Integration tests must validate:
-- Happy path with valid inputs
-- Error handling with invalid inputs
-- Edge cases (null, empty, large data)
-- Timeout/cancellation scenarios
-- Concurrent access (for shared resources)
-
-**ALWAYS** Tests must pass before continuing to the next task
-
-**ALWAYS** Use `search_patterns` to find similar test patterns before writing new tests
-
----
-
-## 🔍 Pattern Validation Rules (NEW)
-
-### On File Save - Validation Workflow
-
-**ALWAYS** After saving any .cs, .py, or .vb file, execute this validation workflow:
-
-1. **Index the file immediately**
-   ```
-   Call: index_file
-   Input: { "path": "/path/to/saved/file.cs", "context": "project_name" }
-   ```
-
-2. **Search for patterns in that file**
-   ```
-   Call: search_patterns
-   Input: { "query": "file:/path/to/saved/file.cs", "limit": 20 }
-   ```
-
-3. **Validate each pattern found**
-   ```
-   For each pattern returned:
-   Call: validate_pattern_quality
-   Input: { 
-     "pattern_id": pattern.id,
-     "context": "project_name",
-     "include_auto_fix": true,
-     "min_severity": "low"
-   }
-   ```
-
-4. **Show validation results**
-   - If any pattern has score < 7: **STOP and show issues prominently**
-   - If critical issues (severity: Critical): **REQUIRE fix before continuing**
-   - If auto-fix available: **Offer to apply it**
-   - If score >= 9: ✅ Give positive feedback
-
-### Pattern Quality Thresholds
-
-**ALWAYS** Use these quality thresholds:
-
-- **Score 9-10 (Grade A)**: ✅ Excellent - Ship it
-- **Score 8 (Grade B)**: ✅ Good - Minor improvements acceptable  
-- **Score 7 (Grade C)**: ⚠️ Fair - Address issues before major release
-- **Score 6 (Grade D)**: ❌ Poor - **FIX BEFORE CONTINUING**
-- **Score 0-5 (Grade F)**: 🚨 **STOP - CRITICAL ISSUES - FIX IMMEDIATELY**
-
-**ALWAYS** If validation score < 7, explain the issues and provide fix guidance before moving forward
-
-### Security Validation
-
-**ALWAYS** Before committing code:
-
-1. **Run security audit**
-   ```
-   Call: validate_security
-   Input: { "context": "project_name" }
-   ```
-
-2. **Check for anti-patterns**
-   ```
-   Call: find_anti_patterns
-   Input: { "context": "project_name", "min_severity": "high" }
-   ```
-
-3. **Block commit if:**
-   - Security score < 8/10
-   - Any CRITICAL severity issues found
-   - Legacy patterns (AutoGen) without migration plan
-
-**ALWAYS** Explain security issues with CWE references and remediation steps
-
-### Security Score Thresholds
-
-**ALWAYS** Security scores should be interpreted as:
-- **Below 8/10**: Address high/critical vulnerabilities immediately - STOP and fix
-- **8-9/10**: Review and plan fixes - acceptable for development
-- **10/10**: Maintain vigilance - continue monitoring
-
-### Architecture Recommendations
-
-**ALWAYS** After completing a major feature or at end of day:
-
-1. **Get recommendations**
-   ```
-   Call: get_recommendations
-   Input: { 
-     "context": "project_name",
-     "include_low_priority": false,
-     "max_recommendations": 10
-   }
-   ```
-
-2. **Prioritize by severity**
-   - 🚨 CRITICAL: Address immediately
-   - ⚠️ HIGH: Plan to fix this sprint
-   - 📌 MEDIUM: Add to backlog
-   - 💡 LOW: Nice to have
-
-3. **Show code examples**
-   - Always include the code examples from recommendations
-   - Explain WHY the recommendation matters
-   - Estimate effort to implement
-
-### Before Major Refactoring
-
-**ALWAYS** Before refactoring any class or method:
-
-1. **Check impact**
-   ```
-   Call: impact_analysis
-   Input: { "className": "FullClassName", "context": "project_name" }
-   ```
-
-2. **Check dependencies**
-   ```
-   Call: dependency_chain
-   Input: { "className": "FullClassName", "maxDepth": 5, "context": "project_name" }
-   ```
-
-3. **Find circular dependencies**
-   ```
-   Call: find_circular_dependencies
-   Input: { "context": "project_name" }
-   ```
-
-4. **Show assessment**
-   - List all affected files/methods
-   - Identify breaking changes
-   - Suggest migration strategy if needed
-   - Estimate effort
-
-**ALWAYS** If impact > 10 files, ask for confirmation before proceeding
-
-### Pattern Implementation Rules
-
-**ALWAYS** When implementing caching patterns, ensure:
-- ✅ Expiration policy is set (AbsoluteExpiration or SlidingExpiration)
-- ✅ Null checks after data fetch
-- ✅ Concurrency protection (lock, SemaphoreSlim, or distributed lock)
-- ✅ Cache key prefixes to avoid collisions
-
-**ALWAYS** When implementing retry/resilience patterns, ensure:
-- ✅ Exponential backoff is used
-- ✅ Circuit breaker for fail-fast
-- ✅ Logging of retry attempts
-- ✅ Timeout policies configured
-
-**ALWAYS** When implementing Agent Framework patterns, ensure:
-- ✅ Timeout configuration or CancellationToken
-- ✅ Input validation for security (prevent injection)
-- ✅ Retry policy for resilience
-- ✅ Telemetry/logging enabled
-
-**ALWAYS** When implementing validation patterns, ensure:
-- ✅ Descriptive error messages
-- ✅ DataAnnotations or FluentValidation
-- ✅ All inputs validated before processing
-
-**ALWAYS** When implementing security patterns, ensure:
-- ✅ Authentication and authorization
-- ✅ Input sanitization
-- ✅ Secrets in configuration (not hardcoded)
-- ✅ HTTPS for external calls
-
-### Legacy Pattern Migration
-
-**ALWAYS** When detecting AutoGen patterns:
-1. **Flag as deprecated immediately**
-2. **Get migration path**
-   ```
-   Call: get_migration_path
-   Input: { "pattern_id": "autogen_pattern_id", "include_code_example": true }
-   ```
-3. **Show effort estimate and steps**
-4. **Recommend migration before adding features**
-
-**ALWAYS** When detecting old Semantic Kernel Planners:
-1. **Flag as deprecated**
-2. **Suggest Agent Framework Workflows**
-3. **Provide migration path**
-
-### Pattern Detection & Validation Triggers
-
-**ALWAYS** After indexing a project, run `get_recommendations` to identify missing best practices and architecture improvements
-
-**ALWAYS** Before marking a task complete, run `validate_best_practices` to ensure Azure best practices are followed
-
-**ALWAYS** When implementing caching, retry logic, validation, or security features, run `search_patterns` first to find existing implementations in the codebase
-
-**ALWAYS** When you detect legacy patterns (AutoGen, old Semantic Kernel Planners), use `get_migration_path` to get step-by-step migration guidance
-
-**ALWAYS** Before deploying code, run `validate_security` to check for security vulnerabilities in detected patterns
-
-**ALWAYS** When refactoring code, run `find_anti_patterns` to identify poorly implemented patterns that need improvement
-
-**ALWAYS** When implementing a new feature, search for related patterns first using `search_patterns` to maintain consistency
-
-**ALWAYS** After completing a major feature, run `validate_project` to get comprehensive quality and security scores
-
-### Pattern Quality Enforcement
-
-**ALWAYS** When you see pattern quality scores below 7/10, address the issues before continuing
-
-**ALWAYS** If a pattern has critical security issues (severity: Critical), fix immediately before other work
-
-**ALWAYS** When recommendations suggest authentication/authorization/validation, implement before adding new features
-
-**ALWAYS** Use code examples from recommendations as templates - they follow Azure best practices
-
-**ALWAYS** After fixing anti-patterns or security issues, re-run validation to verify the fix
-
-**ALWAYS** When implementing patterns, include expiration policies, null checks, logging, and error handling
-
-**ALWAYS** If overall project health score is below 60%, prioritize fixing critical and high-priority recommendations
-
-### Best Practice Validation
-
-**ALWAYS** After indexing a new project or major milestone:
-
-1. **Validate Azure best practices**
-   ```
-   Call: validate_best_practices
-   Input: { 
-     "context": "project_name",
-     "include_examples": true,
-     "max_examples_per_practice": 3
-   }
-   ```
-
-2. **Show compliance report**
-   - Overall score (0-100%)
-   - Which practices are implemented
-   - Which are missing with recommendations
-   - Prioritize by impact
-
-### Project Health Check
-
-**ALWAYS** Run comprehensive validation:
-- **Weekly**: Full project validation
-- **Before releases**: Security audit + anti-pattern check
-- **After major refactoring**: Impact analysis + validation
-
-```
-Call: validate_project
-Input: { "context": "project_name" }
-```
-
-**ALWAYS** Show:
-- Overall quality score
-- Security score  
-- Patterns by grade breakdown
-- Critical issues count
-- Top 5 recommendations
-
----
-
-## 🎯 MCP Tool Usage Priority
-
-**ALWAYS** Use this order when analyzing code:
-
-1. `smartsearch` - Find relevant code
-2. `search_patterns` - Check existing pattern implementations
-3. `dependency_chain` - Understand dependencies
-4. `impact_analysis` - Assess change impact
-5. `validate_pattern_quality` - Check implementation quality
-6. `get_recommendations` - Get improvement suggestions
-
-**ALWAYS** After major changes, run validation in this order:
-
-1. Build and compile ✅
-2. `index_file` on all touched files
-3. `validate_security` for security check
-4. `find_anti_patterns` for quality check
-5. `get_recommendations` for improvement suggestions
-
----
-
-## 🚨 Blocking Conditions
-
-**ALWAYS** STOP and require fixes before continuing if:
-
-1. **Critical security issues** (severity: Critical)
-   - Example: SQL injection, code execution without sandboxing
-   - Require fix IMMEDIATELY
-
-2. **Pattern quality score < 6** (Grade D or F)
-   - Example: Caching without expiration, retry without backoff
-   - Require fix before adding features
-
-3. **Breaking changes without approval**
-   - If impact_analysis shows > 10 affected files
-   - Require explicit confirmation
-
-4. **Missing critical patterns** (CRITICAL priority recommendations)
-   - Example: No input validation, no authentication
-   - Require fix before production deployment
-
-5. **Legacy patterns in new code**
-   - Example: Adding new AutoGen patterns
-   - Block and require Agent Framework instead
-
----
-
-## 💡 Helpful Tips
-
-**ALWAYS** When stuck:
-1. Use `smartsearch` to find examples in the codebase
-2. Use `search_patterns` to find how patterns are implemented
-3. Use `get_recommendations` to see what's missing
-4. Check documentation in `/docs` directory
-
-**ALWAYS** When learning:
-1. Ask: "Show me examples of [pattern] in this codebase"
-2. Ask: "What's the best way to implement [feature] based on existing patterns?"
-3. Use validation scores as learning feedback
-
-**ALWAYS** Provide context:
-- When calling MCP tools, always include "context": "project_name"
-- This ensures results are relevant to current project
-- Each project has isolated data
-
----
-
-## 📊 Success Metrics
-
-**ALWAYS** Track and report:
-- Pattern quality scores trending up
-- Security score maintained > 8/10
-- Critical issues count trending to zero
-- Test coverage increasing
-- Legacy pattern count decreasing
-
-**ALWAYS** Celebrate wins:
-- First Grade A pattern: 🎉
-- Security score 10/10: 🔒✅
-- Zero critical issues: ✨
-- All recommendations addressed: 🚀
-
----
-
-## 🎓 Learning Mode
-
-**ALWAYS** When asked "how do we do X?":
-1. Search for existing examples: `search_patterns`
-2. Show pattern quality scores
-3. Explain why high-quality patterns work
-4. Provide code examples
-5. Link to Azure documentation if applicable
-
-**ALWAYS** Explain validation results:
-- Why the score is what it is
-- What each issue means
-- How to fix it
-- Why it matters
-
----
-
-## 🔄 Continuous Improvement
-
-**ALWAYS** After fixing issues:
-1. Re-run validation to confirm fix
-2. Show improved score
-3. Update tests
-4. Re-index files
-
-**ALWAYS** Learn from the codebase:
-- Grade A patterns are your templates
-- Use them as examples
-- Maintain consistency
-- Follow established conventions
-
----
-
-**Remember: The goal is to write code that:**
-- ✅ Works correctly (tests pass)
-- ✅ Is secure (security score > 8)
-- ✅ Is maintainable (quality score > 7)
-- ✅ Follows best practices (Azure compliance)
-- ✅ Is consistent with existing patterns
-
+**Goal: Code that Works ✅ Is Secure ✅ Is Maintainable ✅ Follows Best Practices ✅ Is Consistent ✅**
