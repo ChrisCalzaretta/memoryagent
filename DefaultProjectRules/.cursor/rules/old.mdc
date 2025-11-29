@@ -1,0 +1,16 @@
+---
+alwaysApply: true
+---
+**ALWAYS** When you search, use the smartsearch always. If you do not get results try to search to get results
+**ALWAYS** When you change a file you need to call Index_file
+**ALWAYS** When you are thinking you need to call dependency_chain, impact_analysis and find_circular_dependencies to improve your context
+**ALWAYS** Always summerize when context gets to 65%.
+**ALWAYS** When you summerize readd the rules to the context.
+**ALWAYS** Review and understand first then talk to me on how we will change.
+**ALWAYS** When any question is asked ensure you search and query the MCP tool
+**ALWAYS** When any question is asked ensure you search and query the MCP tool
+**ALWAYS** The plan should be followed in full.. After every task is done a test should be written and should not continue until it passes
+**ALWAYS** We do not want mock tests we can only write integration tests>
+**ALWAYS** Every method must have integration tests>
+**ALWAYS** When writing code ensure you always review chunks and files before writing new code
+**ALWAYS** No more then 800 lines in any given file

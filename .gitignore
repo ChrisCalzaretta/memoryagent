@@ -50,3 +50,6 @@ packages/
 # Build output
 publish/
 
+# Log files
+*.log
+

@@ -1,0 +1,82 @@
+---
+alwaysApply: true
+---
+# Always Rules - Complete List
+## Search 
+**ALWAYS** When you search, use the smartsearch always. If you do not get results try to search to get results
+**ALWAYS** When you change a file you need to call Index_file
+**ALWAYS** When you are thinking you need to call dependency_chain, impact_analysis and find_circular_dependencies to improve your context
+**ALWAYS** Always summerize when context gets to 65%.
+**ALWAYS** When you summerize readd the rules to the context.
+**ALWAYS** Review and understand first then talk to me on how we will change.
+**ALWAYS** When any question is asked ensure you search and query the MCP tool
+**ALWAYS** The plan should be followed in full.. After every task is done a test should be written and should not continue until it passes
+**ALWAYS** Every method must have Unit tests
+**ALWAYS** When writing code ensure you always review chunks and files and search before writing new code
+**ALWAYS** No more then 1500 lines in any given file
+
+
+## Core Workflow
+**ALWAYS** Review/understand first, then DISCUSS changes before implementing
+**ALWAYS** Search with `smartsearch` first for any question - try different terms if no results
+**ALWAYS** After tasks: reindex files (`index_file`), update memory, ensure tests pass
+**ALWAYS** Build and compile after every file change
+**ALWAYS** Call `dependency_chain`, `impact_analysis`, `find_circular_dependencies` when analyzing
+**ALWAYS** Summarize at 65% context and re-add rules
+**ALWAYS** Keep files under 1500 lines - refactor if exceeding
+
+## Database & Export
+**ALWAYS** Generate export scripts DYNAMICALLY from `INFORMATION_SCHEMA` - NEVER hardcode schemas
+**ALWAYS** Handle missing tables/columns gracefully (log warnings, don't error)
+**ALWAYS** Ensure table queries work 100% of the time
+
+## Plugin Architecture
+**ALWAYS** Check `ProjectPluginActivations` - plugins must be ACTIVATED before use
+**ALWAYS** Use `PluginManager.GetActivePluginAsync(projectId, pluginId)` - returns initialized instances
+**ALWAYS** On plugin config changes: Save → `InvalidatePluginCacheAsync` → `RefreshPluginAsync` → Verify
+**ALWAYS** Store config in `Configuration` JSON: connection strings, API keys, endpoints
+**ALWAYS** PluginType enums: `LLM`, `Embedding`, `VectorSearch`, `DataSource`
+
+## Prompt Templates
+**ALWAYS** Use `IPromptTemplateService.RenderPromptAsync(promptKey, variables, companyId)` - NEVER hardcode prompts
+**ALWAYS** Prompt key format: `"category.purpose"` (e.g., `"embedding.field_description"`)
+**ALWAYS** 3-tier hierarchy: Project Override > Company Override > System Default
+**ALWAYS** Define new prompts in `DatabaseSeeder.cs` with `CompanyId = null`
+
+## Testing
+**ALWAYS** Write integration tests ONLY - no mocks
+**ALWAYS** Every method must have integration tests covering: happy path, errors, edge cases, timeouts, concurrency
+**ALWAYS** Tests must pass before continuing
+**ALWAYS** Use `search_patterns` to find test patterns first
+
+## Code Complexity
+**ALWAYS** Use `analyze_code_complexity` before: commits, code review, refactoring, merging, after file save
+
+## Validation Triggers
+**ALWAYS** After indexing: `get_recommendations` → Implement CRITICAL priority recommendations immediately
+**ALWAYS** Before task complete: `validate_best_practices` → Fix missing critical patterns before continuing
+**ALWAYS** Before deploying: `validate_security` → Fix all CRITICAL/HIGH severity issues before deployment
+**ALWAYS** When refactoring: `find_anti_patterns` → Fix all detected anti-patterns before continuing
+**ALWAYS** After major feature: `validate_project` → Address all critical issues in report
+**ALWAYS** Weekly/before releases: Full project validation + security audit → Fix all blocking issues
+
+## Pattern Validation Actions
+**ALWAYS** When `validate_pattern_quality` returns score < 6: Fix immediately before continuing
+**ALWAYS** When `validate_pattern_quality` returns score < 8: Show issues and offer to fix
+**ALWAYS** When auto-fix code is available: Offer to apply it automatically
+**ALWAYS** When CRITICAL severity issues found: Fix immediately without asking
+**ALWAYS** When HIGH severity issues found: Fix before moving to next task
+**ALWAYS** When security vulnerabilities found: Explain CWE + provide remediation steps + implement fix
+
+## Recommendation Actions
+**ALWAYS** When recommendations priority is CRITICAL: Implement before adding new features
+**ALWAYS** When recommendations priority is HIGH: Add to current task and implement
+**ALWAYS** When recommendations priority is MEDIUM: Discuss with user and get approval
+**ALWAYS** When missing authentication/authorization/validation: Implement before production code
+
+## Anti-Pattern Actions
+**ALWAYS** When legacy patterns detected (AutoGen, old SK): Get migration path and migrate immediately
+**ALWAYS** When caching without expiration: Add expiration policy immediately
+**ALWAYS** When retry without backoff: Add exponential backoff immediately
+**ALWAYS** When SQL injection risk: Add parameterized queries immediately
+**ALWAYS** When code execution without sandbox: Add validation and sandboxing immediately

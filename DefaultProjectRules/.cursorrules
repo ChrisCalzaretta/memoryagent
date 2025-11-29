@@ -1,0 +1,134 @@
+
+# Memory Agent - AI-Powered Code Intelligence Rules
+
+## Core Workflow Rules
+
+**ALWAYS** Review/understand first, then DISCUSS changes before implementing
+**ALWAYS** Search with `smartsearch` first for any question - try different terms if no results
+**ALWAYS** After tasks: reindex files (`index_file`), update memory, ensure tests pass
+**ALWAYS** Build and compile after every file change
+**ALWAYS** Call `dependency_chain`, `impact_analysis`, `find_circular_dependencies` when analyzing
+**ALWAYS** Summarize at 65% context and re-add rules
+**ALWAYS** Keep files under 800 lines - refactor if exceeding
+
+## Database & Export Rules
+
+**ALWAYS** Generate export scripts DYNAMICALLY from `INFORMATION_SCHEMA` - NEVER hardcode schemas
+**ALWAYS** Handle missing tables/columns gracefully (log warnings, don't error)
+**ALWAYS** Ensure table queries work 100% of the time
+
+## Plugin Architecture
+
+**ALWAYS** Check `ProjectPluginActivations` - plugins must be ACTIVATED before use
+**ALWAYS** Use `PluginManager.GetActivePluginAsync(projectId, pluginId)` - returns initialized instances
+**ALWAYS** On plugin config changes: Save → `InvalidatePluginCacheAsync` → `RefreshPluginAsync` → Verify
+**ALWAYS** Store config in `Configuration` JSON: connection strings, API keys, endpoints
+**ALWAYS** PluginType enums: `LLM`, `Embedding`, `VectorSearch`, `DataSource`
+
+**DataSource Plugins - TWO Data Stores:**
+1. `PluginActivation.Configuration` JSON = REAL connection string
+2. `DataSource.ConnectionString` JSON = TABLE METADATA (Schema, TableName, WhereClause)
+
+**NEVER** Try to decrypt `DataSource.ConnectionString` - it's JSON metadata, not encrypted!
+**NEVER** Query `ProjectPluginActivations` from UI - use `PluginManager`
+**NEVER** Assume plugin is active - always verify with `GetActivePluginAsync()`
+
+## Prompt Templates
+
+**ALWAYS** Use `IPromptTemplateService.RenderPromptAsync(promptKey, variables, companyId)` - NEVER hardcode prompts
+**ALWAYS** Prompt key format: `"category.purpose"` (e.g., `"embedding.field_description"`)
+**ALWAYS** 3-tier hierarchy: Project Override > Company Override > System Default
+**ALWAYS** Define new prompts in `DatabaseSeeder.cs` with `CompanyId = null`
+
+## Testing
+
+**ALWAYS** Write integration tests ONLY - no mocks
+**ALWAYS** Every method must have integration tests covering: happy path, errors, edge cases, timeouts, concurrency
+**ALWAYS** Tests must pass before continuing
+**ALWAYS** Use `search_patterns` to find test patterns first
+
+## Code Complexity
+
+**ALWAYS** Use `analyze_code_complexity` before: commits, code review, refactoring, merging, after file save
+
+## Pattern Validation Workflow
+
+### On File Save (.cs, .py, .vb):
+1. `index_file` → 2. `search_patterns` → 3. `validate_pattern_quality` for each pattern
+
+### Quality Thresholds:
+- **9-10 (A)**: ✅ Ship it
+- **8 (B)**: ✅ Good
+- **7 (C)**: ⚠️ Address before release
+- **6 (D)**: ❌ FIX BEFORE CONTINUING
+- **0-5 (F)**: 🚨 CRITICAL - FIX IMMEDIATELY
+
+### Security Thresholds:
+- **< 8/10**: STOP and fix high/critical vulnerabilities
+- **8-9/10**: Acceptable for development
+- **10/10**: Maintain vigilance
+
+### Pattern Implementation Checklist:
+
+**Caching:** Expiration policy, null checks, concurrency protection, key prefixes
+**Retry:** Exponential backoff, circuit breaker, logging, timeout policies
+**Agent Framework:** Timeout/CancellationToken, input validation, retry, telemetry
+**Validation:** Descriptive errors, DataAnnotations/FluentValidation, validate all inputs
+**Security:** Auth, input sanitization, secrets in config, HTTPS
+
+### Before Major Refactoring:
+1. `impact_analysis` → 2. `dependency_chain` → 3. `find_circular_dependencies` → 4. Get confirmation if > 10 files affected
+
+## MCP Tool Priority
+
+### Analysis Order:
+`smartsearch` → `search_patterns` → `dependency_chain` → `impact_analysis` → `validate_pattern_quality` → `get_recommendations`
+
+### After Changes:
+Build ✅ → `index_file` → `validate_security` → `find_anti_patterns` → `get_recommendations`
+
+## Validation Triggers
+
+**ALWAYS** After indexing: `get_recommendations`
+**ALWAYS** Before task complete: `validate_best_practices`
+**ALWAYS** Before deploying: `validate_security`
+**ALWAYS** When refactoring: `find_anti_patterns`
+**ALWAYS** After major feature: `validate_project`
+**ALWAYS** Weekly/before releases: Full project validation + security audit
+
+## 🚨 BLOCKING CONDITIONS - STOP if:
+
+1. Security score < 8/10 or CRITICAL severity issues
+2. Pattern quality score < 6 (Grade D/F)
+3. Breaking changes > 10 files without approval
+4. Missing critical patterns (no auth/validation)
+5. Legacy patterns in new code (AutoGen, old SK Planners)
+
+### Plugin Architecture - BLOCK if:
+- Security score < 8/10
+- Signature verification missing
+- No process isolation for untrusted plugins
+- No circuit breaker/bulkhead patterns
+- Mutable state in stateless plugins
+
+## Plugin Anti-Patterns (Avoid):
+
+❌ Tight coupling, mutable shared state, no isolation, no error handling
+❌ Hardcoded paths, no versioning, no disposal, synchronous loading
+❌ No health checks, no signature verification
+
+## Quick Reference
+
+**Stuck?** `smartsearch` examples → `search_patterns` → `get_recommendations` → check `/docs`
+**Learning?** Search patterns → show scores → explain why → provide examples
+**Context:** Always include `"context": "project_name"` in MCP calls
+
+## Success Metrics
+
+Track: Pattern scores ↑, Security > 8/10, Critical issues → 0, Test coverage ↑, Legacy patterns ↓
+
+**Celebrate:** Grade A pattern 🎉, Security 10/10 🔒✅, Zero critical issues ✨, All recommendations addressed 🚀
+
+---
+
+**Goal: Code that Works ✅ Is Secure ✅ Is Maintainable ✅ Follows Best Practices ✅ Is Consistent ✅**
