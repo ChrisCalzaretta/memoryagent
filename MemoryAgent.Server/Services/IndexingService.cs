@@ -101,7 +101,8 @@ public class IndexingService : IIndexingService
             }
 
             // Step 2: Generate embeddings for all code elements
-            var textsToEmbed = parseResult.CodeElements.Select(e => e.Content).ToList();
+            // Use GetEmbeddingText() for smart, semantic-rich embeddings with metadata prefix
+            var textsToEmbed = parseResult.CodeElements.Select(e => e.GetEmbeddingText()).ToList();
             var embeddings = await _embeddingService.GenerateEmbeddingsAsync(textsToEmbed, cancellationToken);
 
             // Assign embeddings to code elements

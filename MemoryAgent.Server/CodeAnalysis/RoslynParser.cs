@@ -215,6 +215,12 @@ public class RoslynParser : ICodeParser
         var fieldCount = classDecl.Members.OfType<FieldDeclarationSyntax>().Count();
         var isPublicApi = ComplexityAnalyzer.IsPublicApi(classDecl);
 
+        // Extract semantic metadata for smart embeddings
+        var summary = ExtractXmlSummary(classDecl);
+        var signature = BuildClassSignature(classDecl);
+        var tags = ExtractClassTags(classDecl, namespaceName);
+        var dependencies = ExtractClassDependencies(classDecl);
+        
         // Create class memory
         var classMemory = new CodeMemory
         {
@@ -224,6 +230,14 @@ public class RoslynParser : ICodeParser
             FilePath = filePath,
             Context = context,
             LineNumber = lineNumber,
+            
+            // NEW: Smart embedding fields
+            Summary = summary,
+            Signature = signature,
+            Purpose = summary, // For classes, summary == purpose
+            Tags = tags,
+            Dependencies = dependencies,
+            
             Metadata = new Dictionary<string, object>
             {
                 ["namespace"] = namespaceName,
@@ -418,6 +432,12 @@ public class RoslynParser : ICodeParser
             .SelectMany(al => al.Attributes)
             .Any(attr => testAttributes.Any(t => attr.Name.ToString().Contains(t)));
 
+        // Extract semantic metadata for smart embeddings
+        var summary = ExtractXmlSummary(methodDecl);
+        var signature = BuildMethodSignature(methodDecl);
+        var tags = ExtractMethodTags(methodDecl);
+        var dependencies = ExtractMethodDependencies(methodDecl);
+
         var methodMemory = new CodeMemory
         {
             Type = isTestMethod ? CodeMemoryType.Test : CodeMemoryType.Method,
@@ -426,6 +446,14 @@ public class RoslynParser : ICodeParser
             FilePath = filePath,
             Context = context,
             LineNumber = lineNumber,
+            
+            // NEW: Smart embedding fields
+            Summary = summary,
+            Signature = signature,
+            Purpose = summary, // For methods, summary == purpose
+            Tags = tags,
+            Dependencies = dependencies,
+            
             Metadata = new Dictionary<string, object>
             {
                 ["class_name"] = fullClassName,
@@ -3372,6 +3400,218 @@ public class RoslynParser : ICodeParser
         }
     }
 
+    #endregion
+    
+    #region Smart Embedding Helpers
+    
+    /// <summary>
+    /// Extracts XML documentation summary for a syntax node
+    /// </summary>
+    private static string ExtractXmlSummary(SyntaxNode node)
+    {
+        var trivia = node.GetLeadingTrivia();
+        var docComments = trivia.Where(t => t.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia) ||
+                                            t.IsKind(SyntaxKind.MultiLineDocumentationCommentTrivia))
+                                .ToList();
+        
+        if (!docComments.Any())
+            return string.Empty;
+        
+        var fullDoc = string.Join("\n", docComments.Select(c => c.ToString()));
+        
+        // Extract <summary> content
+        var summaryMatch = System.Text.RegularExpressions.Regex.Match(fullDoc, @"<summary>(.*?)</summary>", 
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        
+        if (!summaryMatch.Success)
+            return string.Empty;
+        
+        var summary = summaryMatch.Groups[1].Value
+            .Replace("///", "")
+            .Replace("*", "")
+            .Trim();
+        
+        // Clean up whitespace
+        return System.Text.RegularExpressions.Regex.Replace(summary, @"\s+", " ").Trim();
+    }
+    
+    /// <summary>
+    /// Builds a clean signature for a class
+    /// </summary>
+    private static string BuildClassSignature(ClassDeclarationSyntax classDecl)
+    {
+        var modifiers = string.Join(" ", classDecl.Modifiers.Select(m => m.Text));
+        var baselist = classDecl.BaseList != null ? " : " + classDecl.BaseList.ToString() : "";
+        var typeParams = classDecl.TypeParameterList?.ToString() ?? "";
+        
+        return $"{modifiers} class {classDecl.Identifier.Text}{typeParams}{baselist}".Trim();
+    }
+    
+    /// <summary>
+    /// Builds a clean signature for a method
+    /// </summary>
+    private static string BuildMethodSignature(MethodDeclarationSyntax methodDecl)
+    {
+        var modifiers = string.Join(" ", methodDecl.Modifiers.Select(m => m.Text));
+        var returnType = methodDecl.ReturnType.ToString();
+        var methodName = methodDecl.Identifier.Text;
+        var parameters = methodDecl.ParameterList.ToString();
+        var typeParams = methodDecl.TypeParameterList?.ToString() ?? "";
+        
+        return $"{modifiers} {returnType} {methodName}{typeParams}{parameters}".Trim();
+    }
+    
+    /// <summary>
+    /// Extracts semantic tags from a class
+    /// </summary>
+    private static List<string> ExtractClassTags(ClassDeclarationSyntax classDecl, string namespaceName)
+    {
+        var tags = new List<string>();
+        
+        // Modifiers
+        if (classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.PublicKeyword))) tags.Add("public");
+        if (classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.InternalKeyword))) tags.Add("internal");
+        if (classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.AbstractKeyword))) tags.Add("abstract");
+        if (classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.SealedKeyword))) tags.Add("sealed");
+        if (classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword))) tags.Add("static");
+        
+        // Type parameters
+        if (classDecl.TypeParameterList != null) tags.Add("generic");
+        
+        // Framework/pattern detection
+        var className = classDecl.Identifier.Text;
+        if (className.EndsWith("Controller")) tags.Add("controller");
+        if (className.EndsWith("Service")) tags.Add("service");
+        if (className.EndsWith("Repository")) tags.Add("repository");
+        if (className.EndsWith("Validator")) tags.Add("validator");
+        if (className.EndsWith("Handler")) tags.Add("handler");
+        if (className.Contains("DbContext")) tags.Add("dbcontext");
+        if (className.EndsWith("Middleware")) tags.Add("middleware");
+        if (className.EndsWith("Filter")) tags.Add("filter");
+        
+        // Check for async methods
+        var hasAsyncMethods = classDecl.Members.OfType<MethodDeclarationSyntax>()
+            .Any(m => m.Modifiers.Any(mod => mod.IsKind(SyntaxKind.AsyncKeyword)));
+        if (hasAsyncMethods) tags.Add("async");
+        
+        // Namespace-based tags
+        if (namespaceName.Contains(".Controllers")) tags.Add("api");
+        if (namespaceName.Contains(".Services")) tags.Add("business-logic");
+        if (namespaceName.Contains(".Data") || namespaceName.Contains(".Infrastructure")) tags.Add("data-access");
+        if (namespaceName.Contains(".Models") || namespaceName.Contains(".Entities")) tags.Add("model");
+        
+        return tags;
+    }
+    
+    /// <summary>
+    /// Extracts semantic tags from a method
+    /// </summary>
+    private static List<string> ExtractMethodTags(MethodDeclarationSyntax methodDecl)
+    {
+        var tags = new List<string>();
+        
+        // Modifiers
+        if (methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.PublicKeyword))) tags.Add("public");
+        if (methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) tags.Add("private");
+        if (methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.ProtectedKeyword))) tags.Add("protected");
+        if (methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword))) tags.Add("static");
+        if (methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword))) tags.Add("async");
+        if (methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.VirtualKeyword))) tags.Add("virtual");
+        if (methodDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.OverrideKeyword))) tags.Add("override");
+        
+        // Return type analysis
+        var returnType = methodDecl.ReturnType.ToString();
+        if (returnType.Contains("Task")) tags.Add("async-task");
+        if (returnType.Contains("IActionResult") || returnType.Contains("ActionResult")) tags.Add("api-endpoint");
+        if (returnType == "void" || returnType == "Task") tags.Add("void-return");
+        
+        // Method name patterns
+        var methodName = methodDecl.Identifier.Text;
+        if (methodName.StartsWith("Get")) tags.Add("query");
+        if (methodName.StartsWith("Create") || methodName.StartsWith("Add")) tags.Add("create");
+        if (methodName.StartsWith("Update") || methodName.StartsWith("Modify")) tags.Add("update");
+        if (methodName.StartsWith("Delete") || methodName.StartsWith("Remove")) tags.Add("delete");
+        if (methodName.StartsWith("Validate")) tags.Add("validation");
+        if (methodName.Contains("Async")) tags.Add("async-method");
+        
+        // Attribute detection
+        var attributes = methodDecl.AttributeLists.SelectMany(al => al.Attributes).Select(a => a.Name.ToString()).ToList();
+        if (attributes.Any(a => a.Contains("HttpGet"))) tags.Add("http-get");
+        if (attributes.Any(a => a.Contains("HttpPost"))) tags.Add("http-post");
+        if (attributes.Any(a => a.Contains("HttpPut"))) tags.Add("http-put");
+        if (attributes.Any(a => a.Contains("HttpDelete"))) tags.Add("http-delete");
+        if (attributes.Any(a => a.Contains("Authorize"))) tags.Add("secured");
+        if (attributes.Any(a => a.Contains("AllowAnonymous"))) tags.Add("anonymous");
+        
+        return tags;
+    }
+    
+    /// <summary>
+    /// Extracts dependencies from a class (constructor parameters, injected services)
+    /// </summary>
+    private static List<string> ExtractClassDependencies(ClassDeclarationSyntax classDecl)
+    {
+        var dependencies = new HashSet<string>();
+        
+        // Find constructor parameters
+        var constructors = classDecl.Members.OfType<ConstructorDeclarationSyntax>();
+        foreach (var ctor in constructors)
+        {
+            foreach (var param in ctor.ParameterList.Parameters)
+            {
+                var typeName = param.Type?.ToString();
+                if (!string.IsNullOrEmpty(typeName))
+                {
+                    dependencies.Add(typeName);
+                }
+            }
+        }
+        
+        // Find injected fields/properties
+        var fields = classDecl.Members.OfType<FieldDeclarationSyntax>();
+        foreach (var field in fields)
+        {
+            if (field.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword) || 
+                                         m.IsKind(SyntaxKind.ReadOnlyKeyword)))
+            {
+                var typeName = field.Declaration.Type.ToString();
+                if (typeName.StartsWith("I") && char.IsUpper(typeName.Length > 1 ? typeName[1] : ' '))
+                {
+                    dependencies.Add(typeName);
+                }
+            }
+        }
+        
+        return dependencies.ToList();
+    }
+    
+    /// <summary>
+    /// Extracts dependencies from a method (parameter types, return type)
+    /// </summary>
+    private static List<string> ExtractMethodDependencies(MethodDeclarationSyntax methodDecl)
+    {
+        var dependencies = new HashSet<string>();
+        
+        // Return type
+        var returnType = methodDecl.ReturnType.ToString();
+        if (!string.IsNullOrEmpty(returnType) && returnType != "void")
+        {
+            dependencies.Add(returnType);
+        }
+        
+        // Parameters
+        foreach (var param in methodDecl.ParameterList.Parameters)
+        {
+            var typeName = param.Type?.ToString();
+            if (!string.IsNullOrEmpty(typeName))
+            {
+                dependencies.Add(typeName);
+            }
+        }
+        
+        return dependencies.ToList();
+    }
+    
     #endregion
 }
 

@@ -66,15 +66,19 @@ public class VectorService : IVectorService
                 });
     }
 
+    /// <summary>
+    /// DEPRECATED: Do not use. Collections should only be created per-workspace.
+    /// Use InitializeCollectionsForContextAsync(context) instead.
+    /// </summary>
+    [Obsolete("Collections must be created per-workspace via register_workspace MCP tool")]
     public async Task InitializeCollectionsAsync(CancellationToken cancellationToken = default)
     {
-        // Initialize default collections (for backward compatibility)
-        await CreateCollectionIfNotExistsAsync(GetFilesCollection(null), cancellationToken);
-        await CreateCollectionIfNotExistsAsync(GetClassesCollection(null), cancellationToken);
-        await CreateCollectionIfNotExistsAsync(GetMethodsCollection(null), cancellationToken);
-        await CreateCollectionIfNotExistsAsync(GetPatternsCollection(null), cancellationToken);
-
-        _logger.LogInformation("Qdrant default collections initialized successfully");
+        // DEPRECATED: Collections are now workspace-specific only
+        // This method is kept for interface compatibility but does nothing
+        _logger.LogWarning("⚠️ InitializeCollectionsAsync called but collections are now workspace-specific only");
+        _logger.LogWarning("   Use register_workspace MCP tool to create per-workspace collections");
+        
+        await Task.CompletedTask;
     }
 
     /// <summary>
@@ -106,6 +110,16 @@ public class VectorService : IVectorService
 
     private async Task CreateCollectionIfNotExistsAsync(string collectionName, CancellationToken cancellationToken)
     {
+        // GUARD: Only create collections with a workspace context prefix
+        // Collection names should be like: workspacename_classes, workspacename_methods
+        // Reject: classes, methods, files, patterns (no workspace context)
+        if (!collectionName.Contains('_'))
+        {
+            _logger.LogWarning("⚠️ Skipping collection creation without workspace context: {Collection}", collectionName);
+            _logger.LogWarning("   Collections must be created per-workspace via register_workspace MCP tool");
+            return;
+        }
+        
         try
         {
             // Check if collection exists

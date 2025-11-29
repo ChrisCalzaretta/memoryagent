@@ -55,8 +55,15 @@ public class PatternIndexingService : IPatternIndexingService
     {
         try
         {
-            // Generate embedding for the pattern
-            var embeddingText = $"{pattern.Type}: {pattern.BestPractice}\n{pattern.Implementation}\n{pattern.Content}";
+            // Generate embedding for the pattern using smart embedding text
+            // Note: For patterns, we build custom embedding text with pattern-specific metadata
+            // This is similar to CodeMemory.GetEmbeddingText() but optimized for patterns
+            var embeddingText = $"[PATTERN] {pattern.Name}\n" +
+                               $"Type: {pattern.Type}\n" +
+                               $"Category: {pattern.Category}\n" +
+                               $"Best Practice: {pattern.BestPractice}\n" +
+                               $"Implementation: {pattern.Implementation}\n" +
+                               $"Code:\n{pattern.Content}";
             var embedding = await _embeddingService.GenerateEmbeddingAsync(embeddingText, cancellationToken);
 
             // Convert to CodeMemory for storage

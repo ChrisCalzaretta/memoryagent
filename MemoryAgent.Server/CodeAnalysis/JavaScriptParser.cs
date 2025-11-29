@@ -119,6 +119,12 @@ public class JavaScriptParser
             // Extract the class body
             var classBody = ExtractBlock(content, match.Index + match.Length - 1);
             
+            // Extract semantic metadata
+            var summary = ExtractJSDocSummary(content, match.Index);
+            var signature = match.Value.TrimEnd('{').Trim();
+            var tags = ExtractJSClassTags(className, classBody, baseClass != null);
+            var dependencies = ExtractJSDependencies(classBody, content, className);
+            
             var classNode = new CodeMemory
             {
                 Type = CodeMemoryType.Class,
@@ -127,6 +133,14 @@ public class JavaScriptParser
                 FilePath = filePath,
                 Context = context ?? "default",
                 LineNumber = lineNumber,
+                
+                // Smart embedding fields
+                Summary = summary,
+                Signature = signature,
+                Purpose = summary,
+                Tags = tags,
+                Dependencies = dependencies,
+                
                 Metadata = new Dictionary<string, object>
                 {
                     ["chunk_type"] = "class",
@@ -208,6 +222,12 @@ public class JavaScriptParser
             var methodName = match.Groups[1].Value;
             var parameters = match.Groups[2].Value;
             
+            // Extract semantic metadata
+            var summary = string.Empty; // JSDoc for methods would need more complex extraction
+            var signature = match.Value.TrimEnd('{').Trim();
+            var tags = ExtractJSMethodTags(match.Value, className);
+            var dependencies = new List<string> { className }; // At minimum depends on its class
+            
             var methodNode = new CodeMemory
             {
                 Type = CodeMemoryType.Method,
@@ -216,6 +236,14 @@ public class JavaScriptParser
                 FilePath = filePath,
                 Context = context ?? "default",
                 LineNumber = classLineNumber,
+                
+                // Smart embedding fields
+                Summary = summary,
+                Signature = signature,
+                Purpose = summary,
+                Tags = tags,
+                Dependencies = dependencies,
+                
                 Metadata = new Dictionary<string, object>
                 {
                     ["chunk_type"] = "method",
@@ -372,6 +400,134 @@ public class JavaScriptParser
     private static int GetLineNumber(string content, int index)
     {
         return content.Substring(0, Math.Min(index, content.Length)).Count(c => c == '\n') + 1;
+    }
+    
+    /// <summary>
+    /// Extracts JSDoc comment summary that appears before a code element
+    /// </summary>
+    private static string ExtractJSDocSummary(string content, int elementIndex)
+    {
+        if (elementIndex < 2) return string.Empty;
+        
+        // Look backward for JSDoc comment /** ... */
+        var searchStart = Math.Max(0, elementIndex - 500); // Look back up to 500 chars
+        var beforeElement = content.Substring(searchStart, elementIndex - searchStart);
+        
+        // Match /** ... */ or //... comments
+        var jsDocPattern = @"/\*\*[\s\S]*?\*/\s*$";
+        var match = Regex.Match(beforeElement, jsDocPattern);
+        
+        if (!match.Success)
+            return string.Empty;
+        
+        var jsDoc = match.Value;
+        
+        // Extract @description or first line
+        var descMatch = Regex.Match(jsDoc, @"@description\s+(.+?)(?=\n\s*\*\s*@|\n\s*\*/)", RegexOptions.Singleline);
+        if (descMatch.Success)
+        {
+            return CleanComment(descMatch.Groups[1].Value);
+        }
+        
+        // Extract first meaningful line
+        var lines = jsDoc.Split('\n')
+            .Select(l => l.Trim().TrimStart('*', '/', ' ').Trim())
+            .Where(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith("@"))
+            .ToList();
+        
+        return lines.Any() ? CleanComment(string.Join(" ", lines)) : string.Empty;
+    }
+    
+    /// <summary>
+    /// Cleans comment text by removing stars, slashes, and extra whitespace
+    /// </summary>
+    private static string CleanComment(string comment)
+    {
+        return Regex.Replace(comment, @"\s+", " ").Trim();
+    }
+    
+    /// <summary>
+    /// Extracts semantic tags from JavaScript/TypeScript class
+    /// </summary>
+    private static List<string> ExtractJSClassTags(string className, string classBody, bool hasBaseClass)
+    {
+        var tags = new List<string> { "javascript" };
+        
+        if (hasBaseClass) tags.Add("extends");
+        
+        // Check for common patterns
+        if (className.EndsWith("Controller")) tags.Add("controller");
+        if (className.EndsWith("Service")) tags.Add("service");
+        if (className.EndsWith("Repository")) tags.Add("repository");
+        if (className.EndsWith("Component")) tags.Add("component");
+        if (className.EndsWith("Handler")) tags.Add("handler");
+        
+        // Check for async methods
+        if (classBody.Contains("async ")) tags.Add("async");
+        
+        // Check for constructor
+        if (classBody.Contains("constructor(")) tags.Add("stateful");
+        
+        return tags;
+    }
+    
+    /// <summary>
+    /// Extracts semantic tags from JavaScript/TypeScript method
+    /// </summary>
+    private static List<string> ExtractJSMethodTags(string methodSignature, string className)
+    {
+        var tags = new List<string> { "javascript", "method" };
+        
+        if (methodSignature.Contains("async ")) tags.Add("async");
+        if (methodSignature.Contains("static ")) tags.Add("static");
+        if (methodSignature.StartsWith("get ")) tags.Add("getter");
+        if (methodSignature.StartsWith("set ")) tags.Add("setter");
+        
+        return tags;
+    }
+    
+    /// <summary>
+    /// Extracts dependencies from class body (imports, constructor params)
+    /// </summary>
+    private static List<string> ExtractJSDependencies(string classBody, string fullContent, string className)
+    {
+        var dependencies = new HashSet<string>();
+        
+        // Extract from constructor parameters
+        var ctorPattern = @"constructor\s*\(\s*([^)]*)\s*\)";
+        var ctorMatch = Regex.Match(classBody, ctorPattern);
+        if (ctorMatch.Success)
+        {
+            var parameters = ctorMatch.Groups[1].Value.Split(',');
+            foreach (var param in parameters)
+            {
+                var trimmed = param.Trim();
+                if (!string.IsNullOrEmpty(trimmed))
+                {
+                    // Extract type annotation if present (TypeScript)
+                    var typeMatch = Regex.Match(trimmed, @":\s*(\w+)");
+                    if (typeMatch.Success)
+                    {
+                        dependencies.Add(typeMatch.Groups[1].Value);
+                    }
+                }
+            }
+        }
+        
+        // Extract imports related to this class (from nearby imports)
+        var importPattern = @"import\s+(?:{[^}]+}|[\w\s,]+)\s+from\s+['""]([^'""]+)['""]";
+        var imports = Regex.Matches(fullContent, importPattern);
+        foreach (Match import in imports.Take(20)) // Limit to first 20 imports
+        {
+            var importPath = import.Groups[1].Value;
+            var importName = Path.GetFileNameWithoutExtension(importPath);
+            if (!string.IsNullOrEmpty(importName))
+            {
+                dependencies.Add(importName);
+            }
+        }
+        
+        return dependencies.Take(10).ToList(); // Limit to 10 most relevant
     }
 }
 

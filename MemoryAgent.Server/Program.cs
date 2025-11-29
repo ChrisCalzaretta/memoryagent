@@ -127,7 +127,9 @@ using (var scope = app.Services.CreateScope())
         }
 
         // Initialize
-        await vectorService.InitializeCollectionsAsync();
+        // NOTE: Collections are ONLY created per-workspace via register_workspace MCP tool
+        // Do NOT create default collections without a workspace context
+        // await vectorService.InitializeCollectionsAsync(); // DISABLED - workspace-specific only
         await graphService.InitializeDatabaseAsync();
 
         // Pre-warm Ollama model (load into memory on startup)
