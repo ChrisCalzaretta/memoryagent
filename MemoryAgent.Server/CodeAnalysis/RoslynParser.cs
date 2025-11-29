@@ -169,6 +169,12 @@ public class RoslynParser : ICodeParser
                 var pluginPatterns = await pluginDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
                 allDetectedPatterns.AddRange(pluginPatterns);
                 
+                // STATE MANAGEMENT PATTERN DETECTION: Detect Blazor & ASP.NET Core state management patterns (server-side, client-side, component, persistence, security)
+                // TODO: StateManagementPatternDetector needs to be recreated
+                // var stateDetector = new StateManagementPatternDetector();
+                // var statePatterns = stateDetector.DetectAllPatterns(root);
+                // allDetectedPatterns.AddRange(statePatterns);
+                
                 if (allDetectedPatterns.Any())
                 {
                     _logger.LogDebug("Detected {Count} patterns in {FilePath} ({Enhanced} enhanced, {Agent} agent, {AGUI} AG-UI)", 

@@ -31,5 +31,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Exclude TestData .cs files from compilation - they are test data, not code -->
+    <Compile Remove="TestData\**\*.cs" />
+  </ItemGroup>
+
 </Project>
 

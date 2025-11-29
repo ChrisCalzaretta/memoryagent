@@ -19,6 +19,7 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
     private const string AzureMonitoringUrl = "https://learn.microsoft.com/en-us/azure/architecture/best-practices/monitoring";
     private const string AzureAutoScaleUrl = "https://learn.microsoft.com/en-us/azure/architecture/best-practices/auto-scaling";
     private const string AzureBackgroundJobsUrl = "https://learn.microsoft.com/en-us/azure/architecture/best-practices/background-jobs";
+    private const string AzurePubSubUrl = "https://learn.microsoft.com/en-us/azure/architecture/patterns/publisher-subscriber";
 
     public string GetLanguage() => "C#";
 
@@ -78,6 +79,66 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
             // CONFIGURATION PATTERNS (2 patterns)
             patterns.AddRange(DetectOptionsPattern(root, filePath, context, sourceCode));
             patterns.AddRange(DetectNamedOptionsPattern(root, filePath, context, sourceCode));
+            
+            // PUBLISHER-SUBSCRIBER PATTERNS (6 patterns)
+            patterns.AddRange(DetectServiceBusTopicPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectEventGridPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectEventHubsPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectMassTransitPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectNServiceBusPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectGenericPubSubPattern(root, filePath, context, sourceCode));
+            
+            // ============================================
+            // AZURE ARCHITECTURE PATTERNS (36 NEW PATTERNS)
+            // ============================================
+            
+            // DATA MANAGEMENT PATTERNS (6 patterns)
+            patterns.AddRange(DetectCQRSPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectEventSourcingPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectIndexTablePattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectMaterializedViewPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectStaticContentHostingPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectValetKeyPattern(root, filePath, context, sourceCode));
+            
+            // DESIGN & IMPLEMENTATION PATTERNS (8 patterns)
+            patterns.AddRange(DetectAmbassadorPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectAntiCorruptionLayerPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectBackendsForFrontendsPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectComputeResourceConsolidationPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectExternalConfigurationStorePattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectGatewayAggregationPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectGatewayOffloadingPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectGatewayRoutingPattern(root, filePath, context, sourceCode));
+            
+            // MESSAGING PATTERNS (10 patterns)
+            patterns.AddRange(DetectAsyncRequestReplyPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectClaimCheckPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectChoreographyPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectCompetingConsumersPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectPipesAndFiltersPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectPriorityQueuePattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectQueueBasedLoadLevelingPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectSchedulerAgentSupervisorPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectSequentialConvoyPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectMessagingBridgePattern(root, filePath, context, sourceCode));
+            
+            // RELIABILITY & RESILIENCY PATTERNS (7 patterns)
+            patterns.AddRange(DetectBulkheadPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectCircuitBreakerPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectCompensatingTransactionPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectLeaderElectionPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectGeodePattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectDeploymentStampsPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectThrottlingPattern(root, filePath, context, sourceCode));
+            
+            // SECURITY PATTERNS (2 patterns)
+            patterns.AddRange(DetectFederatedIdentityPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectQuarantinePattern(root, filePath, context, sourceCode));
+            
+            // OPERATIONAL PATTERNS (3 patterns)
+            patterns.AddRange(DetectSidecarPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectStranglerFigPattern(root, filePath, context, sourceCode));
+            patterns.AddRange(DetectSagaPattern(root, filePath, context, sourceCode));
             
             // Plus all existing patterns from base detector...
         }
@@ -181,16 +242,20 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
     {
         var patterns = new List<CodePattern>();
 
-        // Pattern: cache.Set + background queue
-        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        // Pattern: cache.Set + background queue (write-behind = cache first, persist async later)
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
         
-        foreach (var inv in invocations)
+        foreach (var method in methods)
         {
-            var invText = inv.ToString();
+            var methodBody = method.Body?.ToString() ?? method.ExpressionBody?.ToString() ?? "";
             
-            // Look for queue enqueue after cache operations
-            if ((invText.Contains("Enqueue") || invText.Contains("QueueBackgroundWorkItem")) &&
-                inv.Parent?.ToString().Contains("cache") == true)
+            // Look for cache write followed by queue/background job
+            var hasCacheWrite = methodBody.Contains("cache.Set") || methodBody.Contains("Cache.Set") || 
+                                methodBody.Contains("_cache.Set") || methodBody.Contains(".SetAsync");
+            var hasQueueWrite = methodBody.Contains("Enqueue") || methodBody.Contains("QueueBackgroundWorkItem") || 
+                                methodBody.Contains("_queue") || methodBody.Contains("BackgroundJob");
+            
+            if (hasCacheWrite && hasQueueWrite)
             {
                 var pattern = CreatePattern(
                     name: "WriteBehind_Pattern",
@@ -198,7 +263,7 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
                     category: PatternCategory.Performance,
                     implementation: "Write-Behind",
                     filePath: filePath,
-                    node: inv,
+                    node: method,
                     sourceCode: sourceCode,
                     bestPractice: "Write-Behind pattern (async database update via queue)",
                     azureUrl: AzureCachingUrl,
@@ -450,14 +515,25 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
             }
         }
 
-        // Also detect pagination parameters in methods
-        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
-        foreach (var method in methods)
+        // Also detect pagination parameters in methods (including methods without class wrappers)
+        // For test code without class wrappers, look in CompilationUnit.Members
+        var allMethods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        if (root is CompilationUnitSyntax compilationUnit)
+        {
+            var topLevelMethods = compilationUnit.Members.OfType<MethodDeclarationSyntax>();
+            allMethods = allMethods.Concat(topLevelMethods);
+        }
+            
+        foreach (var method in allMethods)
         {
             var parameters = method.ParameterList.Parameters;
             var paramNames = parameters.Select(p => p.Identifier.Text.ToLower()).ToList();
             
-            if (paramNames.Any(n => n.Contains("page")) && paramNames.Any(n => n.Contains("size")))
+            // Check for pagination parameters: pageNumber/pageIndex AND pageSize/limit/take
+            var hasPageParam = paramNames.Any(n => n.Contains("page") || n.Contains("skip") || n.Contains("offset"));
+            var hasSizeParam = paramNames.Any(n => n.Contains("size") || n.Contains("limit") || n.Contains("take") || n.Contains("count"));
+            
+            if (hasPageParam && hasSizeParam)
             {
                 var pattern = CreatePattern(
                     name: $"{method.Identifier.Text}_PaginationParams",
@@ -762,16 +838,28 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
         var patterns = new List<CodePattern>();
 
         // Pattern: [FromQuery] filter, sort, fields parameters
+        // Check both nested methods AND top-level methods (for test code without class wrappers)
         var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        if (root is CompilationUnitSyntax compilationUnit)
+        {
+            var topLevelMethods = compilationUnit.Members.OfType<MethodDeclarationSyntax>();
+            methods = methods.Concat(topLevelMethods);
+        }
         
         foreach (var method in methods)
         {
             var parameters = method.ParameterList.Parameters;
-            var hasFilter = parameters.Any(p => p.Identifier.Text.ToLower() is "filter" or "search" or "query");
-            var hasSort = parameters.Any(p => p.Identifier.Text.ToLower() is "sort" or "orderby" or "sortby");
-            var hasFields = parameters.Any(p => p.Identifier.Text.ToLower() is "fields" or "select");
+            var paramNamesLower = parameters.Select(p => p.Identifier.Text.ToLower()).ToList();
             
-            if (hasFilter || hasSort || hasFields)
+            var hasFilter = paramNamesLower.Any(n => n is "filter" or "search" or "query" || n.Contains("filter"));
+            var hasSort = paramNamesLower.Any(n => n is "sort" or "orderby" or "sortby" || n.Contains("sort"));
+            var hasFields = paramNamesLower.Any(n => n is "fields" or "select" || n.Contains("field"));
+            
+            // Also check for [FromQuery] attributes as a signal
+            var hasFromQuery = parameters.Any(p => p.AttributeLists.SelectMany(al => al.Attributes)
+                .Any(attr => attr.Name.ToString().Contains("FromQuery")));
+            
+            if ((hasFilter || hasSort || hasFields) && (hasFromQuery || parameters.Count >= 2))
             {
                 var features = new List<string>();
                 if (hasFilter) features.Add("filtering");
@@ -971,7 +1059,13 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
         var patterns = new List<CodePattern>();
 
         // Pattern: Method accepting List<T> or IEnumerable<T> for batch operations
+        // Check both nested methods AND top-level methods
         var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        if (root is CompilationUnitSyntax compilationUnit)
+        {
+            var topLevelMethods = compilationUnit.Members.OfType<MethodDeclarationSyntax>();
+            methods = methods.Concat(topLevelMethods);
+        }
         
         foreach (var method in methods)
         {
@@ -1427,6 +1521,537 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
 
     #endregion
 
+    #region PUBLISHER-SUBSCRIBER PATTERNS (Azure Messaging)
+
+    private List<CodePattern> DetectServiceBusTopicPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern 1: TopicClient / ServiceBusSender for topics
+        var objectCreations = root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>();
+        
+        foreach (var obj in objectCreations)
+        {
+            var typeName = obj.Type.ToString();
+            if (typeName.Contains("TopicClient") || typeName.Contains("ServiceBusSender"))
+            {
+                var pattern = CreatePattern(
+                    name: "ServiceBus_TopicPublisher",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: "AzureServiceBusTopics",
+                    filePath: filePath,
+                    node: obj,
+                    sourceCode: sourceCode,
+                    bestPractice: "Publisher-Subscriber pattern using Azure Service Bus Topics",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "Azure Service Bus";
+                pattern.Metadata["pattern_type"] = "pub-sub";
+                pattern.Metadata["role"] = "publisher";
+                pattern.Metadata["supports_filtering"] = true;
+                pattern.Metadata["supports_sessions"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 2: SubscriptionClient / ServiceBusProcessor for subscriptions
+        foreach (var obj in objectCreations)
+        {
+            var typeName = obj.Type.ToString();
+            if (typeName.Contains("SubscriptionClient") || typeName.Contains("ServiceBusProcessor"))
+            {
+                var pattern = CreatePattern(
+                    name: "ServiceBus_TopicSubscriber",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: "AzureServiceBusSubscriptions",
+                    filePath: filePath,
+                    node: obj,
+                    sourceCode: sourceCode,
+                    bestPractice: "Subscriber pattern using Azure Service Bus Subscriptions",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "Azure Service Bus";
+                pattern.Metadata["pattern_type"] = "pub-sub";
+                pattern.Metadata["role"] = "subscriber";
+                pattern.Metadata["supports_content_filtering"] = true;
+                pattern.Metadata["supports_sql_filters"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 3: Topic/Subscription configuration
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            if (invText.Contains("CreateTopicAsync") || invText.Contains("CreateSubscriptionAsync"))
+            {
+                var isTopicCreation = invText.Contains("CreateTopicAsync");
+                var pattern = CreatePattern(
+                    name: isTopicCreation ? "ServiceBus_TopicCreation" : "ServiceBus_SubscriptionCreation",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Operational,
+                    implementation: "ServiceBusManagement",
+                    filePath: filePath,
+                    node: inv,
+                    sourceCode: sourceCode,
+                    bestPractice: $"Azure Service Bus {(isTopicCreation ? "Topic" : "Subscription")} provisioning",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["infrastructure_as_code"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectEventGridPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern 1: EventGridPublisherClient
+        var objectCreations = root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>();
+        
+        foreach (var obj in objectCreations)
+        {
+            var typeName = obj.Type.ToString();
+            if (typeName.Contains("EventGridPublisherClient") || typeName.Contains("EventGridClient"))
+            {
+                var pattern = CreatePattern(
+                    name: "EventGrid_Publisher",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "AzureEventGrid",
+                    filePath: filePath,
+                    node: obj,
+                    sourceCode: sourceCode,
+                    bestPractice: "Event-driven architecture using Azure Event Grid",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "Azure Event Grid";
+                pattern.Metadata["pattern_type"] = "event-driven";
+                pattern.Metadata["role"] = "publisher";
+                pattern.Metadata["supports_filtering"] = true;
+                pattern.Metadata["use_case"] = "event-routing";
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 2: Event Grid trigger in Azure Functions
+        var parameters = root.DescendantNodes().OfType<ParameterSyntax>();
+        foreach (var param in parameters)
+        {
+            var attrs = param.AttributeLists.SelectMany(al => al.Attributes);
+            if (attrs.Any(a => a.Name.ToString().Contains("EventGridTrigger")))
+            {
+                var pattern = CreatePattern(
+                    name: "EventGrid_Subscriber",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "EventGridTrigger",
+                    filePath: filePath,
+                    node: param,
+                    sourceCode: sourceCode,
+                    bestPractice: "Event Grid subscriber using Azure Functions trigger",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "Azure Event Grid";
+                pattern.Metadata["pattern_type"] = "event-driven";
+                pattern.Metadata["role"] = "subscriber";
+                pattern.Metadata["serverless"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 3: EventGridEvent handling
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        foreach (var method in methods)
+        {
+            var hasEventGridParam = method.ParameterList.Parameters.Any(p => 
+                p.Type?.ToString().Contains("EventGridEvent") == true);
+            
+            if (hasEventGridParam)
+            {
+                var pattern = CreatePattern(
+                    name: $"{method.Identifier.Text}_EventGridHandler",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "EventGridEventHandler",
+                    filePath: filePath,
+                    node: method,
+                    sourceCode: sourceCode,
+                    bestPractice: "Event Grid event handler method",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["event_schema"] = "EventGridEvent";
+                pattern.Confidence = 0.9f;
+                patterns.Add(pattern);
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectEventHubsPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern 1: EventHubProducerClient
+        var objectCreations = root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>();
+        
+        foreach (var obj in objectCreations)
+        {
+            var typeName = obj.Type.ToString();
+            if (typeName.Contains("EventHubProducerClient") || typeName.Contains("EventHubClient"))
+            {
+                var pattern = CreatePattern(
+                    name: "EventHubs_Producer",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "AzureEventHubs",
+                    filePath: filePath,
+                    node: obj,
+                    sourceCode: sourceCode,
+                    bestPractice: "High-throughput event streaming using Azure Event Hubs",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "Azure Event Hubs";
+                pattern.Metadata["pattern_type"] = "event-streaming";
+                pattern.Metadata["role"] = "producer";
+                pattern.Metadata["high_throughput"] = true;
+                pattern.Metadata["use_case"] = "telemetry-ingestion";
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 2: EventProcessorClient / EventHubConsumerClient
+        foreach (var obj in objectCreations)
+        {
+            var typeName = obj.Type.ToString();
+            if (typeName.Contains("EventProcessorClient") || typeName.Contains("EventHubConsumerClient"))
+            {
+                var pattern = CreatePattern(
+                    name: "EventHubs_Consumer",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "EventHubsProcessor",
+                    filePath: filePath,
+                    node: obj,
+                    sourceCode: sourceCode,
+                    bestPractice: "Event Hubs consumer for processing event streams",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "Azure Event Hubs";
+                pattern.Metadata["pattern_type"] = "event-streaming";
+                pattern.Metadata["role"] = "consumer";
+                pattern.Metadata["supports_checkpointing"] = true;
+                pattern.Metadata["consumer_groups"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 3: Event Hubs trigger in Azure Functions
+        var parameters = root.DescendantNodes().OfType<ParameterSyntax>();
+        foreach (var param in parameters)
+        {
+            var attrs = param.AttributeLists.SelectMany(al => al.Attributes);
+            if (attrs.Any(a => a.Name.ToString().Contains("EventHubTrigger")))
+            {
+                var pattern = CreatePattern(
+                    name: "EventHubs_Trigger",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "EventHubsTrigger",
+                    filePath: filePath,
+                    node: param,
+                    sourceCode: sourceCode,
+                    bestPractice: "Event Hubs trigger for serverless event processing",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["serverless"] = true;
+                pattern.Metadata["auto_scaling"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectMassTransitPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern 1: IBus.Publish<T>
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            if (invText.Contains("IBus") && invText.Contains(".Publish"))
+            {
+                var pattern = CreatePattern(
+                    name: "MassTransit_Publisher",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: "MassTransit",
+                    filePath: filePath,
+                    node: inv,
+                    sourceCode: sourceCode,
+                    bestPractice: "Publisher-Subscriber using MassTransit messaging library",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "MassTransit";
+                pattern.Metadata["pattern_type"] = "pub-sub";
+                pattern.Metadata["role"] = "publisher";
+                pattern.Metadata["supports_sagas"] = true;
+                pattern.Metadata["library"] = "MassTransit";
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 2: IConsumer<T> implementation
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            if (classDecl.BaseList?.Types.Any(t => t.ToString().Contains("IConsumer<")) == true)
+            {
+                var pattern = CreatePattern(
+                    name: $"{classDecl.Identifier.Text}_Consumer",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: "MassTransitConsumer",
+                    filePath: filePath,
+                    node: classDecl,
+                    sourceCode: sourceCode,
+                    bestPractice: "MassTransit consumer implementation for message handling",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "MassTransit";
+                pattern.Metadata["pattern_type"] = "pub-sub";
+                pattern.Metadata["role"] = "consumer";
+                pattern.Metadata["typed_consumer"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 3: MassTransit configuration
+        foreach (var inv in invocations)
+        {
+            if (inv.ToString().Contains("AddMassTransit"))
+            {
+                var pattern = CreatePattern(
+                    name: "MassTransit_Configuration",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Operational,
+                    implementation: "MassTransitSetup",
+                    filePath: filePath,
+                    node: inv,
+                    sourceCode: sourceCode,
+                    bestPractice: "MassTransit service bus configuration",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["dependency_injection"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectNServiceBusPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern 1: IEndpointInstance.Publish<T>
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            if (invText.Contains("IEndpointInstance") || invText.Contains("IMessageSession"))
+            {
+                if (invText.Contains(".Publish"))
+                {
+                    var pattern = CreatePattern(
+                        name: "NServiceBus_Publisher",
+                        type: PatternType.PublisherSubscriber,
+                        category: PatternCategory.Reliability,
+                        implementation: "NServiceBus",
+                        filePath: filePath,
+                        node: inv,
+                        sourceCode: sourceCode,
+                        bestPractice: "Event publishing using NServiceBus",
+                        azureUrl: AzurePubSubUrl,
+                        context: context
+                    );
+                    
+                    pattern.Metadata["messaging_technology"] = "NServiceBus";
+                    pattern.Metadata["pattern_type"] = "pub-sub";
+                    pattern.Metadata["role"] = "publisher";
+                    pattern.Metadata["enterprise_service_bus"] = true;
+                    pattern.Metadata["library"] = "NServiceBus";
+                    patterns.Add(pattern);
+                }
+            }
+        }
+
+        // Pattern 2: IHandleMessages<T> implementation
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            if (classDecl.BaseList?.Types.Any(t => t.ToString().Contains("IHandleMessages<")) == true)
+            {
+                var pattern = CreatePattern(
+                    name: $"{classDecl.Identifier.Text}_EventHandler",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: "NServiceBusHandler",
+                    filePath: filePath,
+                    node: classDecl,
+                    sourceCode: sourceCode,
+                    bestPractice: "NServiceBus message handler for subscriber pattern",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "NServiceBus";
+                pattern.Metadata["pattern_type"] = "pub-sub";
+                pattern.Metadata["role"] = "subscriber";
+                pattern.Metadata["typed_handler"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectGenericPubSubPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern 1: Generic event aggregator / mediator pattern
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            
+            // Look for common pub-sub method names
+            if ((invText.Contains(".Publish") || invText.Contains(".Subscribe") || 
+                 invText.Contains(".Emit") || invText.Contains(".On(")) &&
+                (invText.Contains("Event") || invText.Contains("Message") || invText.Contains("Notification")))
+            {
+                var isPublisher = invText.Contains(".Publish") || invText.Contains(".Emit");
+                var isSubscriber = invText.Contains(".Subscribe") || invText.Contains(".On(");
+                
+                if (isPublisher || isSubscriber)
+                {
+                    var pattern = CreatePattern(
+                        name: isPublisher ? "Generic_EventPublisher" : "Generic_EventSubscriber",
+                        type: PatternType.PublisherSubscriber,
+                        category: PatternCategory.General,
+                        implementation: "EventAggregator",
+                        filePath: filePath,
+                        node: inv,
+                        sourceCode: sourceCode,
+                        bestPractice: $"Generic {(isPublisher ? "publisher" : "subscriber")} pattern for loose coupling",
+                        azureUrl: AzurePubSubUrl,
+                        context: context
+                    );
+                    
+                    pattern.Metadata["pattern_type"] = "pub-sub";
+                    pattern.Metadata["role"] = isPublisher ? "publisher" : "subscriber";
+                    pattern.Metadata["in_process"] = true;
+                    pattern.Confidence = 0.7f;  // Lower confidence since it's generic
+                    patterns.Add(pattern);
+                }
+            }
+        }
+
+        // Pattern 2: Observable pattern (IObservable/IObserver)
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var baseTypes = classDecl.BaseList?.Types.Select(t => t.ToString()).ToList() ?? new List<string>();
+            
+            if (baseTypes.Any(t => t.Contains("IObservable<")))
+            {
+                var pattern = CreatePattern(
+                    name: $"{classDecl.Identifier.Text}_Observable",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.General,
+                    implementation: "ReactiveX",
+                    filePath: filePath,
+                    node: classDecl,
+                    sourceCode: sourceCode,
+                    bestPractice: "Observable pattern (Reactive Extensions) for event streaming",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["pattern_type"] = "observable";
+                pattern.Metadata["reactive_extensions"] = true;
+                pattern.Metadata["role"] = "publisher";
+                patterns.Add(pattern);
+            }
+            
+            if (baseTypes.Any(t => t.Contains("IObserver<")))
+            {
+                var pattern = CreatePattern(
+                    name: $"{classDecl.Identifier.Text}_Observer",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.General,
+                    implementation: "ReactiveX",
+                    filePath: filePath,
+                    node: classDecl,
+                    sourceCode: sourceCode,
+                    bestPractice: "Observer pattern (Reactive Extensions) for event subscription",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["pattern_type"] = "observable";
+                pattern.Metadata["reactive_extensions"] = true;
+                pattern.Metadata["role"] = "subscriber";
+                patterns.Add(pattern);
+            }
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private CodePattern CreatePattern(
@@ -1463,6 +2088,44 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
         };
     }
 
+    // Overload for cases where we have explicit line numbers and content
+    private CodePattern CreatePattern(
+        string name,
+        PatternType type,
+        PatternCategory category,
+        string implementation,
+        string filePath,
+        int lineNumber,
+        int endLineNumber,
+        string content,
+        string bestPractice,
+        string azureUrl,
+        string? context)
+    {
+        return new CodePattern
+        {
+            Name = name,
+            Type = type,
+            Category = category,
+            Implementation = implementation,
+            Language = "C#",
+            FilePath = filePath,
+            LineNumber = lineNumber,
+            EndLineNumber = endLineNumber,
+            Content = content,
+            BestPractice = bestPractice,
+            AzureBestPracticeUrl = azureUrl,
+            Context = context ?? "default"
+        };
+    }
+
+    // Helper method to get line number from position
+    private int GetLineNumber(string sourceCode, int position)
+    {
+        var lines = sourceCode.Substring(0, Math.Min(position, sourceCode.Length)).Split('\n');
+        return lines.Length;
+    }
+
     private string GetCodeContext(SyntaxNode node, string sourceCode, int startLine, int endLine)
     {
         var lines = sourceCode.Split('\n');
@@ -1470,6 +2133,1267 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
         var contextEnd = Math.Min(lines.Length - 1, endLine + 4);
         var contextLines = lines.Skip(contextStart).Take(contextEnd - contextStart + 1);
         return string.Join("\n", contextLines).Trim();
+    }
+
+    #endregion
+
+    #region AZURE ARCHITECTURE PATTERNS - DATA MANAGEMENT (6 patterns)
+
+    private List<CodePattern> DetectCQRSPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern 1: Separate Command and Query interfaces/classes
+        var interfaces = root.DescendantNodes().OfType<InterfaceDeclarationSyntax>();
+        var hasCommandInterface = interfaces.Any(i => i.Identifier.Text.Contains("Command") || i.Identifier.Text.Contains("Write"));
+        var hasQueryInterface = interfaces.Any(i => i.Identifier.Text.Contains("Query") || i.Identifier.Text.Contains("Read"));
+
+        if (hasCommandInterface && hasQueryInterface)
+        {
+                patterns.Add(new CodePattern
+                {
+                    Name = "CQRS_InterfaceSeparation",
+                    Type = PatternType.CQRS,
+                    Category = PatternCategory.DataManagement,
+                    Implementation = "Command/Query Interface Segregation",
+                    FilePath = filePath,
+                    LineNumber = 1,
+                    EndLineNumber = 1,
+                    Content = "Separate Command and Query interfaces detected",
+                    BestPractice = "CQRS pattern: Segregate operations that read data from operations that update data using separate interfaces",
+                    AzureBestPracticeUrl = "https://learn.microsoft.com/en-us/azure/architecture/patterns/cqrs",
+                    Context = context ?? "default",
+                    Language = "C#"
+                });
+        }
+
+        // Pattern 2: MediatR Command/Query handlers
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        foreach (var classDecl in classes)
+        {
+            var baseTypes = classDecl.BaseList?.Types.Select(t => t.ToString()) ?? Enumerable.Empty<string>();
+            if (baseTypes.Any(bt => bt.Contains("IRequestHandler") || bt.Contains("ICommandHandler") || bt.Contains("IQueryHandler")))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"CQRS_{classDecl.Identifier.Text}",
+                    type: PatternType.CQRS,
+                    category: PatternCategory.DataManagement,
+                    implementation: "MediatR CQRS Handler",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "CQRS implementation using MediatR request handlers",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/cqrs",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectEventSourcingPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Event store, aggregate root, domain events
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            var classText = classDecl.ToString();
+            
+            // Check for event sourcing indicators
+            var hasEventStore = className.Contains("EventStore") || classText.Contains("IEventStore");
+            var hasAggregate = className.Contains("Aggregate") && (classText.Contains("UncommittedEvents") || classText.Contains("ApplyEvent"));
+            var hasDomainEvent = className.EndsWith("Event") && classDecl.BaseList?.Types.Any(t => t.ToString().Contains("DomainEvent") || t.ToString().Contains("IEvent")) == true;
+            
+            if (hasEventStore || hasAggregate || hasDomainEvent)
+            {
+                patterns.Add(CreatePattern(
+                    name: $"EventSourcing_{className}",
+                    type: PatternType.EventSourcing,
+                    category: PatternCategory.DataManagement,
+                    implementation: hasEventStore ? "Event Store" : hasAggregate ? "Aggregate Root" : "Domain Event",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Event Sourcing: Use an append-only store to record the full series of events that describe actions taken on data",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectIndexTablePattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Secondary index tables, lookup tables
+        var properties = root.DescendantNodes().OfType<PropertyDeclarationSyntax>();
+        
+        foreach (var prop in properties)
+        {
+            var propType = prop.Type.ToString();
+            var propName = prop.Identifier.Text;
+            
+            // Check for index/lookup patterns
+            if ((propName.Contains("Index") || propName.Contains("Lookup") || propName.EndsWith("ById") || propName.EndsWith("ByKey")) &&
+                (propType.Contains("Dictionary") || propType.Contains("HashSet") || propType.Contains("Index")))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"IndexTable_{propName}",
+                    type: PatternType.IndexTable,
+                    category: PatternCategory.DataManagement,
+                    implementation: propType,
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, prop.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, prop.Span.End),
+                    content: prop.ToString(),
+                    bestPractice: "Index Table: Create indexes over fields in data stores that queries frequently reference",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/index-table",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectMaterializedViewPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Precomputed views, denormalized data, read models
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            // Check for materialized view indicators
+            if (className.Contains("View") || className.Contains("ReadModel") || className.Contains("Projection") || className.Contains("Denormalized"))
+            {
+                var properties = classDecl.DescendantNodes().OfType<PropertyDeclarationSyntax>();
+                if (properties.Count() > 5) // Complex view with multiple properties
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"MaterializedView_{className}",
+                        type: PatternType.MaterializedView,
+                        category: PatternCategory.DataManagement,
+                        implementation: "Denormalized Read Model",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                        content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                        bestPractice: "Materialized View: Generate prepopulated views over data when data isn't ideally formatted for queries",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/materialized-view",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectStaticContentHostingPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Azure Blob Storage for static content, CDN usage
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            
+            if (invText.Contains("BlobClient") || invText.Contains("CloudBlob") || 
+                invText.Contains("StaticFiles") && sourceCode.Contains("app.UseStaticFiles"))
+            {
+                patterns.Add(CreatePattern(
+                    name: "StaticContentHosting_BlobStorage",
+                    type: PatternType.StaticContentHosting,
+                    category: PatternCategory.DataManagement,
+                    implementation: invText.Contains("Blob") ? "Azure Blob Storage" : "Static Files Middleware",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, inv.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, inv.Span.End),
+                    content: inv.ToString(),
+                    bestPractice: "Static Content Hosting: Deploy static content to cloud-based storage for direct client delivery",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/static-content-hosting",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectValetKeyPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: SAS tokens, temporary access tokens
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            
+            if (invText.Contains("GetSasUri") || invText.Contains("GenerateSasToken") || 
+                invText.Contains("SharedAccessSignature") || invText.Contains("SasToken"))
+            {
+                patterns.Add(CreatePattern(
+                    name: "ValetKey_SASToken",
+                    type: PatternType.ValetKey,
+                    category: PatternCategory.DataManagement,
+                    implementation: "Azure SAS Token",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, inv.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, inv.Span.End),
+                    content: inv.ToString(),
+                    bestPractice: "Valet Key: Use a token to provide clients with restricted direct access to a specific resource",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/valet-key",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region AZURE ARCHITECTURE PATTERNS - DESIGN & IMPLEMENTATION (8 patterns)
+
+    private List<CodePattern> DetectAmbassadorPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Proxy/ambassador service, client-side helper
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("Proxy") || className.Contains("Ambassador") || className.Contains("ClientHelper"))
+            {
+                var methods = classDecl.DescendantNodes().OfType<MethodDeclarationSyntax>();
+                var hasHttpCall = methods.Any(m => m.ToString().Contains("HttpClient") || m.ToString().Contains("SendAsync"));
+                
+                if (hasHttpCall)
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"Ambassador_{className}",
+                        type: PatternType.Ambassador,
+                        category: PatternCategory.DesignImplementation,
+                        implementation: "HTTP Proxy/Ambassador",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                        content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                        bestPractice: "Ambassador: Create helper services that send network requests on behalf of a consumer",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/ambassador",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectAntiCorruptionLayerPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Adapter/facade between systems, legacy integration
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("Adapter") || className.Contains("Facade") || className.Contains("Legacy") && className.Contains("Integration"))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"AntiCorruptionLayer_{className}",
+                    type: PatternType.AntiCorruptionLayer,
+                    category: PatternCategory.DesignImplementation,
+                    implementation: "Adapter/Facade Layer",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Anti-Corruption Layer: Implement a façade between a modern application and a legacy system",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectBackendsForFrontendsPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Separate backend APIs for different clients (Mobile, Web, Desktop)
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if ((className.Contains("Mobile") && className.Contains("Controller")) ||
+                (className.Contains("Web") && className.Contains("Controller")) ||
+                (className.Contains("Desktop") && className.Contains("Controller")) ||
+                className.Contains("BFF"))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"BFF_{className}",
+                    type: PatternType.BackendsForFrontends,
+                    category: PatternCategory.DesignImplementation,
+                    implementation: "Client-Specific Backend",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Backends for Frontends: Create separate backend services for specific frontend applications",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectComputeResourceConsolidationPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Containerization, Azure Functions, microservices consolidation
+        if (sourceCode.Contains("IHostedService") || sourceCode.Contains("BackgroundService"))
+        {
+            var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+            
+            foreach (var classDecl in classes)
+            {
+                var baseTypes = classDecl.BaseList?.Types.Select(t => t.ToString()) ?? Enumerable.Empty<string>();
+                if (baseTypes.Any(bt => bt.Contains("IHostedService") || bt.Contains("BackgroundService")))
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"ComputeConsolidation_{classDecl.Identifier.Text}",
+                        type: PatternType.ComputeResourceConsolidation,
+                        category: PatternCategory.DesignImplementation,
+                        implementation: "Hosted Service Consolidation",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                        content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                        bestPractice: "Compute Resource Consolidation: Consolidate multiple tasks into a single computational unit",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/compute-resource-consolidation",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectExternalConfigurationStorePattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Azure App Configuration, Key Vault, external config
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            
+            if (invText.Contains("AddAzureAppConfiguration") || 
+                invText.Contains("AddAzureKeyVault") ||
+                invText.Contains("ConfigurationClient"))
+            {
+                patterns.Add(CreatePattern(
+                    name: "ExternalConfig_AzureAppConfiguration",
+                    type: PatternType.ExternalConfigurationStore,
+                    category: PatternCategory.DesignImplementation,
+                    implementation: invText.Contains("KeyVault") ? "Azure Key Vault" : "Azure App Configuration",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, inv.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, inv.Span.End),
+                    content: inv.ToString(),
+                    bestPractice: "External Configuration Store: Move configuration out of the application to a centralized location",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/external-configuration-store",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectGatewayAggregationPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: API Gateway, BFF aggregation, multiple service calls combined
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodText = method.ToString();
+            var httpClientCalls = method.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Count(inv => inv.ToString().Contains("HttpClient") || inv.ToString().Contains("GetAsync") || inv.ToString().Contains("SendAsync"));
+            
+            // If method makes multiple HTTP calls, it's likely aggregating
+            if (httpClientCalls >= 2)
+            {
+                patterns.Add(CreatePattern(
+                    name: $"GatewayAggregation_{method.Identifier.Text}",
+                    type: PatternType.GatewayAggregation,
+                    category: PatternCategory.DesignImplementation,
+                    implementation: "Multi-Service Aggregation",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, method.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, method.Span.End),
+                    content: method.ToString().Substring(0, Math.Min(300, method.ToString().Length)),
+                    bestPractice: "Gateway Aggregation: Use a gateway to aggregate multiple individual requests into a single request",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-aggregation",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectGatewayOffloadingPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Middleware for cross-cutting concerns
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("Middleware") || className.EndsWith("Handler"))
+            {
+                var methods = classDecl.DescendantNodes().OfType<MethodDeclarationSyntax>();
+                if (methods.Any(m => m.Identifier.Text == "InvokeAsync" || m.Identifier.Text == "Invoke"))
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"GatewayOffloading_{className}",
+                        type: PatternType.GatewayOffloading,
+                        category: PatternCategory.DesignImplementation,
+                        implementation: "Middleware/Handler",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                        content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                        bestPractice: "Gateway Offloading: Offload shared functionality to a gateway proxy",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-offloading",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectGatewayRoutingPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Routing middleware, reverse proxy, Yarp
+        if (sourceCode.Contains("MapReverseProxy") || sourceCode.Contains("Yarp") || 
+            (sourceCode.Contains("app.Use") && sourceCode.Contains("routing")))
+        {
+            patterns.Add(CreatePattern(
+                name: "GatewayRouting_ReverseProxy",
+                type: PatternType.GatewayRouting,
+                category: PatternCategory.DesignImplementation,
+                implementation: sourceCode.Contains("Yarp") ? "YARP Reverse Proxy" : "Custom Routing",
+                filePath: filePath,
+                lineNumber: 1,
+                endLineNumber: 1,
+                content: "Gateway routing configuration detected",
+                bestPractice: "Gateway Routing: Route requests to multiple services using a single endpoint",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-routing",
+                context: context
+            ));
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region AZURE ARCHITECTURE PATTERNS - MESSAGING (10 patterns)
+
+    private List<CodePattern> DetectAsyncRequestReplyPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Async operation with polling/callback
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodText = method.ToString();
+            
+            // Check for async HTTP202 Accepted with location header
+            if (methodText.Contains("Accepted(") || methodText.Contains("StatusCode(202)") || 
+                methodText.Contains("AcceptedAtAction"))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"AsyncRequestReply_{method.Identifier.Text}",
+                    type: PatternType.AsyncRequestReply,
+                    category: PatternCategory.MessagingPatterns,
+                    implementation: "HTTP 202 Accepted Pattern",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, method.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, method.Span.End),
+                    content: method.ToString().Substring(0, Math.Min(300, method.ToString().Length)),
+                    bestPractice: "Asynchronous Request-Reply: Decouple backend processing from frontend with async responses",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/async-request-reply",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectClaimCheckPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Store large payload, send reference token
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodText = method.ToString();
+            
+            // Check for blob storage + message queue pattern
+            if ((methodText.Contains("BlobClient") || methodText.Contains("UploadAsync")) &&
+                (methodText.Contains("SendMessageAsync") || methodText.Contains("PublishAsync")))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"ClaimCheck_{method.Identifier.Text}",
+                    type: PatternType.ClaimCheck,
+                    category: PatternCategory.MessagingPatterns,
+                    implementation: "Blob Storage + Message Reference",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, method.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, method.Span.End),
+                    content: method.ToString().Substring(0, Math.Min(300, method.ToString().Length)),
+                    bestPractice: "Claim Check: Split large message into claim check and payload to avoid overwhelming message bus",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/claim-check",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectChoreographyPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Event-driven, domain events, no central orchestrator
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("EventHandler") || className.Contains("DomainEventHandler"))
+            {
+                var baseTypes = classDecl.BaseList?.Types.Select(t => t.ToString()) ?? Enumerable.Empty<string>();
+                if (baseTypes.Any(bt => bt.Contains("INotificationHandler") || bt.Contains("IEventHandler")))
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"Choreography_{className}",
+                        type: PatternType.Choreography,
+                        category: PatternCategory.MessagingPatterns,
+                        implementation: "Event-Driven Domain Events",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                        content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                        bestPractice: "Choreography: Let services decide when and how business operations are processed via events",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/choreography",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectCompetingConsumersPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Multiple consumers processing messages from same queue
+        if (sourceCode.Contains("ProcessMessageAsync") || sourceCode.Contains("ReceiveMessageAsync"))
+        {
+            var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+            
+            foreach (var classDecl in classes)
+            {
+                var className = classDecl.Identifier.Text;
+                
+                if (className.Contains("Consumer") || className.Contains("Processor") || className.Contains("Handler"))
+                {
+                    var methods = classDecl.DescendantNodes().OfType<MethodDeclarationSyntax>();
+                    if (methods.Any(m => m.Identifier.Text.Contains("Process") || m.Identifier.Text.Contains("Handle")))
+                    {
+                        patterns.Add(CreatePattern(
+                            name: $"CompetingConsumers_{className}",
+                            type: PatternType.CompetingConsumers,
+                            category: PatternCategory.MessagingPatterns,
+                            implementation: "Message Queue Consumer",
+                            filePath: filePath,
+                            lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                            endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                            content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                            bestPractice: "Competing Consumers: Enable multiple concurrent consumers to process messages from the same channel",
+                            azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/competing-consumers",
+                            context: context
+                        ));
+                    }
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectPipesAndFiltersPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Pipeline pattern, middleware chain, processing stages
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("Pipeline") || className.Contains("Filter") || className.Contains("Stage"))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"PipesAndFilters_{className}",
+                    type: PatternType.PipesAndFilters,
+                    category: PatternCategory.MessagingPatterns,
+                    implementation: "Processing Pipeline",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Pipes and Filters: Break down complex processing into a series of reusable elements",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/pipes-and-filters",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectPriorityQueuePattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Priority-based message processing
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var classText = classDecl.ToString();
+            
+            if (classText.Contains("PriorityQueue") || (classText.Contains("Priority") && classText.Contains("Queue")))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"PriorityQueue_{classDecl.Identifier.Text}",
+                    type: PatternType.PriorityQueue,
+                    category: PatternCategory.MessagingPatterns,
+                    implementation: "Priority-Based Processing",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Priority Queue: Prioritize requests so higher-priority requests are processed more quickly",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/priority-queue",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectQueueBasedLoadLevelingPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Queue as buffer between producer and consumer
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodText = method.ToString();
+            
+            // Check for enqueue followed by async processing
+            if ((methodText.Contains("SendMessageAsync") || methodText.Contains("EnqueueAsync") || methodText.Contains("QueueBackgroundWorkItem")) &&
+                method.Modifiers.Any(m => m.Text == "async"))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"QueueLoadLeveling_{method.Identifier.Text}",
+                    type: PatternType.QueueBasedLoadLeveling,
+                    category: PatternCategory.MessagingPatterns,
+                    implementation: "Queue Buffer Pattern",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, method.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, method.Span.End),
+                    content: method.ToString().Substring(0, Math.Min(300, method.ToString().Length)),
+                    bestPractice: "Queue-Based Load Leveling: Use a queue as a buffer to smooth intermittent heavy loads",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/queue-based-load-leveling",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectSchedulerAgentSupervisorPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Coordinator that schedules, monitors, and recovers distributed work
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if ((className.Contains("Scheduler") || className.Contains("Coordinator")) && 
+                (className.Contains("Supervisor") || className.Contains("Monitor")))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"SchedulerAgentSupervisor_{className}",
+                    type: PatternType.SchedulerAgentSupervisor,
+                    category: PatternCategory.MessagingPatterns,
+                    implementation: "Distributed Work Coordinator",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Scheduler Agent Supervisor: Coordinate distributed actions across services and resources",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/scheduler-agent-supervisor",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectSequentialConvoyPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Session-based message ordering
+        if (sourceCode.Contains("SessionId") || sourceCode.Contains("PartitionKey"))
+        {
+            var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+            
+            foreach (var method in methods)
+            {
+                var methodText = method.ToString();
+                
+                if (methodText.Contains("ProcessSessionMessageAsync") || 
+                    (methodText.Contains("SessionId") && methodText.Contains("Process")))
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"SequentialConvoy_{method.Identifier.Text}",
+                        type: PatternType.SequentialConvoy,
+                        category: PatternCategory.MessagingPatterns,
+                        implementation: "Session-Based Ordering",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, method.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, method.Span.End),
+                        content: method.ToString().Substring(0, Math.Min(300, method.ToString().Length)),
+                        bestPractice: "Sequential Convoy: Process related messages in order without blocking other groups",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/sequential-convoy",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectMessagingBridgePattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Bridge between different messaging systems
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("Bridge") && (className.Contains("Message") || className.Contains("Event")))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"MessagingBridge_{className}",
+                    type: PatternType.MessagingBridge,
+                    category: PatternCategory.MessagingPatterns,
+                    implementation: "Message System Bridge",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Messaging Bridge: Enable communication between incompatible messaging systems",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/messaging-bridge",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region AZURE ARCHITECTURE PATTERNS - RELIABILITY & RESILIENCY (7 patterns)
+
+    private List<CodePattern> DetectBulkheadPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Polly Bulkhead, resource isolation
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            
+            if (invText.Contains("BulkheadAsync") || invText.Contains("BulkheadPolicy") || 
+                invText.Contains("SemaphoreSlim") && sourceCode.Contains("maxConcurrentCalls"))
+            {
+                patterns.Add(CreatePattern(
+                    name: "Bulkhead_Isolation",
+                    type: PatternType.Bulkhead,
+                    category: PatternCategory.ResiliencyPatterns,
+                    implementation: invText.Contains("Polly") ? "Polly Bulkhead" : "SemaphoreSlim Isolation",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, inv.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, inv.Span.End),
+                    content: inv.ToString(),
+                    bestPractice: "Bulkhead: Isolate elements into pools so if one fails, others continue to function",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectCircuitBreakerPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Polly Circuit Breaker
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            
+            if (invText.Contains("CircuitBreakerAsync") || invText.Contains("CircuitBreakerPolicy") || 
+                invText.Contains("AdvancedCircuitBreakerAsync"))
+            {
+                patterns.Add(CreatePattern(
+                    name: "CircuitBreaker_Polly",
+                    type: PatternType.Resilience,
+                    category: PatternCategory.ResiliencyPatterns,
+                    implementation: "Polly Circuit Breaker",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, inv.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, inv.Span.End),
+                    content: inv.ToString(),
+                    bestPractice: "Circuit Breaker: Handle faults that might take variable time to fix when connecting to remote resources",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectCompensatingTransactionPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Compensating actions for failed transactions
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodName = method.Identifier.Text;
+            
+            if (methodName.Contains("Compensate") || methodName.Contains("Rollback") || methodName.Contains("Undo"))
+            {
+                var methodText = method.ToString();
+                if (methodText.Contains("try") && methodText.Contains("catch"))
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"CompensatingTransaction_{methodName}",
+                        type: PatternType.CompensatingTransaction,
+                        category: PatternCategory.ResiliencyPatterns,
+                        implementation: "Compensating Action",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, method.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, method.Span.End),
+                        content: method.ToString().Substring(0, Math.Min(300, method.ToString().Length)),
+                        bestPractice: "Compensating Transaction: Undo work performed by a series of steps in an eventually consistent operation",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectLeaderElectionPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Leader election coordination
+        if (sourceCode.Contains("LeaderElection") || sourceCode.Contains("BlobLease") || 
+            sourceCode.Contains("AcquireLeaseAsync"))
+        {
+            var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+            
+            foreach (var method in methods)
+            {
+                var methodText = method.ToString();
+                
+                if (methodText.Contains("AcquireLeaseAsync") || methodText.Contains("TryAcquireLeadershipAsync"))
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"LeaderElection_{method.Identifier.Text}",
+                        type: PatternType.LeaderElection,
+                        category: PatternCategory.ResiliencyPatterns,
+                        implementation: methodText.Contains("Blob") ? "Azure Blob Lease" : "Custom Leader Election",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, method.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, method.Span.End),
+                        content: method.ToString().Substring(0, Math.Min(300, method.ToString().Length)),
+                        bestPractice: "Leader Election: Coordinate actions by electing one instance as the leader",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/leader-election",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectGeodePattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Multi-region deployment, geographic distribution
+        if (sourceCode.Contains("TrafficManager") || sourceCode.Contains("CosmosDB") && sourceCode.Contains("MultiRegion") ||
+            sourceCode.Contains("FrontDoor"))
+        {
+            patterns.Add(CreatePattern(
+                name: "Geode_MultiRegion",
+                type: PatternType.Geode,
+                category: PatternCategory.ResiliencyPatterns,
+                implementation: sourceCode.Contains("CosmosDB") ? "Cosmos DB Multi-Region" : "Azure Traffic Manager",
+                filePath: filePath,
+                lineNumber: 1,
+                endLineNumber: 1,
+                content: "Multi-region deployment configuration detected",
+                bestPractice: "Geode: Deploy backend services into geographical nodes that can service any client request in any region",
+                azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/geodes",
+                context: context
+            ));
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectDeploymentStampsPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Scale units, stamp deployment
+        if (sourceCode.Contains("ScaleUnit") || sourceCode.Contains("Stamp") || sourceCode.Contains("DeploymentUnit"))
+        {
+            var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+            
+            foreach (var classDecl in classes)
+            {
+                var className = classDecl.Identifier.Text;
+                
+                if (className.Contains("ScaleUnit") || className.Contains("Stamp") || className.Contains("DeploymentUnit"))
+                {
+                    patterns.Add(CreatePattern(
+                        name: $"DeploymentStamps_{className}",
+                        type: PatternType.DeploymentStamps,
+                        category: PatternCategory.ResiliencyPatterns,
+                        implementation: "Scale Unit / Stamp",
+                        filePath: filePath,
+                        lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                        endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                        content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                        bestPractice: "Deployment Stamps: Deploy multiple independent copies of application components",
+                        azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/deployment-stamp",
+                        context: context
+                    ));
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectThrottlingPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Rate limiting, throttling middleware
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            
+            if (invText.Contains("AddRateLimiter") || invText.Contains("EnableRateLimiting") || 
+                invText.Contains("ThrottlingTroll") || invText.Contains("RateLimitPartition"))
+            {
+                patterns.Add(CreatePattern(
+                    name: "Throttling_RateLimiter",
+                    type: PatternType.Throttling,
+                    category: PatternCategory.ResiliencyPatterns,
+                    implementation: "ASP.NET Core Rate Limiter",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, inv.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, inv.Span.End),
+                    content: inv.ToString(),
+                    bestPractice: "Throttling: Control the consumption of resources used by an application, tenant, or service",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region AZURE ARCHITECTURE PATTERNS - SECURITY (2 patterns)
+
+    private List<CodePattern> DetectFederatedIdentityPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: External identity providers (Azure AD, OAuth, OIDC)
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            
+            if (invText.Contains("AddMicrosoftIdentityWebApp") || invText.Contains("AddJwtBearer") || 
+                invText.Contains("AddOpenIdConnect") || invText.Contains("AddAzureAD"))
+            {
+                patterns.Add(CreatePattern(
+                    name: "FederatedIdentity_ExternalProvider",
+                    type: PatternType.FederatedIdentity,
+                    category: PatternCategory.SecurityPatterns,
+                    implementation: invText.Contains("MicrosoftIdentity") ? "Azure AD / Entra ID" : 
+                                    invText.Contains("JwtBearer") ? "JWT Bearer" : "OpenID Connect",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, inv.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, inv.Span.End),
+                    content: inv.ToString(),
+                    bestPractice: "Federated Identity: Delegate authentication to an external identity provider",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/federated-identity",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectQuarantinePattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Input validation, malware scanning, content verification
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        
+        foreach (var method in methods)
+        {
+            var methodName = method.Identifier.Text;
+            
+            if (methodName.Contains("Quarantine") || methodName.Contains("Validate") && methodName.Contains("External") ||
+                methodName.Contains("ScanForMalware") || methodName.Contains("VerifyContent"))
+            {
+                var methodText = method.ToString();
+                patterns.Add(CreatePattern(
+                    name: $"Quarantine_{methodName}",
+                    type: PatternType.Quarantine,
+                    category: PatternCategory.SecurityPatterns,
+                    implementation: "External Asset Validation",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, method.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, method.Span.End),
+                    content: method.ToString().Substring(0, Math.Min(300, method.ToString().Length)),
+                    bestPractice: "Quarantine: Ensure external assets meet quality level before consumption",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/quarantine",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region AZURE ARCHITECTURE PATTERNS - OPERATIONAL (3 patterns)
+
+    private List<CodePattern> DetectSidecarPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Sidecar container, companion process
+        if (filePath.EndsWith("Dockerfile", StringComparison.OrdinalIgnoreCase) || 
+            filePath.EndsWith("docker-compose.yml", StringComparison.OrdinalIgnoreCase) ||
+            filePath.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase))
+        {
+            if (sourceCode.Contains("sidecar") || sourceCode.Contains("dapr") || 
+                (sourceCode.Contains("container") && sourceCode.Contains("companion")))
+            {
+                patterns.Add(CreatePattern(
+                    name: "Sidecar_Container",
+                    type: PatternType.Sidecar,
+                    category: PatternCategory.OperationalPatterns,
+                    implementation: sourceCode.Contains("dapr") ? "Dapr Sidecar" : "Container Sidecar",
+                    filePath: filePath,
+                    lineNumber: 1,
+                    endLineNumber: 1,
+                    content: "Sidecar deployment configuration detected",
+                    bestPractice: "Sidecar: Deploy components into a separate process or container for isolation and encapsulation",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/sidecar",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectStranglerFigPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Incremental migration, feature toggle, routing between old/new
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("Legacy") && (className.Contains("Proxy") || className.Contains("Router") || className.Contains("Facade")))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"StranglerFig_{className}",
+                    type: PatternType.StranglerFig,
+                    category: PatternCategory.OperationalPatterns,
+                    implementation: "Legacy System Migration Proxy",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Strangler Fig: Incrementally migrate a legacy system by replacing functionality with new services",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/strangler-fig",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    private List<CodePattern> DetectSagaPattern(SyntaxNode root, string filePath, string? context, string sourceCode)
+    {
+        var patterns = new List<CodePattern>();
+
+        // Pattern: Distributed transaction coordination, saga orchestration
+        var classes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+        
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            
+            if (className.Contains("Saga") || (className.Contains("Orchestrator") && className.Contains("Transaction")))
+            {
+                patterns.Add(CreatePattern(
+                    name: $"Saga_{className}",
+                    type: PatternType.Saga,
+                    category: PatternCategory.OperationalPatterns,
+                    implementation: className.Contains("Orchestrator") ? "Saga Orchestrator" : "Saga Coordinator",
+                    filePath: filePath,
+                    lineNumber: GetLineNumber(sourceCode, classDecl.SpanStart),
+                    endLineNumber: GetLineNumber(sourceCode, classDecl.Span.End),
+                    content: classDecl.ToString().Substring(0, Math.Min(300, classDecl.ToString().Length)),
+                    bestPractice: "Saga: Manage data consistency across microservices in distributed transaction scenarios",
+                    azureUrl: "https://learn.microsoft.com/en-us/azure/architecture/patterns/saga",
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
     }
 
     #endregion

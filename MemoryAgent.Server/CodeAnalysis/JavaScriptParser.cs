@@ -66,6 +66,39 @@ public class JavaScriptParser
             
             // Extract exports
             ExtractExports(content, filePath, context, result);
+            
+            // PATTERN DETECTION: Detect state management and best practice patterns
+            var patternDetector = new JavaScriptPatternDetector();
+            var detectedPatterns = patternDetector.DetectPatterns(content, filePath, context);
+            
+            // Add detected patterns to result
+            foreach (var pattern in detectedPatterns)
+            {
+                var patternNode = new CodeMemory
+                {
+                    Type = CodeMemoryType.Pattern,
+                    Name = pattern.Name,
+                    Content = pattern.Content,
+                    FilePath = filePath,
+                    Context = context ?? "default",
+                    LineNumber = pattern.LineNumber,
+                    Summary = pattern.BestPractice,
+                    Purpose = pattern.BestPractice,
+                    Tags = new List<string> { pattern.Type.ToString(), pattern.Category.ToString(), pattern.Language },
+                    Metadata = new Dictionary<string, object>
+                    {
+                        ["pattern_name"] = pattern.Name,
+                        ["pattern_type"] = pattern.Type.ToString(),
+                        ["pattern_category"] = pattern.Category.ToString(),
+                        ["implementation"] = pattern.Implementation,
+                        ["best_practice"] = pattern.BestPractice,
+                        ["azure_url"] = pattern.AzureBestPracticeUrl,
+                        ["language"] = pattern.Language
+                    }
+                };
+                
+                result.CodeElements.Add(patternNode);
+            }
         }
         catch (Exception ex)
         {

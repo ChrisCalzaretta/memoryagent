@@ -55,6 +55,7 @@ public class PatternValidationService : IPatternValidationService
             PatternType.Security => ValidateSecurityPattern(pattern),
             PatternType.ErrorHandling => ValidateErrorHandlingPattern(pattern),
             PatternType.PluginArchitecture => ValidatePluginArchitecturePattern(pattern),
+            PatternType.PublisherSubscriber => ValidatePublisherSubscriberPattern(pattern),
             _ => new PatternQualityResult
             {
                 Pattern = pattern,
@@ -906,6 +907,165 @@ public class PatternValidationService : IPatternValidationService
         return result;
     }
 
+    private PatternQualityResult ValidatePublisherSubscriberPattern(CodePattern pattern)
+    {
+        var result = new PatternQualityResult
+        {
+            Pattern = pattern,
+            Score = 10,
+            SecurityScore = 10
+        };
+
+        // Check for message idempotency handling
+        if (!Regex.IsMatch(pattern.Content, @"(idempotent|MessageId|SequenceNumber|DeduplicationId)", RegexOptions.IgnoreCase))
+        {
+            result.Issues.Add(new ValidationIssue
+            {
+                Severity = IssueSeverity.High,
+                Category = IssueCategory.BestPractice,
+                Message = "No idempotency handling detected - duplicate messages may cause data inconsistencies",
+                ScoreImpact = 2,
+                FixGuidance = "Implement message deduplication using MessageId or DeduplicationId to handle repeated messages"
+            });
+            result.Score -= 2;
+        }
+
+        // Check for error handling / dead letter queue
+        if (!Regex.IsMatch(pattern.Content, @"(try|catch|DeadLetter|ErrorQueue|HandleError)", RegexOptions.IgnoreCase))
+        {
+            result.Issues.Add(new ValidationIssue
+            {
+                Severity = IssueSeverity.High,
+                Category = IssueCategory.BestPractice,
+                Message = "No error handling or dead-letter queue pattern detected",
+                ScoreImpact = 3,
+                FixGuidance = "Implement error handling and configure dead-letter queue for poison messages"
+            });
+            result.Score -= 3;
+            result.SecurityScore -= 1;
+        }
+
+        // Check for message expiration/TTL
+        if (pattern.Implementation.Contains("ServiceBus") || pattern.Implementation.Contains("EventHubs"))
+        {
+            if (!Regex.IsMatch(pattern.Content, @"(TimeToLive|TTL|Expir|MessageLifespan)", RegexOptions.IgnoreCase))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Medium,
+                    Category = IssueCategory.BestPractice,
+                    Message = "No message expiration (TTL) configured - old messages may accumulate",
+                    ScoreImpact = 1,
+                    FixGuidance = "Set TimeToLive on messages to prevent stale data accumulation"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        // Check for subscription filtering (for topic-based patterns)
+        if (pattern.Name.Contains("Topic") || pattern.Name.Contains("Subscription"))
+        {
+            if (!Regex.IsMatch(pattern.Content, @"(Filter|Rule|CorrelationFilter|SqlFilter)", RegexOptions.IgnoreCase))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Low,
+                    Category = IssueCategory.BestPractice,
+                    Message = "No subscription filtering detected - subscribers receive all messages",
+                    ScoreImpact = 1,
+                    FixGuidance = "Implement subscription filters to reduce message processing overhead"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        // Check for message ordering concerns (Event Hubs, Service Bus sessions)
+        if (pattern.Implementation.Contains("EventHubs"))
+        {
+            if (!Regex.IsMatch(pattern.Content, @"(PartitionKey|SessionId)", RegexOptions.IgnoreCase))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Low,
+                    Category = IssueCategory.BestPractice,
+                    Message = "No partition key for ordering - messages may be processed out of order",
+                    ScoreImpact = 1,
+                    FixGuidance = "Use PartitionKey to ensure related messages are processed in order"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        // Check for retry policy
+        if (!Regex.IsMatch(pattern.Content, @"(Retry|MaxDelivery|LockDuration)", RegexOptions.IgnoreCase))
+        {
+            result.Issues.Add(new ValidationIssue
+            {
+                Severity = IssueSeverity.Medium,
+                Category = IssueCategory.Reliability,
+                Message = "No retry policy configuration detected",
+                ScoreImpact = 2,
+                FixGuidance = "Configure retry policy with MaxDeliveryCount and LockDuration"
+            });
+            result.Score -= 2;
+        }
+
+        // Check for authentication/security
+        if (pattern.Implementation.Contains("Azure"))
+        {
+            if (!Regex.IsMatch(pattern.Content, @"(TokenCredential|ManagedIdentity|ServiceBusClient\(.*credential)", RegexOptions.IgnoreCase))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Critical,
+                    Category = IssueCategory.Security,
+                    Message = "No managed identity or secure authentication detected - may be using connection strings",
+                    ScoreImpact = 3,
+                    FixGuidance = "Use DefaultAzureCredential or ManagedIdentity instead of connection strings"
+                });
+                result.Score -= 3;
+                result.SecurityScore -= 3;
+            }
+        }
+
+        // Check for telemetry/logging
+        if (!Regex.IsMatch(pattern.Content, @"(ILogger|Log\.|Telemetry|TrackEvent|ApplicationInsights)", RegexOptions.IgnoreCase))
+        {
+            result.Issues.Add(new ValidationIssue
+            {
+                Severity = IssueSeverity.Medium,
+                Category = IssueCategory.BestPractice,
+                Message = "No telemetry or logging detected for message processing",
+                ScoreImpact = 1,
+                FixGuidance = "Add logging for message processing events and errors"
+            });
+            result.Score -= 1;
+        }
+
+        // Check for proper consumer scaling (competing consumers pattern)
+        if (pattern.Metadata.TryGetValue("role", out var role) && role?.ToString() == "consumer")
+        {
+            if (!Regex.IsMatch(pattern.Content, @"(PrefetchCount|MaxConcurrentCalls|ProcessorCount)", RegexOptions.IgnoreCase))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Low,
+                    Category = IssueCategory.Performance,
+                    Message = "No concurrency configuration for message processing",
+                    ScoreImpact = 1,
+                    FixGuidance = "Configure PrefetchCount and MaxConcurrentCalls for optimal throughput"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        result.Score = Math.Max(0, result.Score);
+        result.SecurityScore = Math.Max(0, result.SecurityScore);
+        result.Summary = $"Publisher-Subscriber Pattern Quality: {result.Grade} ({result.Score}/10) | Security: {result.SecurityScore}/10";
+
+        return result;
+    }
+
     #endregion
 
     #region Migration Paths
@@ -1015,6 +1175,243 @@ public class MyWorkflow : Workflow<MyInput, MyOutput>
         };
 
         return migration;
+    }
+
+    private PatternQualityResult ValidateAzureWebPubSubPattern(CodePattern pattern)
+    {
+        var result = new PatternQualityResult
+        {
+            Pattern = pattern,
+            Score = 10
+        };
+
+        var implementation = pattern.Implementation.ToLower();
+        var content = pattern.Content;
+        var metadata = pattern.Metadata;
+
+        // Service Client Initialization Validation
+        if (implementation.Contains("webpubsubserviceclient"))
+        {
+            // Check for configuration-based connection string (not hardcoded)
+            if (metadata.ContainsKey("UsesConfiguration") && !(bool)metadata["UsesConfiguration"])
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Critical,
+                    Category = IssueCategory.Security,
+                    Message = "Connection string appears to be hardcoded - should use configuration",
+                    ScoreImpact = 3,
+                    FixGuidance = "Store connection string in appsettings.json or Azure Key Vault and use Configuration[\"Azure:WebPubSub:ConnectionString\"]"
+                });
+                result.Score -= 3;
+            }
+        }
+
+        // Messaging Pattern Validation (Broadcast, Group, User)
+        if (implementation.Contains("sendtoall") || implementation.Contains("sendtogroup") || implementation.Contains("sendtouser"))
+        {
+            // Check for async pattern
+            if (!implementation.Contains("async") && !content.Contains("Async"))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Medium,
+                    Category = IssueCategory.Performance,
+                    Message = "Not using async pattern - can block threads and reduce scalability",
+                    ScoreImpact = 2,
+                    FixGuidance = "Use SendToAllAsync, SendToGroupAsync, or SendToUserAsync instead of synchronous methods"
+                });
+                result.Score -= 2;
+            }
+
+            // Check for error handling
+            if (metadata.ContainsKey("HasErrorHandling") && !(bool)metadata["HasErrorHandling"])
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.High,
+                    Category = IssueCategory.Reliability,
+                    Message = "Missing error handling - can cause unhandled exceptions on connection failures",
+                    ScoreImpact = 2,
+                    FixGuidance = "Wrap messaging calls in try-catch and log errors. Consider retry policy for transient failures."
+                });
+                result.Score -= 2;
+            }
+
+            // Check for logging
+            if (!Regex.IsMatch(content, @"_logger\.|Log|ILogger", RegexOptions.IgnoreCase))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Low,
+                    Category = IssueCategory.Maintainability,
+                    Message = "No logging detected - difficult to diagnose message delivery issues",
+                    ScoreImpact = 1,
+                    FixGuidance = "Add logging for message sends: _logger.LogInformation(\"Sent message to {Target}\", groupName)"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        // Event Handler Validation
+        if (implementation.Contains("eventhandler") || implementation.Contains("webhook"))
+        {
+            // Check for signature validation (critical security issue)
+            if (metadata.ContainsKey("HasSignatureValidation") && !(bool)metadata["HasSignatureValidation"])
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Critical,
+                    Category = IssueCategory.Security,
+                    Message = "No signature validation - vulnerable to spoofed webhook attacks",
+                    ScoreImpact = 5,
+                    FixGuidance = "Validate webhook signatures using WebPubSubEventHandler.IsValidSignature() to prevent unauthorized requests",
+                    SecurityReference = "CWE-345: Insufficient Verification of Data Authenticity"
+                });
+                result.Score -= 5;
+                result.SecurityScore -= 5;
+            }
+
+            // Check for event validation
+            if (metadata.ContainsKey("HasValidation") && !(bool)metadata["HasValidation"])
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.High,
+                    Category = IssueCategory.Security,
+                    Message = "Missing event validation - should validate event type and payload",
+                    ScoreImpact = 2,
+                    FixGuidance = "Validate event type and payload structure before processing"
+                });
+                result.Score -= 2;
+            }
+        }
+
+        // Authentication Validation
+        if (implementation.Contains("credential") || metadata.ContainsKey("UsesManagedIdentity"))
+        {
+            var usesManagedIdentity = metadata.ContainsKey("UsesManagedIdentity") && (bool)metadata["UsesManagedIdentity"];
+            
+            if (!usesManagedIdentity && !content.Contains("DefaultAzureCredential"))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Medium,
+                    Category = IssueCategory.Security,
+                    Message = "Not using Managed Identity - consider using Managed Identity for Azure-hosted apps",
+                    ScoreImpact = 1,
+                    FixGuidance = "Use ManagedIdentityCredential for production Azure deployments for passwordless authentication"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        // Connection Token Generation Validation
+        if (implementation.Contains("getclientaccessuri"))
+        {
+            // Check for token expiration
+            if (metadata.ContainsKey("HasExpiration") && !(bool)metadata["HasExpiration"])
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.High,
+                    Category = IssueCategory.Security,
+                    Message = "No token expiration set - tokens valid indefinitely pose security risk",
+                    ScoreImpact = 2,
+                    FixGuidance = "Set token expiration: expiresAfter: TimeSpan.FromMinutes(60)"
+                });
+                result.Score -= 2;
+            }
+
+            // Check for user ID / roles
+            if (metadata.ContainsKey("HasUserId") && !(bool)metadata["HasUserId"])
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Low,
+                    Category = IssueCategory.BestPractice,
+                    Message = "No user ID specified - consider adding user ID for user-specific messaging",
+                    ScoreImpact = 1,
+                    FixGuidance = "Add userId parameter to GetClientAccessUri for user-specific messaging capabilities"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        // Connection Lifecycle Validation
+        if (metadata.ContainsKey("PatternSubType") && metadata["PatternSubType"].ToString() == "ConnectionLifecycle")
+        {
+            var hasRetry = metadata.ContainsKey("HasRetry") && (bool)metadata["HasRetry"];
+            var hasLogging = metadata.ContainsKey("HasLogging") && (bool)metadata["HasLogging"];
+
+            if (!hasRetry)
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Medium,
+                    Category = IssueCategory.Reliability,
+                    Message = "No retry logic detected - connection failures won't be retried",
+                    ScoreImpact = 2,
+                    FixGuidance = "Add exponential backoff retry for reconnection attempts using Polly or manual retry logic"
+                });
+                result.Score -= 2;
+            }
+
+            if (!hasLogging)
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Low,
+                    Category = IssueCategory.Maintainability,
+                    Message = "No logging detected - difficult to diagnose connection issues",
+                    ScoreImpact = 1,
+                    FixGuidance = "Add logging for connection events: connect, disconnect, reconnect attempts"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        // Message Size Validation
+        if (content.Contains("SendToAll") || content.Contains("SendToGroup") || content.Contains("SendToUser"))
+        {
+            // Check if there's any message size validation (max 1MB)
+            if (!Regex.IsMatch(content, @"Length|Size|\.Count|sizeof", RegexOptions.IgnoreCase))
+            {
+                result.Issues.Add(new ValidationIssue
+                {
+                    Severity = IssueSeverity.Low,
+                    Category = IssueCategory.Correctness,
+                    Message = "No message size validation - Azure Web PubSub has 1MB message limit",
+                    ScoreImpact = 1,
+                    FixGuidance = "Validate message size before sending: if (messageBytes.Length > 1_000_000) throw new ArgumentException(\"Message too large\")"
+                });
+                result.Score -= 1;
+            }
+        }
+
+        result.Score = Math.Max(0, result.Score);
+        result.SecurityScore = Math.Max(0, result.SecurityScore);
+        result.Summary = $"Azure Web PubSub Pattern Quality: {result.Grade} ({result.Score}/10), Security: {result.SecurityScore}/10 - {result.Issues.Count} issues found";
+
+        // Generate recommendations
+        foreach (var issue in result.Issues)
+        {
+            if (issue.FixGuidance != null)
+                result.Recommendations.Add(issue.FixGuidance);
+        }
+
+        // Add missing complementary patterns
+        if (implementation.Contains("webpubsubserviceclient") && !content.Contains("Polly"))
+        {
+            result.MissingPatterns.Add("Resilience: Add Polly retry policy for transient failures");
+        }
+
+        if (implementation.Contains("sendtoall") && !content.Contains("ILogger"))
+        {
+            result.MissingPatterns.Add("Logging: Add structured logging for message delivery tracking");
+        }
+
+        return result;
     }
 
     #endregion

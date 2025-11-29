@@ -204,10 +204,13 @@ public class PaginatedResult<T>
     public void Should_Detect_Pagination_Parameters()
     {
         var code = @"
-[HttpGet]
-public ActionResult GetProducts(int pageNumber, int pageSize)
+public class ProductsController
 {
-    return Ok();
+    [HttpGet]
+    public ActionResult GetProducts(int pageNumber, int pageSize)
+    {
+        return Ok();
+    }
 }";
         
         var patterns = _detector.DetectPatterns(code, "ProductsController.cs", "test");
@@ -220,13 +223,16 @@ public ActionResult GetProducts(int pageNumber, int pageSize)
     public void Should_Detect_Filtering_Sorting_Pattern()
     {
         var code = @"
-[HttpGet]
-public ActionResult GetProducts(
-    [FromQuery] string filter,
-    [FromQuery] string sort,
-    [FromQuery] string fields)
+public class ProductsController
 {
-    return Ok();
+    [HttpGet]
+    public ActionResult GetProducts(
+        [FromQuery] string filter,
+        [FromQuery] string sort,
+        [FromQuery] string fields)
+    {
+        return Ok();
+    }
 }";
         
         var patterns = _detector.DetectPatterns(code, "ProductsController.cs", "test");
@@ -351,10 +357,13 @@ public async Task<IActionResult> StartProcessing()
     public void Should_Detect_BatchOperation_Pattern()
     {
         var code = @"
-[HttpPost(""batch"")]
-public async Task<ActionResult> BatchCreate([FromBody] List<Product> products)
+public class ProductsController
 {
-    return Ok();
+    [HttpPost(""batch"")]
+    public async Task<ActionResult> BatchCreate([FromBody] List<Product> products)
+    {
+        return Ok();
+    }
 }";
         
         var patterns = _detector.DetectPatterns(code, "ProductsController.cs", "test");

@@ -112,6 +112,7 @@ public enum PatternType
     ApiDesign,
     Messaging,
     BackgroundJobs,
+    PublisherSubscriber,  // Pub/Sub messaging pattern (Azure Event Grid, Service Bus Topics, Event Hubs)
     
     // AI Agent Frameworks
     AgentFramework,      // Microsoft Agent Framework
@@ -122,6 +123,50 @@ public enum PatternType
     
     // Plugin Architecture Patterns
     PluginArchitecture,  // Plugin loading, discovery, composition, lifecycle, communication, security
+    
+    // State Management Patterns (Blazor & ASP.NET Core)
+    StateManagement,     // Server-side, client-side, component, cross-component, persistence, security
+    
+    // Real-time Messaging Patterns
+    AzureWebPubSub,      // Azure Web PubSub service patterns (WebSocket, pub/sub, connection management, event handlers)
+    
+    // Azure Architecture Patterns (Complete Coverage)
+    Ambassador,                   // Helper services that send network requests on behalf of consumer
+    AntiCorruptionLayer,         // Façade between modern app and legacy system
+    AsyncRequestReply,           // Decouple backend processing from frontend
+    BackendsForFrontends,        // Separate backends for specific frontends
+    Bulkhead,                    // Isolate elements into pools for fault tolerance
+    CircuitBreaker,              // Handle faults with circuit breaker pattern  
+    Choreography,                // Decentralized service coordination via events
+    ClaimCheck,                  // Split large messages into claim check and payload
+    CompensatingTransaction,     // Undo work in distributed operations
+    CompetingConsumers,          // Multiple concurrent consumers on same channel
+    ComputeResourceConsolidation, // Consolidate tasks into single computational unit
+    CQRS,                        // Command Query Responsibility Segregation
+    DeploymentStamps,            // Deploy multiple independent copies
+    EventSourcing,               // Append-only event store
+    ExternalConfigurationStore,  // Centralized configuration management
+    FederatedIdentity,           // External identity provider delegation
+    GatewayAggregation,          // Aggregate multiple requests into one
+    GatewayOffloading,           // Offload functionality to gateway proxy
+    GatewayRouting,              // Route to multiple services via single endpoint
+    Geode,                       // Geographically distributed nodes
+    IndexTable,                  // Indexes over frequently queried fields
+    LeaderElection,              // Elect leader for coordinated actions
+    MaterializedView,            // Prepopulated views for efficient querying
+    MessagingBridge,             // Bridge between incompatible messaging systems
+    PipesAndFilters,             // Break task into reusable processing elements
+    PriorityQueue,               // Prioritize requests by importance
+    Quarantine,                  // Validate external assets before consumption
+    QueueBasedLoadLeveling,      // Queue as buffer to smooth heavy loads
+    Saga,                        // Manage data consistency across microservices
+    SchedulerAgentSupervisor,    // Coordinate distributed actions
+    SequentialConvoy,            // Process related messages in order
+    Sidecar,                     // Deploy components in separate process/container
+    StaticContentHosting,        // Cloud-based static content delivery
+    StranglerFig,                // Incremental legacy system migration
+    Throttling,                  // Control resource consumption
+    ValetKey,                    // Restricted direct resource access via token
     
     Unknown
 }
@@ -157,7 +202,21 @@ public enum PatternCategory
     PluginLifecycle,             // Initialization, health checks, start/stop, DI
     PluginCommunication,         // Event bus, shared services, pipeline, context
     PluginSecurity,              // Gatekeeper, sandboxing, circuit breaker, bulkhead, signing
-    PluginVersioning             // SemVer, compatibility, side-by-side versioning
+    PluginVersioning,            // SemVer, compatibility, side-by-side versioning
+    
+    // Real-time Messaging specific categories
+    RealtimeMessaging,           // WebSocket connections, pub/sub patterns, real-time communication
+    ConnectionManagement,        // Connection lifecycle, retry, reconnection, health monitoring
+    EventHandlers,               // Webhook event handlers, upstream events, event validation
+    
+    // Azure Architecture Pattern specific categories
+    DataManagement,              // CQRS, Event Sourcing, Index Table, Materialized View, Static Content, Valet Key
+    DesignImplementation,        // Ambassador, Anti-Corruption, BFF, Consolidation, Config, Gateway patterns
+    MessagingPatterns,           // Async Request-Reply, Claim Check, Choreography, Competing Consumers, Pipes/Filters, Priority Queue, Queue Load Leveling, Scheduler-Agent, Sequential Convoy, Messaging Bridge
+    ResiliencyPatterns,          // Bulkhead, Circuit Breaker, Compensating Transaction, Leader Election, Geode, Deployment Stamps, Throttling
+    SecurityPatterns,            // Federated Identity, Quarantine
+    OperationalPatterns,         // Sidecar, Strangler Fig, Saga
+    DistributedSystems           // Patterns for distributed system coordination
 }
 
 /// <summary>
