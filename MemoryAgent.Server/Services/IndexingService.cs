@@ -46,7 +46,10 @@ public class IndexingService : IIndexingService
             var containerPath = _pathTranslation.TranslateToContainerPath(filePath);
             _logger.LogInformation("Indexing file: {FilePath} (translated to: {ContainerPath})", filePath, containerPath);
 
-            // Step 0: Delete existing data for this file (if any) to avoid duplicates
+            // Step 0: Ensure Qdrant collections exist for this context
+            await _vectorService.InitializeCollectionsForContextAsync(context, cancellationToken);
+            
+            // Step 1: Delete existing data for this file (if any) to avoid duplicates
             _logger.LogInformation("Checking for existing data for file: {FilePath}", containerPath);
             await Task.WhenAll(
                 _vectorService.DeleteByFilePathAsync(containerPath, context, cancellationToken),
