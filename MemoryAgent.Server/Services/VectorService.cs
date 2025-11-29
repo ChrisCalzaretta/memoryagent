@@ -352,7 +352,11 @@ public class VectorService : IVectorService
                     content,
                     cancellationToken);
 
-                response.EnsureSuccessStatusCode();
+                // 404 is OK - means no points to delete (empty collection or no matching points)
+                if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                {
+                    response.EnsureSuccessStatusCode();
+                }
             }
 
             _logger.LogInformation("Deleted memories for file: {FilePath}", filePath);
