@@ -312,8 +312,14 @@ public class GraphService : IGraphService, IDisposable
         {
             var result = await session.ExecuteReadAsync(async tx =>
             {
+                // IMPORTANT: Extract context from the className to ensure workspace isolation
+                // className format: "ContextName.Namespace.ClassName" or just "Namespace.ClassName"
+                // We need to find the class first to get its context, then filter impacted classes by the same context
                 var cursor = await tx.RunAsync(@"
-                    MATCH (changed:Class {name: $className})<-[:INHERITS|USES*]-(impacted)
+                    MATCH (changed:Class {name: $className})
+                    WITH changed.context AS targetContext, changed
+                    MATCH (changed)<-[:INHERITS|USES*]-(impacted)
+                    WHERE impacted.context = targetContext
                     RETURN DISTINCT impacted.name AS name, impacted.file_path AS filePath
                     LIMIT 100",
                     new { className });
@@ -339,8 +345,12 @@ public class GraphService : IGraphService, IDisposable
         {
             var result = await session.ExecuteReadAsync(async tx =>
             {
+                // IMPORTANT: Ensure workspace isolation by filtering dependencies to same context
                 var cursor = await tx.RunAsync($@"
-                    MATCH path = (class:Class {{name: $className}})-[:USES*1..{maxDepth}]->(dep)
+                    MATCH (class:Class {{name: $className}})
+                    WITH class.context AS targetContext, class
+                    MATCH path = (class)-[:USES*1..{maxDepth}]->(dep)
+                    WHERE dep.context = targetContext
                     RETURN DISTINCT dep.name AS name
                     ORDER BY length(path)
                     LIMIT 100",
@@ -365,14 +375,18 @@ public class GraphService : IGraphService, IDisposable
 
         try
         {
-            var contextFilter = string.IsNullOrWhiteSpace(context) ? "" : "WHERE c1.context = $context AND c2.context = $context";
+            // IMPORTANT: Context filtering is CRITICAL for workspace isolation
+            // If no context provided, we still need to ensure we don't mix workspaces
+            var contextFilter = string.IsNullOrWhiteSpace(context) 
+                ? "WHERE c1.context IS NOT NULL AND c1.context = c2.context" // Same workspace, any workspace
+                : "WHERE c1.context = $context AND c2.context = $context";    // Specific workspace
 
             var result = await session.ExecuteReadAsync(async tx =>
             {
                 var cursor = await tx.RunAsync($@"
                     MATCH path = (c1:Class)-[:USES*2..10]->(c2:Class)-[:USES*]->(c1)
                     {contextFilter}
-                    WHERE c1 <> c2
+                    AND c1 <> c2
                     RETURN [node in nodes(path) | node.name] AS cycle
                     LIMIT 50",
                     new { context = context ?? "" });
@@ -398,8 +412,12 @@ public class GraphService : IGraphService, IDisposable
         {
             var result = await session.ExecuteReadAsync(async tx =>
             {
+                // IMPORTANT: Ensure workspace isolation by matching context between class and pattern
                 var cursor = await tx.RunAsync(@"
-                    MATCH (c:Class)-[:FOLLOWS_PATTERN]->(p:Pattern {name: $patternName})
+                    MATCH (p:Pattern {name: $patternName})
+                    WITH p.context AS targetContext, p
+                    MATCH (c:Class)-[:FOLLOWS_PATTERN]->(p)
+                    WHERE c.context = targetContext
                     RETURN c.name AS name, c.file_path AS filePath",
                     new { patternName });
 
@@ -654,11 +672,12 @@ public class GraphService : IGraphService, IDisposable
     {
         var relationshipType = relationship.Type.ToString().ToUpperInvariant();
 
-        // Create or match "to" node as a reference (might be external type, namespace, etc.)
-        // This ensures relationships work even when target isn't fully indexed
+        // CRITICAL: Ensure workspace isolation by filtering both nodes by context
+        // This prevents accidentally connecting nodes from different workspaces
         var cypher = $@"
-            MATCH (from {{name: $fromName}})
-            MERGE (to:Reference {{name: $toName}})
+            MATCH (from {{name: $fromName, context: $context}})
+            MERGE (to:Reference {{name: $toName, context: $context}})
+            ON CREATE SET to.created_at = datetime()
             MERGE (from)-[r:{relationshipType}]->(to)";
 
         // Add properties if any
@@ -670,7 +689,8 @@ public class GraphService : IGraphService, IDisposable
         var parameters = new Dictionary<string, object>
         {
             ["fromName"] = relationship.FromName,
-            ["toName"] = relationship.ToName
+            ["toName"] = relationship.ToName,
+            ["context"] = relationship.Context ?? "default" // Ensure context is always set
         };
 
         // Add property values
