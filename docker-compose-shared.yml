@@ -46,11 +46,11 @@ services:
     volumes:
       - d:\Memory\shared\qdrant:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "timeout 5 bash -c 'cat < /dev/null > /dev/tcp/localhost/6333' || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
+      timeout: 10s
+      retries: 60
+      start_period: 90s
     deploy:
       resources:
         limits:
@@ -79,11 +79,11 @@ services:
       - NEO4J_dbms_threads_worker__count=16
       - NEO4J_dbms_memory_pagecache_size=2G
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7474"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 90s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --timeout=5 --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
     deploy:
       resources:
         limits:

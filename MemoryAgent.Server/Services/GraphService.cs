@@ -504,7 +504,18 @@ public class GraphService : IGraphService, IDisposable
                 line_number: $lineNumber,
                 class_name: $className,
                 file_path: $filePath,
-                context: $context
+                context: $context,
+                cyclomatic_complexity: $cyclomaticComplexity,
+                cognitive_complexity: $cognitiveComplexity,
+                lines_of_code: $linesOfCode,
+                code_smell_count: $codeSmellCount,
+                database_calls: $databaseCalls,
+                has_database_access: $hasDatabaseAccess,
+                has_http_calls: $hasHttpCalls,
+                has_logging: $hasLogging,
+                is_public_api: $isPublicApi,
+                throws_exceptions: $throwsExceptions,
+                is_test: $isTest
             })";
 
         var parameters = new
@@ -518,7 +529,18 @@ public class GraphService : IGraphService, IDisposable
             lineNumber = memory.LineNumber,
             className = memory.Metadata.GetValueOrDefault("class_name", ""),
             filePath = memory.FilePath,
-            context = memory.Context
+            context = memory.Context,
+            cyclomaticComplexity = memory.Metadata.GetValueOrDefault("cyclomatic_complexity", 0),
+            cognitiveComplexity = memory.Metadata.GetValueOrDefault("cognitive_complexity", 0),
+            linesOfCode = memory.Metadata.GetValueOrDefault("lines_of_code", 0),
+            codeSmellCount = memory.Metadata.GetValueOrDefault("code_smell_count", 0),
+            databaseCalls = memory.Metadata.GetValueOrDefault("database_calls", 0),
+            hasDatabaseAccess = memory.Metadata.GetValueOrDefault("has_database_access", false),
+            hasHttpCalls = memory.Metadata.GetValueOrDefault("has_http_calls", false),
+            hasLogging = memory.Metadata.GetValueOrDefault("has_logging", false),
+            isPublicApi = memory.Metadata.GetValueOrDefault("is_public_api", false),
+            throwsExceptions = memory.Metadata.GetValueOrDefault("throws_exceptions", false),
+            isTest = memory.Metadata.GetValueOrDefault("is_test", false)
         };
 
         return (cypher, parameters);

@@ -315,11 +315,14 @@ public class RoslynParser : ICodeParser
             }
         }
 
+        // Build a type map for this class (fields + DI injected types)
+        var classTypeMap = BuildClassTypeMap(classDecl);
+        
         // Extract methods
         var methods = classDecl.Members.OfType<MethodDeclarationSyntax>();
         foreach (var method in methods)
         {
-            ExtractMethod(method, fullName, className, filePath, context, result);
+            ExtractMethod(method, fullName, className, filePath, context, result, classTypeMap);
         }
 
         // Extract properties
@@ -391,7 +394,8 @@ public class RoslynParser : ICodeParser
         string className,
         string filePath,
         string context,
-        ParseResult result)
+        ParseResult result,
+        Dictionary<string, string>? classTypeMap = null)
     {
         var methodName = methodDecl.Identifier.Text;
         var lineNumber = methodDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
@@ -484,8 +488,8 @@ public class RoslynParser : ICodeParser
         // Extract return type
         ExtractMethodReturnType(methodDecl, $"{fullClassName}.{methodName}", context, result);
         
-        // Extract method calls
-        ExtractMethodCalls(methodDecl, $"{fullClassName}.{methodName}", context, result);
+        // Extract method calls with type resolution
+        ExtractMethodCalls(methodDecl, $"{fullClassName}.{methodName}", context, result, classTypeMap);
         
         // Extract attributes on method
         ExtractAttributes(methodDecl.AttributeLists, $"{fullClassName}.{methodName}", context, result);
@@ -708,6 +712,86 @@ public class RoslynParser : ICodeParser
     }
 
     /// <summary>
+    /// Build a type map for the class: field/parameter names -> their types
+    /// This is used to resolve method calls like _repository.Save() to IUserRepository.Save()
+    /// </summary>
+    private Dictionary<string, string> BuildClassTypeMap(ClassDeclarationSyntax classDecl)
+    {
+        var typeMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        
+        // Extract field declarations and their types
+        var fields = classDecl.Members.OfType<FieldDeclarationSyntax>();
+        foreach (var field in fields)
+        {
+            var fieldType = field.Declaration.Type.ToString();
+            
+            foreach (var variable in field.Declaration.Variables)
+            {
+                var fieldName = variable.Identifier.Text;
+                if (!string.IsNullOrWhiteSpace(fieldType) && !IsPrimitiveType(fieldType))
+                {
+                    typeMap[fieldName] = CleanTypeName(fieldType);
+                }
+            }
+        }
+        
+        // Extract constructor parameters (DI injections)
+        var constructors = classDecl.Members.OfType<ConstructorDeclarationSyntax>();
+        foreach (var constructor in constructors)
+        {
+            foreach (var parameter in constructor.ParameterList.Parameters)
+            {
+                var paramName = parameter.Identifier.Text;
+                var paramType = parameter.Type?.ToString();
+                
+                if (!string.IsNullOrWhiteSpace(paramType) && !IsPrimitiveType(paramType))
+                {
+                    typeMap[paramName] = CleanTypeName(paramType);
+                    
+                    // Also map common DI field patterns: _repository, _service, etc.
+                    // Constructor: MyService(IUserRepository repository)
+                    // Field: private readonly IUserRepository _repository;
+                    var fieldName = $"_{paramName}";
+                    typeMap[fieldName] = CleanTypeName(paramType);
+                }
+            }
+        }
+        
+        // Extract properties and their types
+        var properties = classDecl.Members.OfType<PropertyDeclarationSyntax>();
+        foreach (var property in properties)
+        {
+            var propName = property.Identifier.Text;
+            var propType = property.Type.ToString();
+            
+            if (!string.IsNullOrWhiteSpace(propType) && !IsPrimitiveType(propType))
+            {
+                typeMap[propName] = CleanTypeName(propType);
+            }
+        }
+        
+        return typeMap;
+    }
+
+    /// <summary>
+    /// Clean type name by removing nullable markers and extracting base type
+    /// </summary>
+    private string CleanTypeName(string typeName)
+    {
+        // Remove nullable marker: IUserRepository? -> IUserRepository
+        typeName = typeName.TrimEnd('?');
+        
+        // Extract base type from generics: List<User> -> List
+        var genericIndex = typeName.IndexOf('<');
+        if (genericIndex > 0)
+        {
+            return typeName.Substring(0, genericIndex).Trim();
+        }
+        
+        return typeName.Trim();
+    }
+
+    /// <summary>
     /// Extract constructor injection dependencies
     /// </summary>
     private void ExtractConstructorInjection(ClassDeclarationSyntax classDecl, string fullClassName, string context, ParseResult result)
@@ -739,9 +823,14 @@ public class RoslynParser : ICodeParser
     }
 
     /// <summary>
-    /// Extract method calls from method body
+    /// Extract method calls from method body with enhanced context tracking
     /// </summary>
-    private void ExtractMethodCalls(MethodDeclarationSyntax methodDecl, string fullMethodName, string context, ParseResult result)
+    private void ExtractMethodCalls(
+        MethodDeclarationSyntax methodDecl, 
+        string fullMethodName, 
+        string context, 
+        ParseResult result,
+        Dictionary<string, string>? classTypeMap = null)
     {
         if (methodDecl.Body == null && methodDecl.ExpressionBody == null)
             return;
@@ -750,16 +839,44 @@ public class RoslynParser : ICodeParser
         
         foreach (var invocation in invocations)
         {
-            var calledMethodName = ExtractMethodNameFromInvocation(invocation);
+            var (calledMethodName, callerObject, fullExpression) = ExtractMethodCallInfo(invocation);
+            
             if (!string.IsNullOrWhiteSpace(calledMethodName))
             {
-                result.Relationships.Add(new CodeRelationship
+                var relationship = new CodeRelationship
                 {
                     FromName = fullMethodName,
                     ToName = calledMethodName,
                     Type = RelationshipType.Calls,
-                    Context = context
-                });
+                    Context = context,
+                    Properties = new Dictionary<string, object>()
+                };
+
+                // Add caller object if available (e.g., "_repository" in "_repository.Save()")
+                if (!string.IsNullOrWhiteSpace(callerObject))
+                {
+                    relationship.Properties["caller_object"] = callerObject;
+                    relationship.Properties["full_expression"] = fullExpression;
+                    
+                    // Try to resolve the type from class type map (DI fields, constructor params, etc.)
+                    if (classTypeMap != null && classTypeMap.TryGetValue(callerObject, out var inferredType))
+                    {
+                        relationship.Properties["inferred_type"] = inferredType;
+                        
+                        // Update ToName to include the type if we know it
+                        // e.g., "Save" -> "IUserRepository.Save"
+                        var methodNameOnly = calledMethodName.Contains('.') 
+                            ? calledMethodName.Split('.').Last() 
+                            : calledMethodName;
+                        relationship.ToName = $"{inferredType}.{methodNameOnly}";
+                    }
+                }
+
+                // Add line number for better traceability
+                var lineNumber = invocation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                relationship.Properties["line_number"] = lineNumber;
+
+                result.Relationships.Add(relationship);
             }
         }
     }
@@ -990,17 +1107,72 @@ public class RoslynParser : ICodeParser
     }
 
     /// <summary>
-    /// Extract method name from invocation expression
+    /// Extract comprehensive method call information from invocation expression
+    /// Returns: (methodName, callerObject, fullExpression)
+    /// </summary>
+    private (string methodName, string callerObject, string fullExpression) ExtractMethodCallInfo(InvocationExpressionSyntax invocation)
+    {
+        var fullExpression = invocation.Expression.ToString();
+        
+        switch (invocation.Expression)
+        {
+            // Simple method call: DoSomething()
+            case IdentifierNameSyntax identifierName:
+                return (identifierName.Identifier.Text, "", fullExpression);
+            
+            // Member access: _repository.Save() or user.GetName()
+            case MemberAccessExpressionSyntax memberAccess:
+                var methodName = memberAccess.Name.Identifier.Text;
+                var callerObject = ExtractCallerObject(memberAccess.Expression);
+                
+                // If we have a caller object, create qualified name
+                var qualifiedName = !string.IsNullOrWhiteSpace(callerObject) 
+                    ? $"{callerObject}.{methodName}"
+                    : methodName;
+                
+                return (qualifiedName, callerObject, fullExpression);
+            
+            // Generic method: DoSomething<T>()
+            case GenericNameSyntax genericName:
+                return (genericName.Identifier.Text, "", fullExpression);
+            
+            default:
+                return (fullExpression, "", fullExpression);
+        };
+    }
+
+    /// <summary>
+    /// Extract the caller object from a member access expression
+    /// Examples: _repository, this, _context.Users, etc.
+    /// </summary>
+    private string ExtractCallerObject(ExpressionSyntax expression)
+    {
+        return expression switch
+        {
+            // Field or local variable: _repository, user, etc.
+            IdentifierNameSyntax identifier => identifier.Identifier.Text,
+            
+            // this.Method()
+            ThisExpressionSyntax => "this",
+            
+            // base.Method()
+            BaseExpressionSyntax => "base",
+            
+            // Nested member access: _context.Users
+            MemberAccessExpressionSyntax memberAccess => memberAccess.ToString(),
+            
+            // Everything else
+            _ => expression.ToString()
+        };
+    }
+
+    /// <summary>
+    /// Legacy method - redirects to ExtractMethodCallInfo for backwards compatibility
     /// </summary>
     private string ExtractMethodNameFromInvocation(InvocationExpressionSyntax invocation)
     {
-        return invocation.Expression switch
-        {
-            IdentifierNameSyntax identifierName => identifierName.Identifier.Text,
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.Text,
-            GenericNameSyntax genericName => genericName.Identifier.Text,
-            _ => invocation.Expression.ToString()
-        };
+        var (methodName, _, _) = ExtractMethodCallInfo(invocation);
+        return methodName;
     }
 
     /// <summary>
