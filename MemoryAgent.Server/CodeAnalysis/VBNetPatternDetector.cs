@@ -30,6 +30,8 @@ public partial class VBNetPatternDetector : IPatternDetector
             patterns.AddRange(DetectDependencyInjectionPatterns(lines, filePath, context));
             patterns.AddRange(DetectLoggingPatterns(lines, filePath, context));
             patterns.AddRange(DetectErrorHandlingPatterns(lines, filePath, context));
+            patterns.AddRange(DetectPublisherSubscriberPatterns(sourceCode, lines, filePath, context));
+            patterns.AddRange(DetectAzureWebPubSubPatterns(lines, filePath, context));
             
             // VB.NET ATTRIBUTE PATTERNS (25 comprehensive patterns)
             patterns.AddRange(DetectRoutingAttributes(lines, filePath, context));

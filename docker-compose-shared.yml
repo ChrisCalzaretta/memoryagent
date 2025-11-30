@@ -17,7 +17,7 @@ services:
       - Qdrant__Url=http://memory-agent-qdrant:6333
       - Neo4j__Url=bolt://memory-agent-neo4j:7687
       - Neo4j__User=neo4j
-      - Neo4j__Password=agenttrader123
+      - Neo4j__Password=memoryagent
       - Ollama__Url=http://memory-agent-ollama:11434
       - PathMapping__HostRoot=H:\Code\git
       - PathMapping__ContainerRoot=/workspace

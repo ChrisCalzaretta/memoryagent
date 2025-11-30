@@ -252,6 +252,12 @@ public class VectorService : IVectorService
     {
         try
         {
+            // Ensure collections exist before searching
+            if (!string.IsNullOrWhiteSpace(context))
+            {
+                await InitializeCollectionsForContextAsync(context, cancellationToken);
+            }
+            
             var results = new List<CodeExample>();
             var collections = type.HasValue
                 ? new[] { GetCollectionName(type.Value, context) }
@@ -339,6 +345,12 @@ public class VectorService : IVectorService
     {
         try
         {
+            // Ensure collections exist before deleting
+            if (!string.IsNullOrWhiteSpace(context))
+            {
+                await InitializeCollectionsForContextAsync(context, cancellationToken);
+            }
+            
             var collections = new[] { GetFilesCollection(context), GetClassesCollection(context), GetMethodsCollection(context) };
 
             foreach (var collection in collections)
@@ -398,6 +410,12 @@ public class VectorService : IVectorService
 
     public async Task<List<string>> GetFilePathsForContextAsync(string? context = null, CancellationToken cancellationToken = default)
     {
+        // Ensure collections exist before querying
+        if (!string.IsNullOrWhiteSpace(context))
+        {
+            await InitializeCollectionsForContextAsync(context, cancellationToken);
+        }
+        
         var filePaths = new HashSet<string>();
         var collections = new[] { GetFilesCollection(context), GetClassesCollection(context), GetMethodsCollection(context), GetPatternsCollection(context) };
 

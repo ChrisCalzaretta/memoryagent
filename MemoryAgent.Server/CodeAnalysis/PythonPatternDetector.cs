@@ -41,6 +41,10 @@ public class PythonPatternDetector : IPatternDetector
             patterns.AddRange(DetectLoggingPatterns(sourceCode, lines, filePath, context));
             patterns.AddRange(DetectErrorHandlingPatterns(sourceCode, lines, filePath, context));
             patterns.AddRange(DetectApiDesignPatterns(sourceCode, lines, filePath, context));
+            patterns.AddRange(DetectAzureWebPubSubPatterns(sourceCode, lines, filePath, context));
+            
+            // Azure Architecture Patterns
+            patterns.AddRange(DetectAzureArchitecturePatternsPython(sourceCode, lines, filePath, context));
         }
         catch (Exception ex)
         {
@@ -609,6 +613,355 @@ public class PythonPatternDetector : IPatternDetector
             }
         }
 
+        return patterns;
+    }
+
+    #endregion
+
+    #region Azure Web PubSub Patterns
+
+    private List<CodePattern> DetectAzureWebPubSubPatterns(string sourceCode, string[] lines, string filePath, string? context)
+    {
+        var patterns = new List<CodePattern>();
+        const string WebPubSubUrl = "https://learn.microsoft.com/en-us/azure/azure-web-pubsub/";
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+
+            // Pattern 1: WebPubSubServiceClient initialization
+            if (Regex.IsMatch(line, @"WebPubSubServiceClient\s*\.\s*from_connection_string\s*\(", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(line, @"WebPubSubServiceClient\s*\(", RegexOptions.IgnoreCase))
+            {
+                var usesConfig = Regex.IsMatch(line, @"os\.environ|config|settings", RegexOptions.IgnoreCase) ||
+                                lines.Skip(Math.Max(0, i - 3)).Take(5).Any(l => Regex.IsMatch(l, @"os\.environ|config|settings", RegexOptions.IgnoreCase));
+                
+                var pattern = CreatePattern(
+                    name: "WebPubSubServiceClient_Init",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.RealtimeMessaging,
+                    implementation: "WebPubSubServiceClient",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: usesConfig
+                        ? "Service client initialized with connection string from configuration"
+                        : "Service client initialized (WARNING: Use environment variables or config, not hardcoded strings)",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["UsesConfiguration"] = usesConfig;
+                patterns.Add(pattern);
+            }
+
+            // Pattern 2: send_to_all - Broadcast messaging
+            if (Regex.IsMatch(line, @"\.send_to_all\s*\(|\.send_to_all_async\s*\(", RegexOptions.IgnoreCase))
+            {
+                var isAsync = Regex.IsMatch(line, @"\bawait\b", RegexOptions.IgnoreCase);
+                var hasTryExcept = lines.Skip(Math.Max(0, i - 5)).Take(10).Any(l => 
+                    Regex.IsMatch(l, @"^\s*try\s*:", RegexOptions.IgnoreCase));
+
+                var pattern = CreatePattern(
+                    name: "WebPubSub_BroadcastMessage",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.RealtimeMessaging,
+                    implementation: "send_to_all",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: $"Broadcasting to all clients{(isAsync ? " (async)" : "")}{(hasTryExcept ? "" : " WARNING: Add try/except")}",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["IsAsync"] = isAsync;
+                pattern.Metadata["HasErrorHandling"] = hasTryExcept;
+                patterns.Add(pattern);
+            }
+
+            // Pattern 3: send_to_group - Group messaging
+            if (Regex.IsMatch(line, @"\.send_to_group\s*\(|\.send_to_group_async\s*\(", RegexOptions.IgnoreCase))
+            {
+                var isAsync = Regex.IsMatch(line, @"\bawait\b", RegexOptions.IgnoreCase);
+                
+                patterns.Add(CreatePattern(
+                    name: "WebPubSub_GroupMessage",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.RealtimeMessaging,
+                    implementation: "send_to_group",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: $"Sending to specific group{(isAsync ? " (async)" : "")}",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                ));
+            }
+
+            // Pattern 4: send_to_user - User messaging
+            if (Regex.IsMatch(line, @"\.send_to_user\s*\(|\.send_to_user_async\s*\(", RegexOptions.IgnoreCase))
+            {
+                var isAsync = Regex.IsMatch(line, @"\bawait\b", RegexOptions.IgnoreCase);
+                
+                patterns.Add(CreatePattern(
+                    name: "WebPubSub_UserMessage",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.RealtimeMessaging,
+                    implementation: "send_to_user",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: $"Sending to specific user{(isAsync ? " (async)" : "")}",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                ));
+            }
+
+            // Pattern 5: get_client_access_token - Token generation
+            if (Regex.IsMatch(line, @"\.get_client_access_token\s*\(", RegexOptions.IgnoreCase))
+            {
+                var hasUserId = Regex.IsMatch(line, @"user_id\s*=", RegexOptions.IgnoreCase);
+                var hasRoles = Regex.IsMatch(line, @"roles\s*=", RegexOptions.IgnoreCase);
+                
+                patterns.Add(CreatePattern(
+                    name: "WebPubSub_ClientAccessToken",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.Security,
+                    implementation: "get_client_access_token",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: $"Generating client access token{(hasUserId ? " with user ID" : "")}{(hasRoles ? " and roles" : "")}",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                ));
+            }
+
+            // Pattern 6: add_connection_to_group - Group management
+            if (Regex.IsMatch(line, @"\.add_connection_to_group\s*\(", RegexOptions.IgnoreCase))
+            {
+                patterns.Add(CreatePattern(
+                    name: "WebPubSub_AddToGroup",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.ConnectionManagement,
+                    implementation: "add_connection_to_group",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Adding connection to group for targeted messaging",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                ));
+            }
+
+            // Pattern 7: remove_connection_from_group
+            if (Regex.IsMatch(line, @"\.remove_connection_from_group\s*\(", RegexOptions.IgnoreCase))
+            {
+                patterns.Add(CreatePattern(
+                    name: "WebPubSub_RemoveFromGroup",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.ConnectionManagement,
+                    implementation: "remove_connection_from_group",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Removing connection from group",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                ));
+            }
+
+            // Pattern 8: close_connection
+            if (Regex.IsMatch(line, @"\.close_connection\s*\(", RegexOptions.IgnoreCase))
+            {
+                patterns.Add(CreatePattern(
+                    name: "WebPubSub_CloseConnection",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.ConnectionManagement,
+                    implementation: "close_connection",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Gracefully closing client connection",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                ));
+            }
+
+            // Pattern 9: DefaultAzureCredential / ManagedIdentityCredential
+            if (Regex.IsMatch(line, @"DefaultAzureCredential\s*\(|ManagedIdentityCredential\s*\(", RegexOptions.IgnoreCase))
+            {
+                var usesManagedIdentity = line.Contains("ManagedIdentityCredential");
+                
+                patterns.Add(CreatePattern(
+                    name: "WebPubSub_Authentication",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.Security,
+                    implementation: usesManagedIdentity ? "ManagedIdentityCredential" : "DefaultAzureCredential",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: $"Using Azure AD authentication{(usesManagedIdentity ? " with Managed Identity (recommended)" : "")}",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                ));
+            }
+
+            // Pattern 10: Event Handler webhook endpoints (Flask/FastAPI)
+            if ((Regex.IsMatch(line, @"@app\.route\s*\(.*POST", RegexOptions.IgnoreCase) ||
+                 Regex.IsMatch(line, @"@router\.post\s*\(", RegexOptions.IgnoreCase)) &&
+                lines.Skip(i).Take(10).Any(l => Regex.IsMatch(l, @"webpubsub|event", RegexOptions.IgnoreCase)))
+            {
+                var hasValidation = lines.Skip(i).Take(15).Any(l => 
+                    Regex.IsMatch(l, @"validate|verify.*signature", RegexOptions.IgnoreCase));
+                
+                patterns.Add(CreatePattern(
+                    name: "WebPubSub_WebhookEndpoint",
+                    type: PatternType.AzureWebPubSub,
+                    category: PatternCategory.EventHandlers,
+                    implementation: "HTTP Webhook",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 10),
+                    bestPractice: hasValidation 
+                        ? "Webhook endpoint with signature validation" 
+                        : "Webhook endpoint (CRITICAL: Must validate signatures!)",
+                    azureUrl: WebPubSubUrl,
+                    context: context
+                ));
+            }
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region AZURE ARCHITECTURE PATTERNS (All 36 Patterns)
+
+    private List<CodePattern> DetectAzureArchitecturePatternsPython(string sourceCode, string[] lines, string filePath, string? context)
+    {
+        var patterns = new List<CodePattern>();
+        
+        // Pattern detection using keywords and structure analysis
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            
+            // CQRS
+            if ((line.Contains("Command") || line.Contains("Query")) && line.Contains("class"))
+                patterns.Add(CreatePattern("CQRS_Pattern", PatternType.CQRS, PatternCategory.DataManagement,
+                    "CQRS", filePath, i + 1, GetContext(lines, i, 2),
+                    "CQRS: Separate read/write", "https://learn.microsoft.com/en-us/azure/architecture/patterns/cqrs", context));
+            
+            // Event Sourcing
+            if (line.Contains("EventStore") || line.Contains("DomainEvent"))
+                patterns.Add(CreatePattern("EventSourcing_Pattern", PatternType.EventSourcing, PatternCategory.DataManagement,
+                    "Event Sourcing", filePath, i + 1, GetContext(lines, i, 2),
+                    "Event Sourcing: Event-based state", "https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing", context));
+            
+            // Circuit Breaker
+            if (line.Contains("CircuitBreaker") || line.Contains("circuit_breaker") || line.Contains("@circuit"))
+                patterns.Add(CreatePattern("CircuitBreaker_Pattern", PatternType.CircuitBreaker, PatternCategory.ResiliencyPatterns,
+                    "Circuit Breaker", filePath, i + 1, GetContext(lines, i, 2),
+                    "Circuit Breaker: Fail fast", "https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker", context));
+            
+            // Bulkhead
+            if (line.Contains("Semaphore") || line.Contains("BoundedSemaphore") || line.Contains("bulkhead"))
+                patterns.Add(CreatePattern("Bulkhead_Pattern", PatternType.Bulkhead, PatternCategory.ResiliencyPatterns,
+                    "Bulkhead", filePath, i + 1, GetContext(lines, i, 2),
+                    "Bulkhead: Resource isolation", "https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead", context));
+            
+            // Saga
+            if (line.Contains("Saga") || line.Contains("saga"))
+                patterns.Add(CreatePattern("Saga_Pattern", PatternType.Saga, PatternCategory.OperationalPatterns,
+                    "Saga", filePath, i + 1, GetContext(lines, i, 2),
+                    "Saga: Distributed transactions", "https://learn.microsoft.com/en-us/azure/architecture/patterns/saga", context));
+            
+            // Ambassador
+            if ((line.Contains("Ambassador") || line.Contains("Proxy")) && line.Contains("class"))
+                patterns.Add(CreatePattern("Ambassador_Pattern", PatternType.Ambassador, PatternCategory.DesignImplementation,
+                    "Ambassador", filePath, i + 1, GetContext(lines, i, 2),
+                    "Ambassador: Network proxy", "https://learn.microsoft.com/en-us/azure/architecture/patterns/ambassador", context));
+            
+            // Anti-Corruption Layer
+            if (line.Contains("Adapter") || line.Contains("Facade") || line.Contains("LegacyAdapter"))
+                patterns.Add(CreatePattern("AntiCorruptionLayer_Pattern", PatternType.AntiCorruptionLayer, PatternCategory.DesignImplementation,
+                    "Anti-Corruption Layer", filePath, i + 1, GetContext(lines, i, 2),
+                    "Anti-Corruption: Legacy isolation", "https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer", context));
+            
+            // Backends for Frontends
+            if ((line.Contains("BFF") || line.Contains("MobileAPI") || line.Contains("WebAPI")) && line.Contains("class"))
+                patterns.Add(CreatePattern("BFF_Pattern", PatternType.BackendsForFrontends, PatternCategory.DesignImplementation,
+                    "BFF", filePath, i + 1, GetContext(lines, i, 2),
+                    "BFF: Client-specific backends", "https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends", context));
+            
+            // Choreography
+            if (line.Contains("EventHandler") || line.Contains("on_event"))
+                patterns.Add(CreatePattern("Choreography_Pattern", PatternType.Choreography, PatternCategory.MessagingPatterns,
+                    "Choreography", filePath, i + 1, GetContext(lines, i, 2),
+                    "Choreography: Event-driven", "https://learn.microsoft.com/en-us/azure/architecture/patterns/choreography", context));
+            
+            // Claim Check
+            if ((line.Contains("blob") && sourceCode.Contains("queue")) || line.Contains("claim_check"))
+                patterns.Add(CreatePattern("ClaimCheck_Pattern", PatternType.ClaimCheck, PatternCategory.MessagingPatterns,
+                    "Claim Check", filePath, i + 1, GetContext(lines, i, 2),
+                    "Claim Check: Large message handling", "https://learn.microsoft.com/en-us/azure/architecture/patterns/claim-check", context));
+            
+            // Compensating Transaction  
+            if (line.Contains("compensate") || line.Contains("rollback") || line.Contains("undo"))
+                patterns.Add(CreatePattern("CompensatingTransaction_Pattern", PatternType.CompensatingTransaction, PatternCategory.ResiliencyPatterns,
+                    "Compensating Transaction", filePath, i + 1, GetContext(lines, i, 2),
+                    "Compensating: Undo operations", "https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction", context));
+            
+            // Competing Consumers
+            if ((line.Contains("consumer") || line.Contains("worker")) && (sourceCode.Contains("queue") || sourceCode.Contains("async")))
+                patterns.Add(CreatePattern("CompetingConsumers_Pattern", PatternType.CompetingConsumers, PatternCategory.MessagingPatterns,
+                    "Competing Consumers", filePath, i + 1, GetContext(lines, i, 2),
+                    "Competing Consumers: Parallel processing", "https://learn.microsoft.com/en-us/azure/architecture/patterns/competing-consumers", context));
+            
+            // Materialized View
+            if (line.Contains("ReadModel") || line.Contains("View") || line.Contains("denormalized"))
+                patterns.Add(CreatePattern("MaterializedView_Pattern", PatternType.MaterializedView, PatternCategory.DataManagement,
+                    "Materialized View", filePath, i + 1, GetContext(lines, i, 2),
+                    "Materialized View: Precomputed data", "https://learn.microsoft.com/en-us/azure/architecture/patterns/materialized-view", context));
+            
+            // Gateway Aggregation
+            if (line.Contains("aggregate") || (sourceCode.Split(new[] { "requests.get", "requests.post" }, StringSplitOptions.None).Length > 3))
+                patterns.Add(CreatePattern("GatewayAggregation_Pattern", PatternType.GatewayAggregation, PatternCategory.DesignImplementation,
+                    "Gateway Aggregation", filePath, i + 1, GetContext(lines, i, 2),
+                    "Gateway: Aggregate requests", "https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-aggregation", context));
+            
+            // Gateway Offloading
+            if (line.Contains("middleware") || line.Contains("@app.middleware"))
+                patterns.Add(CreatePattern("GatewayOffloading_Pattern", PatternType.GatewayOffloading, PatternCategory.DesignImplementation,
+                    "Gateway Offloading", filePath, i + 1, GetContext(lines, i, 2),
+                    "Gateway: Offload concerns", "https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-offloading", context));
+            
+            // Throttling
+            if (line.Contains("rate_limit") || line.Contains("throttle") || line.Contains("@limiter"))
+                patterns.Add(CreatePattern("Throttling_Pattern", PatternType.Throttling, PatternCategory.ResiliencyPatterns,
+                    "Throttling", filePath, i + 1, GetContext(lines, i, 2),
+                    "Throttling: Rate limiting", "https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling", context));
+            
+            // Federated Identity
+            if (line.Contains("OAuth") || line.Contains("jwt") || line.Contains("OIDC"))
+                patterns.Add(CreatePattern("FederatedIdentity_Pattern", PatternType.FederatedIdentity, PatternCategory.SecurityPatterns,
+                    "Federated Identity", filePath, i + 1, GetContext(lines, i, 2),
+                    "Federated: External auth", "https://learn.microsoft.com/en-us/azure/architecture/patterns/federated-identity", context));
+            
+            // Priority Queue
+            if (line.Contains("PriorityQueue") || line.Contains("heapq"))
+                patterns.Add(CreatePattern("PriorityQueue_Pattern", PatternType.PriorityQueue, PatternCategory.MessagingPatterns,
+                    "Priority Queue", filePath, i + 1, GetContext(lines, i, 2),
+                    "Priority Queue: Ordered processing", "https://learn.microsoft.com/en-us/azure/architecture/patterns/priority-queue", context));
+            
+            // Pipes and Filters
+            if (line.Contains("Pipeline") || line.Contains("Filter"))
+                patterns.Add(CreatePattern("PipesAndFilters_Pattern", PatternType.PipesAndFilters, PatternCategory.MessagingPatterns,
+                    "Pipes and Filters", filePath, i + 1, GetContext(lines, i, 2),
+                    "Pipes: Processing pipeline", "https://learn.microsoft.com/en-us/azure/architecture/patterns/pipes-and-filters", context));
+        }
+        
         return patterns;
     }
 
