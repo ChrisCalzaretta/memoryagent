@@ -2,7 +2,9 @@
 
 ## **Overview:**
 
-The system detects **70+ coding patterns** across **15 categories**, automatically finding best practices, anti-patterns, and framework usage in your code.
+The system detects **110+ coding patterns** across **17 categories**, automatically finding best practices, anti-patterns, and framework usage in your code.
+
+**Latest Addition:** Azure Web PubSub patterns (14+ patterns) for real-time WebSocket messaging across C#, Python, VB.NET, and JavaScript!
 
 ---
 
@@ -18,6 +20,8 @@ The system detects **70+ coding patterns** across **15 categories**, automatical
 | **Monitoring** | 3 | Health checks, logging, metrics |
 | **Background Jobs** | 2 | Hosted services, message queues |
 | **Configuration** | 2 | Config management, feature flags |
+| **Publisher-Subscriber** | **25+** | **Event-driven messaging patterns** |
+| **Azure Web PubSub** | **14+** | **Real-time WebSocket messaging (NEW!)** |
 | **AG-UI (Agent UI)** | 40+ | Complete AG-UI protocol patterns |
 | **Agent Framework** | 5+ | Microsoft Agent Framework patterns |
 | **Semantic Kernel** | Legacy | Legacy patterns (migrating to Agent Framework) |
@@ -126,6 +130,169 @@ The system detects **70+ coding patterns** across **15 categories**, automatical
 - Application Insights telemetry
 - Custom metrics
 - `ILogger<T>` usage
+
+---
+
+### **7. Publisher-Subscriber Patterns** ✨ **NEW!**
+
+| Pattern | Description | Azure Docs |
+|---------|-------------|------------|
+| **azure-service-bus** | Topics and subscriptions for reliable messaging | [Link](https://learn.microsoft.com/en-us/azure/architecture/patterns/publisher-subscriber) |
+| **azure-event-grid** | Event-driven architecture and routing | [Link](https://learn.microsoft.com/en-us/azure/architecture/patterns/publisher-subscriber) |
+| **azure-event-hubs** | High-throughput event streaming | [Link](https://learn.microsoft.com/en-us/azure/architecture/patterns/publisher-subscriber) |
+| **rabbitmq-amqp** | Message queue pub/sub | [Link](https://learn.microsoft.com/en-us/azure/architecture/patterns/publisher-subscriber) |
+| **redis-pubsub** | Lightweight message broadcasting | [Link](https://learn.microsoft.com/en-us/azure/architecture/patterns/publisher-subscriber) |
+
+**Detects - C# (6 patterns):**
+- Azure Service Bus (Topics, Subscriptions, ServiceBusClient, ServiceBusSender/Receiver)
+- Azure Event Grid (EventGridPublisherClient, EventGridTrigger, Event routing)
+- Azure Event Hubs (EventHubProducerClient, EventProcessorClient, streaming)
+- MassTransit (IBus.Publish, IConsumer<T>, configuration)
+- NServiceBus (IEndpointInstance.Publish, IHandleMessages<T>)
+- Generic Observable patterns (IObservable<T>, IObserver<T>)
+
+**Detects - Python (6 patterns):**
+- Azure Service Bus SDK (ServiceBusClient, send_messages, receive_messages)
+- Azure Event Grid SDK (EventGridPublisherClient, send_events)
+- Azure Event Hubs SDK (EventHubProducerClient, EventHubConsumerClient)
+- Redis Pub/Sub (redis.publish, redis.subscribe, pubsub())
+- RabbitMQ/Pika (exchange_declare, basic_publish, basic_consume)
+- Generic event emitters (.emit, .on, .subscribe)
+
+**Detects - JavaScript/TypeScript (9 patterns):**
+- Node.js EventEmitter (emit, on, addListener, removeListener)
+- RxJS Observables (Observable, Subject, BehaviorSubject, subscribe)
+- WebSocket (new WebSocket, Socket.IO)
+- Server-Sent Events (EventSource for server push)
+- Azure Service Bus (@azure/service-bus SDK)
+- RabbitMQ (amqplib, AMQP protocol)
+- Redis Pub/Sub (redis.publish, redis.subscribe)
+- Apache Kafka (kafkajs, producer.send, consumer.subscribe)
+- Custom EventBus/EventAggregator implementations
+
+**Detects - VB.NET (6 patterns):**
+- Azure Service Bus (ServiceBusClient, SendMessageAsync, ReceiveMessageAsync)
+- Azure Event Grid (EventGridPublisherClient, EventGridTrigger)
+- Azure Event Hubs (EventHubProducerClient, EventProcessorClient)
+- .NET Events (Public Event, RaiseEvent, AddHandler/RemoveHandler)
+- MassTransit (IBus.Publish, Implements IConsumer)
+- NServiceBus (IEndpointInstance.Publish, Implements IHandleMessages)
+
+**Validation Rules (10 checks):**
+- ✅ Idempotency handling (MessageId, DeduplicationId)
+- ✅ Error handling and dead-letter queue configuration
+- ✅ Message expiration (TTL) settings
+- ✅ Subscription filtering (for topics)
+- ✅ Message ordering (PartitionKey, SessionId)
+- ✅ Retry policy configuration
+- ✅ Authentication/security (Managed Identity vs connection strings)
+- ✅ Telemetry and logging
+- ✅ Consumer concurrency configuration
+- ✅ Proper disposal and resource management
+
+**Best Practices Enforced:**
+- Use Managed Identity instead of connection strings (Security Score -3 if violated)
+- Implement message deduplication for idempotency
+- Configure dead-letter queues for poison messages
+- Set appropriate TTL on messages
+- Use subscription filters to reduce processing overhead
+- Configure retry policies with exponential backoff
+- Add telemetry for message processing events
+- Implement proper concurrency controls
+
+---
+
+## **🌐 Azure Web PubSub Patterns (14+ Patterns):** ✨ **NEW!**
+
+Azure Web PubSub is a fully managed service for real-time publish-subscribe messaging using WebSockets. The Memory Agent now detects all major Azure Web PubSub implementation patterns across **C#, Python, VB.NET, and JavaScript/TypeScript**.
+
+### **Service Client Patterns (3)**
+
+| Pattern | Description | Best Practice |
+|---------|-------------|---------------|
+| **webpubsub-service-client** | WebPubSubServiceClient initialization | Store connection string in configuration, never hardcode |
+| **webpubsub-authentication** | Azure AD / Entra ID authentication | Use ManagedIdentityCredential for Azure-hosted apps |
+| **webpubsub-hub-management** | Hub configuration for connection grouping | Use separate hubs for different application scenarios |
+
+**Detects:**
+- `new WebPubSubServiceClient(connectionString, hubName)` (C#)
+- `WebPubSubServiceClient.from_connection_string()` (Python)
+- `new WebPubSubClient({ url })` (JavaScript)
+- ManagedIdentityCredential / DefaultAzureCredential usage
+- Connection string from configuration vs hardcoded
+
+### **Messaging Patterns (3)**
+
+| Pattern | Description | Best Practice |
+|---------|-------------|---------------|
+| **webpubsub-broadcast** | Send messages to all clients | Use SendToAllAsync with error handling |
+| **webpubsub-group-messaging** | Send to specific groups | Implement SendToGroupAsync for targeted updates |
+| **webpubsub-user-messaging** | Send to specific users | Use SendToUserAsync for user notifications |
+
+**Detects:**
+- `SendToAllAsync(message)` - Broadcast to all connections
+- `SendToGroupAsync(groupName, message)` - Group messaging
+- `SendToUserAsync(userId, message)` - User-specific messaging
+- Async/await patterns
+- Error handling (try-catch blocks)
+- Logging for message delivery
+
+### **Connection Management (4)**
+
+| Pattern | Description | Best Practice |
+|---------|-------------|---------------|
+| **webpubsub-group-management** | Add/remove connections from groups | Use AddConnectionToGroupAsync / RemoveConnectionFromGroupAsync |
+| **webpubsub-connection-lifecycle** | Connection open/close/reconnection | Implement retry with exponential backoff |
+| **webpubsub-client-token** | Secure client access tokens | Always set token expiration, include user ID and roles |
+| **webpubsub-client-reconnection** | Automatic reconnection logic | Use exponential backoff, notify users of connection status |
+
+**Detects:**
+- `AddConnectionToGroupAsync()` - Adding clients to groups
+- `RemoveConnectionFromGroupAsync()` - Removing from groups
+- `CloseClientConnectionAsync()` - Graceful connection close
+- `GetClientAccessUri(userId, roles, expiresAfter)` - Token generation
+- Reconnection logic with retry
+- Connection state tracking
+
+### **Event Handler Patterns (3)**
+
+| Pattern | Description | Best Practice |
+|---------|-------------|---------------|
+| **webpubsub-event-handlers** | Process upstream events | Implement handlers for connect, connected, disconnected, message events |
+| **webpubsub-signature-validation** | Webhook signature verification | **CRITICAL**: Always validate signatures to prevent spoofing |
+| **webpubsub-webhook-endpoint** | HTTP webhook endpoints | Validate signatures, handle all event types, implement idempotency |
+
+**Detects:**
+- `WebPubSubEventHandler` base class usage (C#)
+- Webhook endpoints (`[HttpPost("/eventhandler")]`)
+- Signature validation (`VerifySignature()`)
+- Event type handling (connected, disconnected, message)
+- Event handlers: `client.on('connected', ...)` (JavaScript)
+
+### **Best Practices & Validation:**
+
+**✅ Quality Checks:**
+- Connection string from configuration (not hardcoded) - **CRITICAL**
+- Async/await pattern usage
+- Error handling with try-catch
+- Logging for diagnostics
+- Token expiration set
+- Webhook signature validation - **CRITICAL for security**
+- Message size validation (1MB limit)
+- Reconnection with exponential backoff
+
+**🚨 Security Requirements:**
+- Use Azure AD authentication instead of connection strings
+- Always validate webhook signatures (prevents spoofing attacks)
+- Set token expiration times
+- Include user ID and roles in tokens
+- Use HTTPS for webhook endpoints
+
+**📊 Supported Languages:**
+- **C#**: Full detection (10 patterns)
+- **Python**: Full detection (10 patterns)
+- **VB.NET**: Full detection (10 patterns)
+- **JavaScript/TypeScript**: Client-side patterns (12 patterns)
 
 ---
 

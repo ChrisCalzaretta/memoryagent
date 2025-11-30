@@ -517,12 +517,27 @@ public class AzureWebPubSubPatternDetector
             });
         }
 
-        // Detect webhook event processing methods
-        var methods = root.DescendantNodes()
-            .OfType<MethodDeclarationSyntax>()
-            .Where(m => m.AttributeLists.Any(al => al.ToString().Contains("HttpPost")) &&
-                       (m.Identifier.ToString().Contains("Event") || 
-                        m.ParameterList.Parameters.Any(p => p.Type?.ToString().Contains("WebPubSubEventRequest") == true)));
+        // Detect webhook event processing methods - ENHANCED DETECTION
+        var allMethods = root.DescendantNodes().OfType<MethodDeclarationSyntax>().ToList();
+        
+        var methods = allMethods.Where(m => 
+            {
+                // Check for HttpPost attribute
+                var hasHttpPost = m.AttributeLists.Any(al => al.ToString().Contains("HttpPost"));
+                if (!hasHttpPost) return false;
+                
+                // Check method signature, parameters, and body for WebPubSub keywords
+                var methodSignature = m.ToFullString();
+                var parameterTypes = m.ParameterList.Parameters.Select(p => p.Type?.ToString() ?? "").ToList();
+                var methodBody = m.Body?.ToString() ?? "";
+                
+                // Look for WebPubSubEventRequest parameter type OR WebPubSub in method name/body
+                var hasWebPubSubParam = parameterTypes.Any(pt => pt.Contains("WebPubSubEventRequest"));
+                var hasWebPubSubInSignature = methodSignature.Contains("WebPubSub");
+                var hasWebPubSubInBody = methodBody.Contains("WebPubSub") || methodBody.Contains("VerifySignature");
+                
+                return hasWebPubSubParam || hasWebPubSubInSignature || hasWebPubSubInBody;
+            });
 
         foreach (var method in methods)
         {

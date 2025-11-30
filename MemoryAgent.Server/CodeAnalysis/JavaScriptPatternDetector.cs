@@ -29,6 +29,7 @@ public partial class JavaScriptPatternDetector : IPatternDetector
             patterns.AddRange(DetectBrowserStoragePatterns(sourceCode, lines, filePath, context, language));
             patterns.AddRange(DetectServerStatePatterns(sourceCode, lines, filePath, context, language));
             patterns.AddRange(DetectFormStatePatterns(sourceCode, lines, filePath, context, language));
+            patterns.AddRange(DetectPublisherSubscriberPatterns(sourceCode, lines, filePath, context, language));
             
             // TYPESCRIPT DECORATOR PATTERNS (30 comprehensive patterns)
             if (isTypeScript)
