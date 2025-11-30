@@ -19,6 +19,8 @@ services:
       - Neo4j__User=${NEO4J_USER:-neo4j}
       - Neo4j__Password=${NEO4J_PASSWORD:-memoryagent}
       - Ollama__Url=${OLLAMA_URL:-http://${PROJECT_NAME:-memory}-agent-ollama:11434}
+      - PathMapping__HostRoot=${HOST_ROOT}
+      - PathMapping__ContainerRoot=/workspace
       - AutoReindex__Enabled=${AUTO_REINDEX_ENABLED:-true}
       - AutoReindex__WorkspacePath=${CONTAINER_PATH:-/workspace}
       - AutoReindex__Context=${CONTEXT_NAME:-default}
