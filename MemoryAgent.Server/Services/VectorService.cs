@@ -186,6 +186,13 @@ public class VectorService : IVectorService
                         _logger.LogWarning("Skipping {Type} {Name} - no embedding", memory.Type, memory.Name);
                         continue;
                     }
+                    
+                    // Skip zero vectors (placeholder from failed embedding generation)
+                    if (memory.Embedding.All(x => x == 0))
+                    {
+                        _logger.LogWarning("Skipping {Type} {Name} - zero vector (embedding failed)", memory.Type, memory.Name);
+                        continue;
+                    }
 
                     var payload = new Dictionary<string, object>
                     {

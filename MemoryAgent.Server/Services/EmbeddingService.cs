@@ -117,11 +117,25 @@ public class EmbeddingService : IEmbeddingService
         {
             var batch = texts.Skip(i).Take(batchSize).ToList();
             
-            // Process batch in parallel (Ollama handles GPU batching internally)
-            var tasks = batch.Select(text => GenerateEmbeddingAsync(text, cancellationToken));
-            var batchEmbeddings = await Task.WhenAll(tasks);
-            
-            embeddings.AddRange(batchEmbeddings);
+            // Process each item individually to prevent one failure from killing the whole batch
+            foreach (var text in batch)
+            {
+                try
+                {
+                    var embedding = await GenerateEmbeddingAsync(text, cancellationToken);
+                    embeddings.Add(embedding);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, 
+                        "Failed to generate embedding after {Retries} retries (text length: {Length}). Using zero vector to allow batch to continue.",
+                        3, text.Length);
+                    
+                    // Use zero vector as placeholder - allows indexing to continue
+                    // VectorService will skip storing items with zero vectors
+                    embeddings.Add(new float[1024]); // mxbai-embed-large dimension
+                }
+            }
             
             _logger.LogInformation(
                 "Generated embeddings for batch {Current}/{Total} ({Count} items)",
