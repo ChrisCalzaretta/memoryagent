@@ -39,7 +39,12 @@ builder.Services.AddHttpClient<IVectorService, VectorService>(client =>
 builder.Services.AddSingleton<IPathTranslationService, PathTranslationService>();
 builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
 builder.Services.AddSingleton<IGraphService, GraphService>();
-builder.Services.AddSingleton<ICodeParser, RoslynParser>();
+// Multi-language AST parser support (NO REGEX - Production Quality!)
+builder.Services.AddSingleton<RoslynParser>();         // C# parser (Roslyn AST)
+builder.Services.AddSingleton<TypeScriptASTParser>(); // JS/TS/React/Node.js parser (TS Compiler API)
+builder.Services.AddSingleton<PythonASTParser>();      // Python parser (ast module via Python.NET)
+builder.Services.AddSingleton<VBNetASTParser>();       // VB.NET parser (Roslyn AST)
+builder.Services.AddSingleton<ICodeParser, CompositeCodeParser>(); // Composite router
 builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddSingleton<ISemgrepService, SemgrepService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();

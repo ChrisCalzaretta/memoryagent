@@ -203,9 +203,14 @@ public class VectorService : IVectorService
                         payload[key] = value;
                     }
 
+                    // Generate deterministic ID based on content to enable upserts (prevents 409 conflicts)
+                    var idSource = $"{memory.Context}:{memory.FilePath}:{memory.Name}:{memory.LineNumber}";
+                    var idHash = System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(idSource));
+                    var deterministicId = Convert.ToHexString(idHash).ToLowerInvariant();
+                    
                     var point = new
                     {
-                        id = Guid.NewGuid().ToString(),
+                        id = deterministicId,
                         vector = memory.Embedding,
                         payload
                     };

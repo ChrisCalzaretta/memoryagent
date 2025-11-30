@@ -64,3 +64,4 @@ Write-Host "✅ Build successful with 0 errors" -ForegroundColor Green
 Write-Host "✅ Docker containers running" -ForegroundColor Green
 Write-Host "✅ $total pattern detection methods ready`n" -ForegroundColor Green
 
+

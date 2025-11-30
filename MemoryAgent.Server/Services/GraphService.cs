@@ -683,17 +683,35 @@ public class GraphService : IGraphService, IDisposable
         var relationshipType = relationship.Type.ToString().ToUpperInvariant();
 
         // CRITICAL: Ensure workspace isolation by filtering both nodes by context
-        // This prevents accidentally connecting nodes from different workspaces
+        // Smart relationship creation: Try to match existing nodes (Class/Method/File) first,
+        // only create Reference node if target doesn't exist in the graph
         var cypher = $@"
             MATCH (from {{name: $fromName, context: $context}})
-            MERGE (to:Reference {{name: $toName, context: $context}})
-            ON CREATE SET to.created_at = datetime()
-            MERGE (from)-[r:{relationshipType}]->(to)";
+            OPTIONAL MATCH (existingTo {{name: $toName, context: $context}})
+            WHERE existingTo:Class OR existingTo:Method OR existingTo:File OR existingTo:Interface OR existingTo:Property
+            WITH from, existingTo
+            CALL {{
+                WITH from, existingTo
+                WITH from, existingTo
+                WHERE existingTo IS NOT NULL
+                MERGE (from)-[r:{relationshipType}]->(existingTo)
+                RETURN r
+                UNION
+                WITH from, existingTo
+                WITH from, existingTo
+                WHERE existingTo IS NULL
+                MERGE (to:Reference {{name: $toName, context: $context}})
+                ON CREATE SET to.created_at = datetime()
+                MERGE (from)-[r:{relationshipType}]->(to)
+                RETURN r
+            }}
+            RETURN r";
 
         // Add properties if any
         if (relationship.Properties.Any())
         {
-            cypher += "\nSET " + string.Join(", ", relationship.Properties.Select((p, i) => $"r.{p.Key} = $prop{i}"));
+            cypher = cypher.Replace("RETURN r", 
+                "SET " + string.Join(", ", relationship.Properties.Select((p, i) => $"r.{p.Key} = $prop{i}")) + "\nRETURN r");
         }
 
         var parameters = new Dictionary<string, object>

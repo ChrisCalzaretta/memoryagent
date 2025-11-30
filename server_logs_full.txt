@@ -1,0 +1,1140 @@
+info: Program[0]
+      Initializing databases...
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 22.4602ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 33.48ms - 200
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-ollama:11434/api/tags
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-ollama:11434/api/tags
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[101]
+      Received HTTP response headers after 29.4103ms - 200
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[101]
+      End processing HTTP request after 29.5639ms - 200
+warn: MemoryAgent.Server.Services.EmbeddingService[0]
+      Model mxbai-embed-large:latest not found. Available models: 
+info: Program[0]
+      Health checks - Qdrant: Γ£ô, Neo4j: Γ£ô, Ollama: Γ£ù
+warn: Program[0]
+      Ollama is not healthy or model not found. Run: docker exec memory-agent-ollama ollama pull mxbai-embed-large:latest
+info: MemoryAgent.Server.Services.GraphService[0]
+      Neo4j database initialized successfully
+info: Program[0]
+      Databases initialized successfully
+info: Program[0]
+      Memory Code Agent started on http://localhost:5000
+info: Program[0]
+      - Qdrant: http://memory-agent-qdrant:6333
+info: Program[0]
+      - Neo4j: bolt://memory-agent-neo4j:7687
+info: Program[0]
+      - Ollama: http://memory-agent-ollama:11434
+info: MemoryAgent.Server.FileWatcher.AutoReindexService[0]
+      ≡ƒöì Auto-reindex service READY (multi-workspace mode)
+info: MemoryAgent.Server.FileWatcher.AutoReindexService[0]
+         Waiting for workspace registrations from Cursor...
+info: MemoryAgent.Server.FileWatcher.AutoReindexService[0]
+         Debounce delay: 3 seconds
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://[::]:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /app
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      Python.NET initialized successfully
+info: MemoryAgent.Server.Services.PathTranslationService[0]
+      Path mapping configured: E:\GitHub -> /workspace
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing directory: E:\GitHub\AgentTrader (translated to: /workspace/AgentTrader, recursive: True)
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Found 1343 code files to index (0 .cs, 0 .vb, 0 .cshtml/.razor, 661 .py, 546 .md, 43 .css/.scss/.less, 71 .js/.ts, 0 .csproj/.sln, 20 config files, 4 Docker)
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: /workspace/AgentTrader/cleanup_test_users.py (translated to: /workspace/AgentTrader/cleanup_test_users.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: /workspace/AgentTrader/dashboard.py (translated to: /workspace/AgentTrader/dashboard.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: /workspace/AgentTrader/demo_agent_messages.py (translated to: /workspace/AgentTrader/demo_agent_messages.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: /workspace/AgentTrader/main.py (translated to: /workspace/AgentTrader/main.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: /workspace/AgentTrader/test_full_agent_with_middleware.py (translated to: /workspace/AgentTrader/test_full_agent_with_middleware.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: /workspace/AgentTrader/test_middleware_status.py (translated to: /workspace/AgentTrader/test_middleware_status.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: /workspace/AgentTrader/test_role_access.py (translated to: /workspace/AgentTrader/test_role_access.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: /workspace/AgentTrader/examples/trading_tracker_example.py (translated to: /workspace/AgentTrader/examples/trading_tracker_example.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 5.5071ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 5.6212ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 2.7513ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 2.8393ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 2.6935ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 2.7189ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 3.0801ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 3.1286ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 3.0264ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 3.0871ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 3.3128ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 3.4144ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 3.1109ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 3.3043ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.7794ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.8382ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.8934ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.0185ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 3.6055ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 3.6843ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.502ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5884ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 1.225ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.7405ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.8182ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.3125ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.8786ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.9787ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4581ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5226ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.6012ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.629ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5907ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.9749ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6745ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.0662ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4611ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4791ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4688ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4867ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4572ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5749ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.8103ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.8369ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4706ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5122ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5221ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5456ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4344ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4765ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4893ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5172ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5362ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4503ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.626ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5923ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5682ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.7222ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4552ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5154ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/dashboard.py
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/demo_agent_messages.py
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/test_full_agent_with_middleware.py
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/main.py
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/test_role_access.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4712ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5377ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/test_middleware_status.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4191ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4652ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/examples/trading_tracker_example.py
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.7556ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.7978ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.8589ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.9284ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 1.0256ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.3064ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.8919ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.3054ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 2.0881ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 2.1657ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 2.2964ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 2.3222ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 1.6763ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.6975ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 1.5853ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 2.4523ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 2.515ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.6273ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 1.0801ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.1317ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 2.564ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 2.609ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 1.4982ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.5929ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5956ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6603ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4116ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.431ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5022ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6061ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5901ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.6269ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6696ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6317ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.8315ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.874ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.3889ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.7885ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.8302ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5252ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5159ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5656ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.8046ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.8296ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.6469ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.8334ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4354ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5018ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.614ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6347ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5208ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.644ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.6195ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.6546ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.67ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.7029ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5697ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.7001ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 1.0512ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.1451ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.9013ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 1.0492ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.8766ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.9236ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 29.3798ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 29.4681ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 35.6364ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 35.699ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 35.9517ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 36.0995ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 36.0603ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 36.2256ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 36.2888ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 36.2137ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 36.384ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 36.2848ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 36.3221ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 36.5101ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 36.4103ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 36.5508ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.5059ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.5949ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.3465ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.4305ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.0719ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.1663ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.1523ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.4048ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.1791ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.2411ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.2867ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.3412ms - 200
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.3622ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.41ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.3846ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.4799ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.5161ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.5796ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/test_role_access.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.6931ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.7728ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/demo_agent_messages.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.7234ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.8188ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/test_full_agent_with_middleware.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.637ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.7419ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/examples/trading_tracker_example.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.6649ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.701ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/test_middleware_status.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.8474ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.9004ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/dashboard.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.8004ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.8325ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/cleanup_test_users.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 7.5443ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 7.6633ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/main.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/dashboard.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/test_role_access.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/main.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/test_full_agent_with_middleware.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/test_middleware_status.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/demo_agent_messages.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/examples/trading_tracker_example.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: E:\GitHub\AgentTrader\cleanup_test_users.py (translated to: /workspace/AgentTrader/cleanup_test_users.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 2.3936ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 2.5056ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5577ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6437ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5277ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6144ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4472ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5172ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5781ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.663ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4684ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5372ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4137ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5094ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4683ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5127ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/cleanup_test_users.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 26.4442ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 26.5181ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 4.5563ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 4.6263ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 4.1202ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 4.2179ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.McpService[0]
+      Handling MCP request: tools/list

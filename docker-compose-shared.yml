@@ -19,7 +19,7 @@ services:
       - Neo4j__User=neo4j
       - Neo4j__Password=memoryagent
       - Ollama__Url=http://memory-agent-ollama:11434
-      - PathMapping__HostRoot=H:\Code\github
+      - PathMapping__HostRoot=E:\GitHub
       - PathMapping__ContainerRoot=/workspace
       - AutoReindex__Enabled=true
       - AutoReindex__WorkspacePath=
