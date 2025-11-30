@@ -26,8 +26,8 @@ public class PathTranslationService : IPathTranslationService
         _pathMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         
         // Default mapping for the standard setup
-        // Windows: E:\GitHub -> Container: /workspace
-        var hostRoot = _configuration["PathMapping:HostRoot"] ?? @"E:\GitHub";
+        // Windows: H:\Code\git -> Container: /workspace
+        var hostRoot = _configuration["PathMapping:HostRoot"] ?? @"H:\Code\git";
         var containerRoot = _configuration["PathMapping:ContainerRoot"] ?? "/workspace";
         
         _pathMappings[hostRoot] = containerRoot;

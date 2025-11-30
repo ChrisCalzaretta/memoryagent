@@ -1,0 +1,62 @@
+[33mcommit 2b3301e4cbb9beb7b555562fd6983262590fa311[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mgordon[m[33m)[m
+Merge: 427f9c3 fa8478f
+Author: Chris Gordon <cgtheflash@gmail.com>
+Date:   Wed Nov 26 22:41:50 2025 -0500
+
+    Merge main into gordon branch
+
+[33mcommit fa8478fa89ad2f2c07666217a8433bed5b5f7663[m
+Author: Chris Calzaretta <ChrisCalzaretta@Gmail.com>
+Date:   Wed Nov 26 20:37:55 2025 -0700
+
+    added ai agent stuff
+
+ .../AIAgentPatternDetectorTests.cs                 |  1067 [32m++[m
+ .../Integration/IndexingServiceWithSemgrepTests.cs |   204 [31m-[m
+ .../Integration/SemgrepServiceTests.cs             |   236 [31m-[m
+ .../MemoryAgent.Server.Tests.csproj                |    29 [32m+[m
+ .../CodeAnalysis/AIAgentPatternDetector.cs         |  1281 [32m++[m[31m-[m
+ MemoryAgent.Server/CodeAnalysis/RoslynParser.cs    |     5 [32m+[m
+ .../Services/BestPracticeValidationService.cs      |   121 [32m+[m[31m-[m
+ MemoryAgent.sln                                    |    14 [32m+[m
+ docs/AI_AGENT_GAPS_FILLED.md                       |   461 [32m+[m
+ docs/AI_AGENT_PATTERNS_COMPLETE.md                 |   871 [32m++[m
+ docs/AI_AGENT_PATTERN_TESTS_SUMMARY.md             |   303 [32m+[m
+ docs/COMPLETE_AI_AGENT_IMPLEMENTATION.md           |   807 [32m++[m
+ docs/ULTIMATE_PATTERN_COVERAGE_SUMMARY.md          |   633 [32m++[m
+ mcp-wrapper.log                                    | 10916 [32m+++++++++++++++++++[m
+ 14 files changed, 16505 insertions(+), 443 deletions(-)
+
+[33mcommit d436fd0c17c3d131c8fc0debfabadf6c4968edf4[m
+Author: Chris Calzaretta <ChrisCalzaretta@Gmail.com>
+Date:   Wed Nov 26 20:12:51 2025 -0700
+
+    updated coverage and added sempgrep
+
+ COMPLETE_IMPLEMENTATION_SUMMARY.md                 |   337 [32m+[m
+ .../Integration/IndexingServiceWithSemgrepTests.cs |   204 [32m+[m
+ .../Integration/SemgrepServiceTests.cs             |   236 [32m+[m
+ .../CodeAnalysis/AIAgentPatternDetector.cs         |   879 [32m++[m
+ MemoryAgent.Server/Dockerfile                      |    13 [32m+[m
+ MemoryAgent.Server/Models/SemgrepModels.cs         |   124 [32m+[m
+ MemoryAgent.Server/Program.cs                      |     1 [32m+[m
+ MemoryAgent.Server/Services/ISemgrepService.cs     |    25 [32m+[m
+ MemoryAgent.Server/Services/IndexingService.cs     |    65 [32m+[m[31m-[m
+ .../Services/PatternValidationService.cs           |    35 [32m+[m[31m-[m
+ MemoryAgent.Server/Services/SemgrepService.cs      |   318 [32m+[m
+ PATTERN_CATALOG.md                                 |   390 [32m+[m
+ SEMGREP_INTEGRATION.md                             |   381 [32m+[m
+ SEMGREP_SUMMARY.md                                 |   211 [32m+[m
+ docs/AI_AGENT_CORE_PATTERNS_RESEARCH.md            |   984 [32m++[m
+ mcp-wrapper.log                                    | 11406 [32m+++++++++++++++++++[m
+ test_real_sql_injection.cs                         |    16 [32m+[m
+ 17 files changed, 15623 insertions(+), 2 deletions(-)
+
+[33mcommit 67217f403074eaf4f027768d9d5c1dd4e147daf8[m
+Author: Chris Calzaretta <ChrisCalzaretta@Gmail.com>
+Date:   Wed Nov 26 19:45:32 2025 -0700
+
+    init
+
+ mcp-wrapper.log | 46 [32m++++++++++++++++++++++++++++++++++++++++++++++[m
+ 1 file changed, 46 insertions(+)
