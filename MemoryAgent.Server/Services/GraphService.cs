@@ -108,7 +108,7 @@ public class GraphService : IGraphService, IDisposable
             {
                 "CREATE CONSTRAINT class_name IF NOT EXISTS FOR (c:Class) REQUIRE c.name IS UNIQUE",
                 "CREATE CONSTRAINT file_path IF NOT EXISTS FOR (f:File) REQUIRE f.path IS UNIQUE",
-                "CREATE CONSTRAINT pattern_name IF NOT EXISTS FOR (p:Pattern) REQUIRE p.name IS UNIQUE",
+                "CREATE CONSTRAINT pattern_id IF NOT EXISTS FOR (p:Pattern) REQUIRE p.id IS UNIQUE",
                 "CREATE CONSTRAINT namespace_name IF NOT EXISTS FOR (n:Namespace) REQUIRE n.name IS UNIQUE"
             };
 
@@ -170,7 +170,7 @@ public class GraphService : IGraphService, IDisposable
             {
                 "CREATE CONSTRAINT class_name IF NOT EXISTS FOR (c:Class) REQUIRE c.name IS UNIQUE",
                 "CREATE CONSTRAINT file_path IF NOT EXISTS FOR (f:File) REQUIRE f.path IS UNIQUE",
-                "CREATE CONSTRAINT pattern_name IF NOT EXISTS FOR (p:Pattern) REQUIRE p.name IS UNIQUE",
+                "CREATE CONSTRAINT pattern_id IF NOT EXISTS FOR (p:Pattern) REQUIRE p.id IS UNIQUE",
                 "CREATE CONSTRAINT namespace_name IF NOT EXISTS FOR (n:Namespace) REQUIRE n.name IS UNIQUE",
                 "CREATE CONSTRAINT context_name IF NOT EXISTS FOR (c:Context) REQUIRE c.name IS UNIQUE"
             };
@@ -351,8 +351,9 @@ public class GraphService : IGraphService, IDisposable
                     WITH class.context AS targetContext, class
                     MATCH path = (class)-[:USES*1..{maxDepth}]->(dep)
                     WHERE dep.context = targetContext
-                    RETURN DISTINCT dep.name AS name
-                    ORDER BY length(path)
+                    WITH DISTINCT dep.name AS name, length(path) AS pathLength
+                    RETURN name
+                    ORDER BY pathLength
                     LIMIT 100",
                     new { className });
 
@@ -643,11 +644,17 @@ public class GraphService : IGraphService, IDisposable
 
     private static (string cypher, object parameters) CreatePatternNodeQuery(CodeMemory memory)
     {
+        // Create unique ID for pattern: filepath:line:name to allow same pattern in multiple files
+        var patternId = $"{memory.FilePath}:{memory.LineNumber}:{memory.Name}";
+        
         var cypher = @"
-            MERGE (p:Pattern {name: $name})
-            SET p.description = $description,
+            MERGE (p:Pattern {id: $id})
+            SET p.name = $name,
+                p.description = $description,
                 p.category = $category,
                 p.context = $context,
+                p.filePath = $filePath,
+                p.lineNumber = $lineNumber,
                 p.confidence = $confidence,
                 p.usage_count = $usageCount,
                 p.detected_at = datetime($detectedAt),
@@ -655,10 +662,13 @@ public class GraphService : IGraphService, IDisposable
 
         var parameters = new
         {
+            id = patternId,
             name = memory.Name,
             description = memory.Content,
             category = memory.Metadata.GetValueOrDefault("category", ""),
             context = memory.Context,
+            filePath = memory.FilePath,
+            lineNumber = memory.LineNumber,
             confidence = memory.Metadata.GetValueOrDefault("confidence", 0.0),
             usageCount = memory.Metadata.GetValueOrDefault("usage_count", 0),
             detectedAt = DateTime.UtcNow.ToString("O"),

@@ -130,6 +130,9 @@ public enum PatternType
     // Real-time Messaging Patterns
     AzureWebPubSub,      // Azure Web PubSub service patterns (WebSocket, pub/sub, connection management, event handlers)
     
+    // Blazor Patterns (ASP.NET Core)
+    Blazor,              // Blazor component patterns (lifecycle, data binding, forms, routing, JS interop, render modes)
+    
     // Azure Architecture Patterns (Complete Coverage)
     Ambassador,                   // Helper services that send network requests on behalf of consumer
     AntiCorruptionLayer,         // Façade between modern app and legacy system
@@ -208,6 +211,17 @@ public enum PatternCategory
     RealtimeMessaging,           // WebSocket connections, pub/sub patterns, real-time communication
     ConnectionManagement,        // Connection lifecycle, retry, reconnection, health monitoring
     EventHandlers,               // Webhook event handlers, upstream events, event validation
+    
+    // Blazor specific categories
+    ComponentModel,              // Component structure, parameters, render fragments
+    Lifecycle,                   // Component lifecycle methods (OnInitialized, OnParametersSet, OnAfterRender, Dispose)
+    DataBinding,                 // @bind directives, two-way binding, event handlers
+    Forms,                       // EditForm, validation, input components
+    Validation,                  // DataAnnotations, ValidationMessage, ValidationSummary
+    Routing,                     // @page directive, NavigationManager, route parameters
+    JavaScriptInterop,           // IJSRuntime, JSImport, JSExport, JS interop patterns
+    Rendering,                   // Render modes (Server, WebAssembly, Auto, Static)
+    EventHandling,               // EventCallback, event handlers, UI events
     
     // Azure Architecture Pattern specific categories
     DataManagement,              // CQRS, Event Sourcing, Index Table, Materialized View, Static Content, Valet Key

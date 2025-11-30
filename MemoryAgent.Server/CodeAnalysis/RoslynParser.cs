@@ -173,6 +173,16 @@ public class RoslynParser : ICodeParser
                 // TODO: StateManagementPatternDetector needs to be recreated
                 // var stateDetector = new StateManagementPatternDetector();
                 // var statePatterns = stateDetector.DetectAllPatterns(root);
+                
+                // BLAZOR PATTERN DETECTION: Detect Blazor component patterns (lifecycle, data binding, forms, routing, JS interop, render modes)
+                var blazorDetector = new BlazorPatternDetector();
+                var blazorPatterns = await blazorDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
+                allDetectedPatterns.AddRange(blazorPatterns);
+                
+                // AZURE WEB PUBSUB PATTERN DETECTION: Detect Azure Web PubSub patterns (WebSocket, pub/sub, connection management, event handlers)
+                var webPubSubDetector = new AzureWebPubSubPatternDetector();
+                var webPubSubPatterns = await webPubSubDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
+                allDetectedPatterns.AddRange(webPubSubPatterns);
                 // allDetectedPatterns.AddRange(statePatterns);
                 
                 if (allDetectedPatterns.Any())
