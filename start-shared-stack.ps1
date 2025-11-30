@@ -39,11 +39,11 @@ Write-Host "Storage:" -ForegroundColor Cyan
 Write-Host "  • Data: d:\Memory\shared\" -ForegroundColor White
 Write-Host ""
 Write-Host "Workspace Mount:" -ForegroundColor Cyan
-Write-Host "  • E:\GitHub → /workspace (in container)" -ForegroundColor White
+Write-Host "  • H:\code\git → /workspace (in container)" -ForegroundColor White
 Write-Host ""
 Write-Host "Next Steps:" -ForegroundColor Cyan
 Write-Host "  1. Configure Cursor MCP settings" -ForegroundColor White
-Write-Host "  2. Open any project in E:\GitHub in Cursor" -ForegroundColor White
+Write-Host "  2. Open any project in H:\code\git in Cursor" -ForegroundColor White
 Write-Host "  3. File watcher will auto-register and monitor changes" -ForegroundColor White
 Write-Host ""
 

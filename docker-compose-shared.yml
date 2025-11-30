@@ -9,7 +9,7 @@ services:
     volumes:
       - d:\Memory\shared\memory:/data/memory
       - d:\Memory\shared\logs:/data/logs
-      - h:\code\git:/workspace:ro
+      - H:\code\git:/workspace:ro
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5000
@@ -17,7 +17,7 @@ services:
       - Qdrant__Url=http://memory-agent-qdrant:6333
       - Neo4j__Url=bolt://memory-agent-neo4j:7687
       - Neo4j__User=neo4j
-      - Neo4j__Password=memoryagent
+      - Neo4j__Password=agenttrader123
       - Ollama__Url=http://memory-agent-ollama:11434
       - PathMapping__HostRoot=H:\Code\git
       - PathMapping__ContainerRoot=/workspace
