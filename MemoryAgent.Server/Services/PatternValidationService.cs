@@ -88,6 +88,11 @@ public class PatternValidationService : IPatternValidationService
         foreach (PatternType type in Enum.GetValues(typeof(PatternType)))
         {
             var patterns = await _patternIndexingService.GetPatternsByTypeAsync(type, context, 1000, cancellationToken);
+            
+            // Skip pattern types with no instances (prevents "Not Found" pollution)
+            if (!patterns.Any())
+                continue;
+                
             allPatterns.AddRange(patterns);
         }
 
@@ -99,6 +104,13 @@ public class PatternValidationService : IPatternValidationService
                 continue;
 
             var validation = await ValidatePatternQualityAsync(pattern.Id, context, false, cancellationToken);
+
+            // Skip patterns that couldn't be found/validated (prevents "Not Found" pollution)
+            if (validation.Pattern.Name == "Not Found" && validation.Score == 0)
+            {
+                _logger.LogWarning("Pattern validation failed for ID: {PatternId}, skipping", pattern.Id);
+                continue;
+            }
 
             // Check if it has issues meeting severity threshold
             var hasSignificantIssues = validation.Issues.Any(i => i.Severity >= minSeverity);

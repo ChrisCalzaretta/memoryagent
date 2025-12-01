@@ -58,14 +58,29 @@ public class CodeComplexityService : ICodeComplexityService
                 return result;
             }
 
-            var code = await File.ReadAllTextAsync(containerPath, cancellationToken);
-            var syntaxTree = CSharpSyntaxTree.ParseText(code, cancellationToken: cancellationToken);
-            var root = await syntaxTree.GetRootAsync(cancellationToken);
+            // Check if this is a partial class and find all related files
+            var filesToAnalyze = await FindPartialClassFilesAsync(containerPath, cancellationToken);
+            
+            _logger.LogDebug("Analyzing {FileCount} file(s) for complexity (including partial classes)", filesToAnalyze.Count);
 
-            // Find all methods in the file
-            var methods = root.DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .ToList();
+            var allMethods = new List<MethodDeclarationSyntax>();
+
+            // Parse all files (main + partial classes)
+            foreach (var fileToAnalyze in filesToAnalyze)
+            {
+                var code = await File.ReadAllTextAsync(fileToAnalyze, cancellationToken);
+                var syntaxTree = CSharpSyntaxTree.ParseText(code, cancellationToken: cancellationToken);
+                var root = await syntaxTree.GetRootAsync(cancellationToken);
+
+                // Find all methods in this file
+                var fileMethods = root.DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>()
+                    .ToList();
+                
+                allMethods.AddRange(fileMethods);
+            }
+
+            var methods = allMethods;
 
             // Filter by method name if specified
             if (!string.IsNullOrEmpty(methodName))
@@ -148,6 +163,70 @@ public class CodeComplexityService : ICodeComplexityService
         AssignGradeAndRecommendations(complexity);
 
         return complexity;
+    }
+
+    /// <summary>
+    /// Finds all files belonging to a partial class (including the main file)
+    /// For example, if analyzing "AgentFrameworkPatternDetector.cs", it will also find:
+    /// - AgentFrameworkPatternDetector.SemanticKernelPatterns.cs
+    /// - AgentFrameworkPatternDetector.AutoGenPatterns.cs
+    /// - etc.
+    /// </summary>
+    private async Task<List<string>> FindPartialClassFilesAsync(string filePath, CancellationToken cancellationToken)
+    {
+        var files = new List<string> { filePath };
+
+        try
+        {
+            // Read the main file to check if it's a partial class
+            var code = await File.ReadAllTextAsync(filePath, cancellationToken);
+            var syntaxTree = CSharpSyntaxTree.ParseText(code, cancellationToken: cancellationToken);
+            var root = await syntaxTree.GetRootAsync(cancellationToken);
+
+            // Find the first class declaration
+            var classDecl = root.DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .FirstOrDefault();
+
+            // If no class found or not partial, just return the single file
+            if (classDecl == null || !classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)))
+            {
+                return files;
+            }
+
+            // Get the class name and directory
+            var className = classDecl.Identifier.Text;
+            var directory = Path.GetDirectoryName(filePath);
+            
+            if (string.IsNullOrEmpty(directory))
+            {
+                return files;
+            }
+
+            // Find all files matching the pattern: ClassName.*.cs
+            var fileName = Path.GetFileNameWithoutExtension(filePath);
+            var searchPattern = $"{className}.*.cs";
+            
+            var partialFiles = Directory.GetFiles(directory, searchPattern, SearchOption.TopDirectoryOnly);
+            
+            // Add all partial files (excluding the main file we already have)
+            foreach (var partialFile in partialFiles)
+            {
+                if (!files.Contains(partialFile, StringComparer.OrdinalIgnoreCase))
+                {
+                    files.Add(partialFile);
+                }
+            }
+
+            _logger.LogDebug("Found {Count} file(s) for partial class '{ClassName}': {Files}", 
+                files.Count, className, string.Join(", ", files.Select(Path.GetFileName)));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error finding partial class files for {FilePath}, analyzing single file only", filePath);
+        }
+
+        return files;
     }
 
     private void AssignGradeAndRecommendations(MethodComplexity complexity)

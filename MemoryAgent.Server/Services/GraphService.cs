@@ -474,6 +474,102 @@ public class GraphService : IGraphService, IDisposable
         }
     }
 
+    public async Task<List<CodeMemory>> FullTextSearchAsync(string query, string? context = null, int limit = 50, CancellationToken cancellationToken = default)
+    {
+        await using var session = _driver.AsyncSession();
+        
+        try
+        {
+            return await session.ExecuteReadAsync(async tx =>
+            {
+                var results = new List<CodeMemory>();
+                
+                // Build WHERE clause for context filtering
+                var contextFilter = string.IsNullOrWhiteSpace(context) 
+                    ? "" 
+                    : "AND n.context = $context";
+                
+                // Search across all node types (File, Class, Method, Pattern)
+                // Using CONTAINS for case-insensitive substring matching
+                var cypher = $@"
+                    MATCH (n)
+                    WHERE (n:File OR n:Class OR n:Method OR n:Pattern)
+                      AND (toLower(n.name) CONTAINS toLower($query) 
+                           OR toLower(n.content) CONTAINS toLower($query)
+                           OR toLower(n.filePath) CONTAINS toLower($query))
+                      {contextFilter}
+                    RETURN n, labels(n) as nodeType
+                    LIMIT $limit";
+                
+                var parameters = new Dictionary<string, object>
+                {
+                    ["query"] = query,
+                    ["limit"] = limit
+                };
+                
+                if (!string.IsNullOrWhiteSpace(context))
+                {
+                    parameters["context"] = context;
+                }
+                
+                var cursor = await tx.RunAsync(cypher, parameters);
+                
+                await foreach (var record in cursor)
+                {
+                    var node = record["n"].As<INode>();
+                    var nodeType = record["nodeType"].As<List<string>>().FirstOrDefault() ?? "Unknown";
+                    var props = node.Properties;
+                    
+                    // Map to CodeMemory based on node type
+                    var codeMemory = new CodeMemory
+                    {
+                        Name = props.ContainsKey("name") ? props["name"].As<string>() : "",
+                        Content = props.ContainsKey("content") ? props["content"].As<string>() : "",
+                        FilePath = props.ContainsKey("filePath") ? props["filePath"].As<string>() : 
+                                   props.ContainsKey("path") ? props["path"].As<string>() : "",
+                        LineNumber = props.ContainsKey("lineNumber") ? props["lineNumber"].As<int>() : 0,
+                        Context = props.ContainsKey("context") ? props["context"].As<string>() : context ?? "default",
+                        Type = MapNodeTypeToCodeMemoryType(nodeType),
+                        Metadata = new Dictionary<string, object>()
+                    };
+                    
+                    // Copy all properties to metadata
+                    foreach (var prop in props)
+                    {
+                        if (prop.Key != "name" && prop.Key != "content" && prop.Key != "filePath" && prop.Key != "lineNumber" && prop.Key != "context")
+                        {
+                            codeMemory.Metadata[prop.Key] = prop.Value;
+                        }
+                    }
+                    
+                    results.Add(codeMemory);
+                }
+                
+                _logger.LogInformation("Neo4j full-text search for '{Query}' in context '{Context}' returned {Count} results", 
+                    query, context ?? "all", results.Count);
+                
+                return results;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in Neo4j full-text search for query: {Query}", query);
+            return new List<CodeMemory>();
+        }
+    }
+
+    private static CodeMemoryType MapNodeTypeToCodeMemoryType(string nodeType)
+    {
+        return nodeType switch
+        {
+            "File" => CodeMemoryType.File,
+            "Class" => CodeMemoryType.Class,
+            "Method" => CodeMemoryType.Method,
+            "Pattern" => CodeMemoryType.Pattern,
+            _ => CodeMemoryType.File
+        };
+    }
+
     public void Dispose()
     {
         _driver?.Dispose();
