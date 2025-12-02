@@ -18,6 +18,14 @@ if ! ollama list | grep -q "mxbai-embed-large"; then
 else
     echo "Model already exists."
 fi
+if ! ollama list | grep -q "deepseek-coder-v2"; then
+    echo "Pulling pull deepseek-coder-v2:latest model..."
+    ollama pull deepseek-coder-v2:16b
+    echo "Model pulled successfully!"
+else
+    echo "Model already exists."
+fi
 
 # Keep the server running
+# Note: Pre-loading disabled - it blocks other requests
 wait $OLLAMA_PID

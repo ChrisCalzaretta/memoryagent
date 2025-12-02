@@ -186,6 +186,13 @@ public class VectorService : IVectorService
                         _logger.LogWarning("Skipping {Type} {Name} - no embedding", memory.Type, memory.Name);
                         continue;
                     }
+                    
+                    // Skip zero vectors (placeholder from failed embedding generation)
+                    if (memory.Embedding.All(x => x == 0))
+                    {
+                        _logger.LogWarning("Skipping {Type} {Name} - zero vector (embedding failed)", memory.Type, memory.Name);
+                        continue;
+                    }
 
                     var payload = new Dictionary<string, object>
                     {
@@ -203,9 +210,14 @@ public class VectorService : IVectorService
                         payload[key] = value;
                     }
 
+                    // Generate deterministic ID based on content to enable upserts (prevents 409 conflicts)
+                    var idSource = $"{memory.Context}:{memory.FilePath}:{memory.Name}:{memory.LineNumber}";
+                    var idHash = System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(idSource));
+                    var deterministicId = Convert.ToHexString(idHash).ToLowerInvariant();
+                    
                     var point = new
                     {
-                        id = Guid.NewGuid().ToString(),
+                        id = deterministicId,
                         vector = memory.Embedding,
                         payload
                     };

@@ -223,3 +223,4 @@ Write-Host "`n============================================" -ForegroundColor Cya
 Write-Host "🎉 PATTERN DETECTION TEST COMPLETE!" -ForegroundColor Green
 Write-Host "============================================`n" -ForegroundColor Cyan
 
+

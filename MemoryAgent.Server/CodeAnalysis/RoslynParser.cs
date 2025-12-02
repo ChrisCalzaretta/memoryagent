@@ -41,15 +41,13 @@ public class RoslynParser : ICodeParser
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
             var fileName = Path.GetFileName(filePath).ToLowerInvariant();
             
-            // Route to appropriate parser based on file extension or name
+            // NOTE: C#, Python, JS, VB are now handled by CompositeCodeParser
+            // This parser now only handles C# and ancillary files (Razor, Markdown, etc.)
             return extension switch
             {
                 ".cshtml" or ".razor" => await Task.Run(() => RazorParser.ParseRazorFile(filePath, context, _loggerFactory), cancellationToken),
-                ".py" => await Task.Run(() => PythonParser.ParsePythonFile(filePath, context), cancellationToken),
                 ".md" or ".markdown" => await new MarkdownParser(_loggerFactory.CreateLogger<MarkdownParser>()).ParseFileAsync(filePath, context, cancellationToken),
                 ".css" or ".scss" or ".less" => await Task.Run(() => CssParser.ParseCssFile(filePath, context), cancellationToken),
-                ".js" or ".jsx" or ".ts" or ".tsx" => await Task.Run(() => JavaScriptParser.ParseJavaScriptFile(filePath, context), cancellationToken),
-                ".vb" => await Task.Run(() => VBNetParser.ParseVBNetFile(filePath, context), cancellationToken),
                 ".csproj" or ".vbproj" or ".fsproj" or ".sln" => await Task.Run(() => ProjectFileParser.ParseProjectFile(filePath, context), cancellationToken),
                 ".json" when IsConfigFile(fileName) => await Task.Run(() => ConfigFileParser.ParseConfigFile(filePath, context), cancellationToken),
                 ".yml" or ".yaml" when fileName.Contains("docker-compose") => await Task.Run(() => DockerfileParser.ParseDockerfile(filePath, context), cancellationToken),

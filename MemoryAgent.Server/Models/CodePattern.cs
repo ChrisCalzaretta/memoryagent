@@ -5,10 +5,18 @@ namespace MemoryAgent.Server.Models;
 /// </summary>
 public class CodePattern
 {
+    private string? _id;
+
     /// <summary>
     /// Unique identifier for the pattern instance
+    /// Automatically generated as {FilePath}:{LineNumber}:{Name} for consistency with Neo4j storage
+    /// Falls back to GUID if FilePath or Name is not yet set
     /// </summary>
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Id 
+    { 
+        get => _id ?? GenerateId();
+        set => _id = value;
+    }
 
     /// <summary>
     /// Pattern name (e.g., "UserService_MemoryCache", "Polly_RetryPolicy")
@@ -45,6 +53,22 @@ public class CodePattern
     /// Line number where pattern starts
     /// </summary>
     public int LineNumber { get; set; }
+
+    /// <summary>
+    /// Generates a deterministic ID based on FilePath, LineNumber, and Name
+    /// This matches the ID format used in Neo4j storage (GraphService.CreatePatternNodeQuery)
+    /// </summary>
+    private string GenerateId()
+    {
+        // Generate deterministic ID if we have required fields
+        if (!string.IsNullOrEmpty(FilePath) && !string.IsNullOrEmpty(Name))
+        {
+            return $"{FilePath}:{LineNumber}:{Name}";
+        }
+        
+        // Fallback to GUID for incomplete patterns
+        return Guid.NewGuid().ToString();
+    }
 
     /// <summary>
     /// End line number (for multi-line patterns)

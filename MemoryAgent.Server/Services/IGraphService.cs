@@ -77,6 +77,11 @@ public interface IGraphService
     /// </summary>
     Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Full-text search across all node types in Neo4j (Files, Classes, Methods, Patterns)
+    /// </summary>
+    Task<List<CodeMemory>> FullTextSearchAsync(string query, string? context = null, int limit = 50, CancellationToken cancellationToken = default);
+
     // TODO Management
     Task StoreTodoAsync(TodoItem todo, CancellationToken cancellationToken = default);
     Task UpdateTodoAsync(TodoItem todo, CancellationToken cancellationToken = default);

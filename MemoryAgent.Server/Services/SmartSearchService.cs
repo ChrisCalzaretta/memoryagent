@@ -401,9 +401,25 @@ public class SmartSearchService : ISmartSearchService
             // If no specific pattern found, do a general graph search
             if (!results.Any())
             {
-                // Use dependency chain or impact analysis as fallback
-                // This is a simplified approach
-                _logger.LogInformation("No specific graph pattern found, using general search");
+                _logger.LogInformation("No specific graph pattern found, performing general Neo4j text search");
+                
+                // Fallback: Do a full-text search across all node types in Neo4j
+                var generalResults = await _graphService.FullTextSearchAsync(query, context, 50, cancellationToken);
+                
+                foreach (var node in generalResults)
+                {
+                    results.Add(new GraphQueryResult
+                    {
+                        Name = node.Name,
+                        Type = node.Type.ToString(),
+                        FilePath = node.FilePath,
+                        Content = node.Content,
+                        Score = 0.7f,  // Moderate score for general search
+                        Metadata = node.Metadata
+                    });
+                }
+                
+                _logger.LogInformation("General graph search returned {Count} results", results.Count);
             }
         }
         catch (Exception ex)

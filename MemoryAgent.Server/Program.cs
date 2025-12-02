@@ -39,7 +39,12 @@ builder.Services.AddHttpClient<IVectorService, VectorService>(client =>
 builder.Services.AddSingleton<IPathTranslationService, PathTranslationService>();
 builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
 builder.Services.AddSingleton<IGraphService, GraphService>();
-builder.Services.AddSingleton<ICodeParser, RoslynParser>();
+// Multi-language AST parser support (NO REGEX - Production Quality!)
+builder.Services.AddSingleton<RoslynParser>();         // C# parser (Roslyn AST)
+builder.Services.AddSingleton<TypeScriptASTParser>(); // JS/TS/React/Node.js parser (TS Compiler API)
+builder.Services.AddSingleton<PythonASTParser>();      // Python parser (ast module via Python.NET)
+builder.Services.AddSingleton<VBNetASTParser>();       // VB.NET parser (Roslyn AST)
+builder.Services.AddSingleton<ICodeParser, CompositeCodeParser>(); // Composite router
 builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddSingleton<ISemgrepService, SemgrepService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();
@@ -60,6 +65,18 @@ builder.Services.AddScoped<ITaskValidationService, TaskValidationService>();
 
 // Code Complexity Analysis
 builder.Services.AddScoped<ICodeComplexityService, CodeComplexityService>();
+
+// LLM Service (DeepSeek Coder via Ollama)
+builder.Services.AddScoped<ILLMService, LLMService>();
+
+// Blazor/Razor Transformation Services
+builder.Services.AddScoped<RazorParser>();
+builder.Services.AddScoped<IPageTransformationService, PageTransformationService>();
+builder.Services.AddScoped<ICSSTransformationService, CSSTransformationService>();
+builder.Services.AddScoped<IComponentExtractionService, ComponentExtractionService>();
+
+// Transformation MCP Tools
+builder.Services.AddScoped<MemoryAgent.Server.MCP.TransformationTools>();
 
 // Background Services
 builder.Services.AddHostedService<AutoReindexService>();

@@ -102,20 +102,57 @@ public class IndexingService : IIndexingService
 
             // Step 2: Generate embeddings for all code elements
             // Use GetEmbeddingText() for smart, semantic-rich embeddings with metadata prefix
-            var textsToEmbed = parseResult.CodeElements.Select(e => e.GetEmbeddingText()).ToList();
-            var embeddings = await _embeddingService.GenerateEmbeddingsAsync(textsToEmbed, cancellationToken);
-
-            // Assign embeddings to code elements
-            for (int i = 0; i < parseResult.CodeElements.Count; i++)
+            var embeddings = new List<float[]>();
+            var embeddingSuccess = false;
+            
+            try
             {
-                parseResult.CodeElements[i].Embedding = embeddings[i];
+                var textsToEmbed = parseResult.CodeElements.Select(e => e.GetEmbeddingText()).ToList();
+                embeddings = await _embeddingService.GenerateEmbeddingsAsync(textsToEmbed, cancellationToken);
+
+                // Assign embeddings to code elements
+                for (int i = 0; i < parseResult.CodeElements.Count; i++)
+                {
+                    parseResult.CodeElements[i].Embedding = embeddings[i];
+                }
+                
+                embeddingSuccess = true;
+                _logger.LogDebug("Successfully generated {Count} embeddings for {File}", embeddings.Count, containerPath);
+            }
+            catch (Exception embeddingEx)
+            {
+                _logger.LogWarning(embeddingEx, 
+                    "Embedding generation failed for {File}. Continuing with Neo4j-only storage (graph relationships will work, semantic search will not).",
+                    containerPath);
+                
+                // Note: Using Errors list to track this, though it's not a fatal error
+                result.Errors.Add("Warning: Semantic search unavailable - embedding generation failed");
             }
 
             // Step 3: Store in parallel (Qdrant + Neo4j)
-            var storeVectorTask = _vectorService.StoreCodeMemoriesAsync(parseResult.CodeElements, cancellationToken);
+            // Only store in Qdrant if embeddings succeeded
+            Task? storeVectorTask = null;
+            if (embeddingSuccess && embeddings.Any())
+            {
+                storeVectorTask = _vectorService.StoreCodeMemoriesAsync(parseResult.CodeElements, cancellationToken);
+            }
+            else
+            {
+                _logger.LogInformation("Skipping Qdrant storage for {File} (no embeddings)", containerPath);
+            }
+            
+            // Always store in Neo4j (graph structure, relationships, patterns)
             var storeGraphTask = _graphService.StoreCodeNodesAsync(parseResult.CodeElements, cancellationToken);
 
-            await Task.WhenAll(storeVectorTask, storeGraphTask);
+            // Wait for storage tasks
+            if (storeVectorTask != null)
+            {
+                await Task.WhenAll(storeVectorTask, storeGraphTask);
+            }
+            else
+            {
+                await storeGraphTask;
+            }
 
             // Step 4: Create relationships in Neo4j
             if (parseResult.Relationships.Any())

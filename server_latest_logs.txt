@@ -1,0 +1,572 @@
+info: Program[0]
+      Initializing databases...
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 22.2151ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 33.0442ms - 200
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-ollama:11434/api/tags
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-ollama:11434/api/tags
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[101]
+      Received HTTP response headers after 33.6947ms - 200
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[101]
+      End processing HTTP request after 33.8688ms - 200
+warn: MemoryAgent.Server.Services.EmbeddingService[0]
+      Model mxbai-embed-large:latest not found. Available models: 
+info: Program[0]
+      Health checks - Qdrant: Γ£ô, Neo4j: Γ£ô, Ollama: Γ£ù
+warn: Program[0]
+      Ollama is not healthy or model not found. Run: docker exec memory-agent-ollama ollama pull mxbai-embed-large:latest
+info: MemoryAgent.Server.Services.GraphService[0]
+      Neo4j database initialized successfully
+info: Program[0]
+      Databases initialized successfully
+info: Program[0]
+      Memory Code Agent started on http://localhost:5000
+info: Program[0]
+      - Qdrant: http://memory-agent-qdrant:6333
+info: Program[0]
+      - Neo4j: bolt://memory-agent-neo4j:7687
+info: Program[0]
+      - Ollama: http://memory-agent-ollama:11434
+info: MemoryAgent.Server.FileWatcher.AutoReindexService[0]
+      ≡ƒöì Auto-reindex service READY (multi-workspace mode)
+info: MemoryAgent.Server.FileWatcher.AutoReindexService[0]
+         Waiting for workspace registrations from Cursor...
+info: MemoryAgent.Server.FileWatcher.AutoReindexService[0]
+         Debounce delay: 3 seconds
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://[::]:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /app
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Found Python DLL: /usr/lib/x86_64-linux-gnu/libpython3.11.so
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Initializing PythonEngine...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Enabling Python threading support...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Python.NET initialized successfully with threading support!
+info: MemoryAgent.Server.Services.PathTranslationService[0]
+      Path mapping configured: E:\GitHub -> /workspace
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: E:\GitHub\AgentTrader\cleanup_test_users.py (translated to: /workspace/AgentTrader/cleanup_test_users.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 3.5445ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 3.6542ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.6203ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.7049ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4238ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5015ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.3814ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4494ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4455ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.49ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4122ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4526ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5751ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6186ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4377ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4822ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 5.0446ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 5.18ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 3.8692ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 4.0394ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 4.1853ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 4.2849ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser.ParseFileAsync START: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser: Reading file content...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser: Calling ParseCodeAsync...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì ParseCodeAsync START: /workspace/AgentTrader/cleanup_test_users.py, Code length: 1097
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Creating file-level CodeMemory for context: AgentTrader
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Acquiring Python GIL...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì GIL acquired, importing Python ast module...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Python modules imported, parsing code...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì AST parsing successful!
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser.ParseFileAsync COMPLETE: /workspace/AgentTrader/cleanup_test_users.py, Elements: 1, Success: True
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-ollama:11434/api/embeddings
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-ollama:11434/api/embeddings
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[101]
+      Received HTTP response headers after 22651.7485ms - 200
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[101]
+      End processing HTTP request after 22651.873ms - 200
+info: MemoryAgent.Server.Services.EmbeddingService[0]
+      Generated embeddings for batch 1/1 (1 items)
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request PUT http://memory-agent-qdrant:6333/collections/agenttrader_files/points?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request PUT http://memory-agent-qdrant:6333/collections/agenttrader_files/points?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 42.5034ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 42.619ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Stored 1 File memories in agenttrader_files
+info: MemoryAgent.Server.Services.GraphService[0]
+      Stored 1 code nodes in Neo4j
+info: MemoryAgent.Server.Services.GraphService[0]
+      Created 2 relationships in Neo4j
+info: MemoryAgent.Server.Services.SemgrepService[0]
+      Semgrep available: 1.144.0
+info: MemoryAgent.Server.Services.SemgrepService[0]
+      Running Semgrep scan on: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.SemgrepService[0]
+      Semgrep scan complete: 0 findings in 6.2145882s
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Successfully indexed E:\GitHub\AgentTrader\cleanup_test_users.py: 0 classes, 0 methods, 0 patterns in 29531ms
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: E:\GitHub\AgentTrader\cleanup_test_users.py (translated to: /workspace/AgentTrader/cleanup_test_users.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 2.0157ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 2.1085ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5188ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5963ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4339ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4956ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.624ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6905ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.502ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6009ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4599ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5026ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.6517ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.7381ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.5839ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.6817ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/cleanup_test_users.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 28ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 28.1022ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 5.2269ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 5.3339ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 4.3233ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 4.436ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser.ParseFileAsync START: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser: Reading file content...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser: Calling ParseCodeAsync...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì ParseCodeAsync START: /workspace/AgentTrader/cleanup_test_users.py, Code length: 1097
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Creating file-level CodeMemory for context: AgentTrader
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Acquiring Python GIL...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì GIL acquired, importing Python ast module...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Python modules imported, parsing code...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì AST parsing successful!
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser.ParseFileAsync COMPLETE: /workspace/AgentTrader/cleanup_test_users.py, Elements: 1, Success: True
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-ollama:11434/api/embeddings
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-ollama:11434/api/embeddings
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[101]
+      Received HTTP response headers after 230.766ms - 200
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[101]
+      End processing HTTP request after 230.9226ms - 200
+info: MemoryAgent.Server.Services.EmbeddingService[0]
+      Generated embeddings for batch 1/1 (1 items)
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request PUT http://memory-agent-qdrant:6333/collections/agenttrader_files/points?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request PUT http://memory-agent-qdrant:6333/collections/agenttrader_files/points?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 15.7811ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 15.8961ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Stored 1 File memories in agenttrader_files
+info: MemoryAgent.Server.Services.GraphService[0]
+      Stored 1 code nodes in Neo4j
+info: MemoryAgent.Server.Services.GraphService[0]
+      Created 2 relationships in Neo4j
+info: MemoryAgent.Server.Services.SemgrepService[0]
+      Running Semgrep scan on: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.SemgrepService[0]
+      Semgrep scan complete: 0 findings in 4.5077834s
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Successfully indexed E:\GitHub\AgentTrader\cleanup_test_users.py: 0 classes, 0 methods, 0 patterns in 4839ms
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Indexing file: E:\GitHub\AgentTrader\cleanup_test_users.py (translated to: /workspace/AgentTrader/cleanup_test_users.py)
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.826ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.902ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.765ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.857ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.517ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5888ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.474ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5413ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Checking for existing data for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.VectorService[0]
+      Initializing Qdrant collections for context: agenttrader
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_files
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.3591ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4111ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_files already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_classes
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.6609ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.7347ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_classes already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_methods
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4572ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.5582ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_methods already exists
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request GET http://memory-agent-qdrant:6333/collections/agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 0.4447ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 0.4894ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Collection agenttrader_patterns already exists
+info: MemoryAgent.Server.Services.VectorService[0]
+      Γ£à Qdrant collections initialized for agenttrader: agenttrader_files, agenttrader_classes, agenttrader_methods, agenttrader_patterns
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_files/points/delete?*
+info: MemoryAgent.Server.Services.GraphService[0]
+      Deleted graph nodes for file: /workspace/AgentTrader/cleanup_test_users.py
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 17.1387ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 17.2077ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_classes/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 5.5808ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 5.6853ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-qdrant:6333/collections/agenttrader_methods/points/delete?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 4.4377ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 4.5229ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Deleted memories for file: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser.ParseFileAsync START: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser: Reading file content...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser: Calling ParseCodeAsync...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì ParseCodeAsync START: /workspace/AgentTrader/cleanup_test_users.py, Code length: 1097
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Creating file-level CodeMemory for context: AgentTrader
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Acquiring Python GIL...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì GIL acquired, importing Python ast module...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì Python modules imported, parsing code...
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì AST parsing successful!
+info: MemoryAgent.Server.CodeAnalysis.PythonASTParser[0]
+      ≡ƒÉì PythonASTParser.ParseFileAsync COMPLETE: /workspace/AgentTrader/cleanup_test_users.py, Elements: 1, Success: True
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[100]
+      Start processing HTTP request POST http://memory-agent-ollama:11434/api/embeddings
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[100]
+      Sending HTTP request POST http://memory-agent-ollama:11434/api/embeddings
+info: System.Net.Http.HttpClient.Ollama.ClientHandler[101]
+      Received HTTP response headers after 185.8224ms - 200
+info: System.Net.Http.HttpClient.Ollama.LogicalHandler[101]
+      End processing HTTP request after 185.9453ms - 200
+info: MemoryAgent.Server.Services.EmbeddingService[0]
+      Generated embeddings for batch 1/1 (1 items)
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[100]
+      Start processing HTTP request PUT http://memory-agent-qdrant:6333/collections/agenttrader_files/points?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[100]
+      Sending HTTP request PUT http://memory-agent-qdrant:6333/collections/agenttrader_files/points?*
+info: System.Net.Http.HttpClient.IVectorService.ClientHandler[101]
+      Received HTTP response headers after 13.4225ms - 200
+info: System.Net.Http.HttpClient.IVectorService.LogicalHandler[101]
+      End processing HTTP request after 13.5544ms - 200
+info: MemoryAgent.Server.Services.VectorService[0]
+      Stored 1 File memories in agenttrader_files
+info: MemoryAgent.Server.Services.GraphService[0]
+      Stored 1 code nodes in Neo4j
+info: MemoryAgent.Server.Services.GraphService[0]
+      Created 2 relationships in Neo4j
+info: MemoryAgent.Server.Services.SemgrepService[0]
+      Running Semgrep scan on: /workspace/AgentTrader/cleanup_test_users.py
+info: MemoryAgent.Server.Services.SemgrepService[0]
+      Semgrep scan complete: 0 findings in 4.4154781s
+info: MemoryAgent.Server.Services.IndexingService[0]
+      Successfully indexed E:\GitHub\AgentTrader\cleanup_test_users.py: 0 classes, 0 methods, 0 patterns in 4784ms
