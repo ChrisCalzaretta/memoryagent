@@ -66,6 +66,18 @@ builder.Services.AddScoped<ITaskValidationService, TaskValidationService>();
 // Code Complexity Analysis
 builder.Services.AddScoped<ICodeComplexityService, CodeComplexityService>();
 
+// LLM Service (DeepSeek Coder via Ollama)
+builder.Services.AddScoped<ILLMService, LLMService>();
+
+// Blazor/Razor Transformation Services
+builder.Services.AddScoped<RazorParser>();
+builder.Services.AddScoped<IPageTransformationService, PageTransformationService>();
+builder.Services.AddScoped<ICSSTransformationService, CSSTransformationService>();
+builder.Services.AddScoped<IComponentExtractionService, ComponentExtractionService>();
+
+// Transformation MCP Tools
+builder.Services.AddScoped<MemoryAgent.Server.MCP.TransformationTools>();
+
 // Background Services
 builder.Services.AddHostedService<AutoReindexService>();
 
