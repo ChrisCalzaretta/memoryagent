@@ -671,3 +671,4 @@ RUN pip install bandit
 
 This gives you **comprehensive Python code analysis** with security, quality, type safety, complexity, and dependency tracking!
 
+

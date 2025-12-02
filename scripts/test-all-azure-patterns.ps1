@@ -224,3 +224,4 @@ Write-Host "🎉 PATTERN DETECTION TEST COMPLETE!" -ForegroundColor Green
 Write-Host "============================================`n" -ForegroundColor Cyan
 
 
+

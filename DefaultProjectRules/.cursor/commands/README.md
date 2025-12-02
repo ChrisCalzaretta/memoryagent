@@ -164,3 +164,4 @@ All commands use these MCP tools (ensure mcp-server is running):
 - Qdrant for semantic search
 - Ollama for LLM inference
 
+
