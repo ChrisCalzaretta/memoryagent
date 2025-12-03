@@ -317,6 +317,34 @@ Return VALID JSON:
                 json = json.TrimEnd('`').Trim();
             }
             
+            // Try to find JSON object in the response if it doesn't start with {
+            if (!json.StartsWith("{"))
+            {
+                // Look for JSON embedded in text response
+                var jsonMatch = Regex.Match(json, @"\{[\s\S]*\}", RegexOptions.Singleline);
+                if (jsonMatch.Success)
+                {
+                    json = jsonMatch.Value;
+                    _logger.LogWarning("LLM returned text with embedded JSON, extracting...");
+                }
+                else
+                {
+                    // No JSON found - LLM returned explanation text (e.g., "This file has no CSS")
+                    _logger.LogWarning("LLM returned text instead of JSON: {Response}", 
+                        llmResponse.Length > 200 ? llmResponse[..200] + "..." : llmResponse);
+                    
+                    // Return empty result with the LLM's explanation
+                    return new ModernCSSResult
+                    {
+                        CSS = "",
+                        UsesModernLayout = false,
+                        IsResponsive = false,
+                        HasAccessibility = false,
+                        Improvements = { $"LLM Note: {llmResponse.Trim()}" }
+                    };
+                }
+            }
+            
             var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
             
@@ -350,8 +378,18 @@ Return VALID JSON:
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to parse CSS transformation response");
-            throw new InvalidOperationException($"LLM returned invalid JSON: {ex.Message}");
+            _logger.LogError(ex, "Failed to parse CSS transformation response: {Response}", 
+                llmResponse.Length > 500 ? llmResponse[..500] + "..." : llmResponse);
+            
+            // Return empty result instead of throwing
+            return new ModernCSSResult
+            {
+                CSS = "",
+                UsesModernLayout = false,
+                IsResponsive = false,
+                HasAccessibility = false,
+                Improvements = { $"CSS transformation failed: {ex.Message}" }
+            };
         }
     }
 }
