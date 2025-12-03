@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using MemoryAgent.Server.Models;
 using MemoryAgent.Server.Services;
 
@@ -124,14 +126,41 @@ public class TransformationTools
     {
         _logger.LogInformation("MCP: extract_component called");
         
-        // Parse candidate from JSON
-        var candidate = System.Text.Json.JsonSerializer.Deserialize<ComponentCandidate>(
-            componentCandidateJson);
+        // Configure JSON options for flexible parsing
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            AllowTrailingCommas = true,
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: true) }
+        };
+        
+        ComponentCandidate? candidate;
+        try
+        {
+            // Clean up JSON if it has markdown code blocks
+            var cleanJson = componentCandidateJson.Trim();
+            if (cleanJson.StartsWith("```"))
+            {
+                cleanJson = System.Text.RegularExpressions.Regex.Replace(cleanJson, @"```(?:json)?\s*", "");
+                cleanJson = cleanJson.TrimEnd('`').Trim();
+            }
+            
+            candidate = JsonSerializer.Deserialize<ComponentCandidate>(cleanJson, jsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Failed to parse componentCandidateJson: {Json}", componentCandidateJson);
+            throw new ArgumentException($"Invalid component candidate JSON: {ex.Message}. Ensure the JSON matches ComponentCandidate schema with properties: Id, Name, Description, Occurrences, Similarity, Locations, ProposedInterface, Priority, ValueScore", ex);
+        }
         
         if (candidate == null)
         {
-            throw new ArgumentException("Invalid component candidate JSON");
+            throw new ArgumentException("Invalid component candidate JSON - deserialized to null");
         }
+        
+        _logger.LogInformation("Successfully parsed ComponentCandidate: {Name} with {Occurrences} occurrences", 
+            candidate.Name, candidate.Occurrences);
         
         return await _componentService.ExtractComponentAsync(candidate, outputPath);
     }

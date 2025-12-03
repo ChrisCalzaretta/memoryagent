@@ -675,3 +675,4 @@ public class CodeQualityScannerService
 This gives you a **unified code quality report** from multiple sources!
 
 
+

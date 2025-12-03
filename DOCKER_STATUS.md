@@ -76,3 +76,4 @@ All 42 Azure Architecture Patterns are ready to be detected!
 
 
 
+
