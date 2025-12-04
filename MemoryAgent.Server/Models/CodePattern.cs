@@ -199,6 +199,9 @@ public enum PatternType
     Throttling,                  // Control resource consumption
     ValetKey,                    // Restricted direct resource access via token
     
+    // Microsoft.Extensions.AI - Unified AI abstractions for .NET
+    MicrosoftExtensionsAI,       // Microsoft.Extensions.AI patterns (IChatClient, IEmbeddingGenerator, etc.)
+    
     Unknown
 }
 
@@ -265,7 +268,11 @@ public enum PatternCategory
     ResiliencyPatterns,          // Bulkhead, Circuit Breaker, Compensating Transaction, Leader Election, Geode, Deployment Stamps, Throttling
     SecurityPatterns,            // Federated Identity, Quarantine
     OperationalPatterns,         // Sidecar, Strangler Fig, Saga
-    DistributedSystems           // Patterns for distributed system coordination
+    DistributedSystems,          // Patterns for distributed system coordination
+    
+    // Microsoft.Extensions.AI specific categories
+    DependencyInjection,         // Service registration and DI patterns
+    Configuration                // Configuration and options patterns
 }
 
 /// <summary>

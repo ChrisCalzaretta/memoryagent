@@ -64,6 +64,9 @@ builder.Services.AddScoped<ITodoService, TodoService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<ITaskValidationService, TaskValidationService>();
 
+// Intent Classification (LLM-powered)
+builder.Services.AddScoped<IIntentClassificationService, IntentClassificationService>();
+
 // Code Complexity Analysis
 builder.Services.AddScoped<ICodeComplexityService, CodeComplexityService>();
 

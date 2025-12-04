@@ -181,6 +181,11 @@ public class RoslynParser : ICodeParser
                 var webPubSubDetector = new AzureWebPubSubPatternDetector();
                 var webPubSubPatterns = await webPubSubDetector.DetectPatternsAsync(filePath, context, code, cancellationToken);
                 allDetectedPatterns.AddRange(webPubSubPatterns);
+                
+                // MICROSOFT.EXTENSIONS.AI PATTERN DETECTION: Detect Microsoft.Extensions.AI patterns (IChatClient, IEmbeddingGenerator, middleware, etc.)
+                var microsoftExtensionsAIDetector = new MicrosoftExtensionsAIPatternDetector();
+                var microsoftExtensionsAIPatterns = microsoftExtensionsAIDetector.DetectPatterns(code, filePath, context);
+                allDetectedPatterns.AddRange(microsoftExtensionsAIPatterns);
                 // allDetectedPatterns.AddRange(statePatterns);
                 
                 if (allDetectedPatterns.Any())

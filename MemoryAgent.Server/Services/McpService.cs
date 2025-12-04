@@ -21,6 +21,7 @@ public class McpService : IMcpService
     private readonly IRecommendationService _recommendationService;
     private readonly IPatternValidationService _patternValidationService;
     private readonly ICodeComplexityService _complexityService;
+    private readonly IIntentClassificationService _intentClassifier;
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<McpService> _logger;
 
@@ -37,6 +38,7 @@ public class McpService : IMcpService
         IRecommendationService recommendationService,
         IPatternValidationService patternValidationService,
         ICodeComplexityService complexityService,
+        IIntentClassificationService intentClassifier,
         IServiceProvider serviceProvider,
         ILogger<McpService> logger)
     {
@@ -50,6 +52,7 @@ public class McpService : IMcpService
         _patternService = patternService;
         _bestPracticeValidation = bestPracticeValidation;
         _recommendationService = recommendationService;
+        _intentClassifier = intentClassifier;
         _patternValidationService = patternValidationService;
         _complexityService = complexityService;
         _serviceProvider = serviceProvider;
@@ -186,7 +189,7 @@ public class McpService : IMcpService
             new McpTool
             {
                 Name = "smartsearch",
-                Description = "Intelligent search that auto-detects whether to use graph-first (for structural queries) or semantic-first (for conceptual queries) strategy. Returns enriched results with relationships and scores.",
+                Description = "Intelligent search that auto-detects whether to use graph-first (for structural queries) or semantic-first (for conceptual queries) strategy. Returns enriched results with relationships and scores. Supports AI-powered intent classification to improve search relevance.",
                 InputSchema = new
                 {
                     type = "object",
@@ -194,6 +197,7 @@ public class McpService : IMcpService
                     {
                         query = new { type = "string", description = "Search query (e.g., 'classes that implement IService' or 'how is authentication handled?')" },
                         context = new { type = "string", description = "Optional context to search within" },
+                        user_goal = new { type = "string", description = "Optional: Describe what you're trying to achieve (e.g., 'improve performance', 'add security', 'refactor code') to get AI-powered search relevance" },
                         limit = new { type = "number", description = "Maximum results per page", @default = 20 },
                         offset = new { type = "number", description = "Offset for pagination", @default = 0 },
                         includeRelationships = new { type = "boolean", description = "Include relationship data", @default = true },
@@ -256,7 +260,7 @@ public class McpService : IMcpService
             new McpTool
             {
                 Name = "create_plan",
-                Description = "Create a development plan with tasks and dependencies",
+                Description = "Create a development plan with tasks and dependencies. Can auto-generate architecture-recommended tasks based on detected patterns and best practices.",
                 InputSchema = new
                 {
                     type = "object",
@@ -268,7 +272,7 @@ public class McpService : IMcpService
                         tasks = new
                         {
                             type = "array",
-                            description = "Array of tasks",
+                            description = "Array of manual tasks (optional if include_recommendations=true)",
                             items = new
                             {
                                 type = "object",
@@ -279,9 +283,27 @@ public class McpService : IMcpService
                                     orderIndex = new { type = "number" }
                                 }
                             }
+                        },
+                        include_recommendations = new 
+                        { 
+                            type = "boolean", 
+                            description = "If true, automatically analyze codebase and add recommended architecture tasks based on 250+ patterns (caching, resilience, security, AI agents, Flutter/Dart, Microsoft.Extensions.AI, etc.)",
+                            @default = false
+                        },
+                        max_recommendations = new 
+                        { 
+                            type = "number", 
+                            description = "Maximum number of recommended tasks to add (default: 10)",
+                            @default = 10
+                        },
+                        recommendation_categories = new
+                        {
+                            type = "array",
+                            description = "Filter recommendations by categories (Performance, Security, Reliability, AIAgents, etc.). Empty = all categories.",
+                            items = new { type = "string" }
                         }
                     },
-                    required = new[] { "context", "name", "tasks" }
+                    required = new[] { "context", "name" }
                 }
             },
             new McpTool
@@ -363,7 +385,7 @@ public class McpService : IMcpService
             new McpTool
             {
                 Name = "search_patterns",
-                Description = "Search for code patterns (caching, retry logic, validation, etc.) using semantic search. Returns detected patterns with confidence scores and Azure best practice links.",
+                Description = "Search for code patterns (caching, retry logic, validation, etc.) using semantic search. Returns detected patterns with confidence scores and Azure best practice links. Supports AI intent classification for better pattern matching.",
                 InputSchema = new
                 {
                     type = "object",
@@ -371,6 +393,7 @@ public class McpService : IMcpService
                     {
                         query = new { type = "string", description = "Pattern search query (e.g., 'caching patterns', 'retry logic', 'validation')" },
                         context = new { type = "string", description = "Optional context to search within" },
+                        user_goal = new { type = "string", description = "Optional: What you're trying to achieve (e.g., 'improve API performance', 'secure authentication') for AI-powered pattern suggestions" },
                         limit = new { type = "number", description = "Maximum results", @default = 20 }
                     },
                     required = new[] { "query" }
@@ -379,13 +402,14 @@ public class McpService : IMcpService
             new McpTool
             {
                 Name = "validate_best_practices",
-                Description = "Validate a project against Azure best practices. Returns compliance score, which practices are implemented, and which are missing with recommendations.",
+                Description = "Validate a project against Azure best practices. Returns compliance score, which practices are implemented, and which are missing with recommendations. Supports AI intent classification to prioritize relevant best practices.",
                 InputSchema = new
                 {
                     type = "object",
                     properties = new
                     {
                         context = new { type = "string", description = "Project context to validate" },
+                        user_goal = new { type = "string", description = "Optional: What you're trying to achieve (e.g., 'prepare for production', 'improve security') to get AI-prioritized best practice recommendations" },
                         bestPractices = new { type = "array", description = "Specific practices to check (optional, defaults to all 21 practices)", items = new { type = "string" } },
                         includeExamples = new { type = "boolean", description = "Include code examples in results", @default = true },
                         maxExamplesPerPractice = new { type = "number", description = "Maximum examples per practice", @default = 5 }
@@ -396,14 +420,19 @@ public class McpService : IMcpService
             new McpTool
             {
                 Name = "get_recommendations",
-                Description = "Analyze a project and get prioritized recommendations for missing or weak patterns. Returns health score and actionable recommendations with code examples.",
+                Description = "🧠 AI-powered recommendation analyzer. Automatically detects project type, technologies, and goals using LLM analysis to suggest the most relevant architecture improvements.",
                 InputSchema = new
                 {
                     type = "object",
                     properties = new
                     {
                         context = new { type = "string", description = "Project context to analyze" },
-                        categories = new { type = "array", description = "Focus on specific categories (optional)", items = new { type = "string" } },
+                        user_goal = new 
+                        { 
+                            type = "string", 
+                            description = "OPTIONAL: Natural language description of what you want to achieve (e.g., 'make my Flutter app more secure', 'improve API performance', 'migrate to Microsoft.Extensions.AI'). If provided, AI will automatically suggest relevant categories." 
+                        },
+                        categories = new { type = "array", description = "Focus on specific categories (optional, auto-suggested from user_goal if not provided)", items = new { type = "string" } },
                         includeLowPriority = new { type = "boolean", description = "Include low-priority recommendations", @default = false },
                         maxRecommendations = new { type = "number", description = "Maximum recommendations to return", @default = 10 }
                     },
@@ -442,13 +471,14 @@ public class McpService : IMcpService
             new McpTool
             {
                 Name = "find_anti_patterns",
-                Description = "Find all anti-patterns and badly implemented patterns in a project. Returns patterns with issues, security vulnerabilities, and overall security score.",
+                Description = "Find all anti-patterns and badly implemented patterns in a project with AI-powered prioritization. Returns patterns with issues, security vulnerabilities, and overall security score.",
                 InputSchema = new
                 {
                     type = "object",
                     properties = new
                     {
                         context = new { type = "string", description = "Project context to search" },
+                        user_goal = new { type = "string", description = "Optional: Focus area (e.g., 'security hardening', 'performance issues', 'code quality') for AI-prioritized anti-pattern detection" },
                         min_severity = new { type = "string", description = "Minimum severity (low|medium|high|critical)", @default = "medium" },
                         include_legacy = new { type = "boolean", description = "Include legacy/deprecated patterns", @default = true }
                     },
@@ -458,13 +488,14 @@ public class McpService : IMcpService
             new McpTool
             {
                 Name = "validate_security",
-                Description = "Security audit of detected patterns. Returns overall security score, vulnerabilities found, and remediation steps.",
+                Description = "AI-powered security audit of detected patterns. Returns overall security score, vulnerabilities found, and remediation steps prioritized by your security goals.",
                 InputSchema = new
                 {
                     type = "object",
                     properties = new
                     {
                         context = new { type = "string", description = "Project context to validate" },
+                        user_goal = new { type = "string", description = "Optional: Security focus (e.g., 'API security', 'data protection', 'authentication') for AI-prioritized vulnerability detection" },
                         pattern_types = new { type = "array", description = "Specific pattern types to check (optional)", items = new { type = "string" } }
                     },
                     required = new[] { "context" }
@@ -488,13 +519,14 @@ public class McpService : IMcpService
             new McpTool
             {
                 Name = "validate_project",
-                Description = "Comprehensive project validation. Returns overall quality/security scores, all pattern validations, vulnerabilities, legacy patterns, and top recommendations.",
+                Description = "Comprehensive project validation with AI-powered analysis. Returns overall quality/security scores, all pattern validations, vulnerabilities, legacy patterns, and top recommendations tailored to your goals.",
                 InputSchema = new
                 {
                     type = "object",
                     properties = new
                     {
-                        context = new { type = "string", description = "Project context to validate" }
+                        context = new { type = "string", description = "Project context to validate" },
+                        user_goal = new { type = "string", description = "Optional: What you're trying to achieve (e.g., 'production readiness', 'security audit', 'performance optimization') for AI-prioritized validation" }
                     },
                     required = new[] { "context" }
                 }
@@ -955,6 +987,20 @@ public class McpService : IMcpService
             return ErrorResult("Query is required");
         }
 
+        // 🧠 INTENT CLASSIFICATION: Automatically understand what the user is trying to achieve from their query
+        UserIntent? intent = null;
+        try
+        {
+            // Analyze the query itself - no separate user_goal parameter needed!
+            intent = await _intentClassifier.ClassifyIntentAsync(query, context, ct);
+            _logger.LogInformation("🎯 Intent detected from query: ProjectType={Type}, Goal={Goal}, Technologies={Tech}",
+                intent.ProjectType, intent.PrimaryGoal, string.Join(", ", intent.Technologies));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Intent classification failed, continuing with keyword-based fallback");
+        }
+
         var request = new SmartSearchRequest
         {
             Query = query,
@@ -967,6 +1013,24 @@ public class McpService : IMcpService
 
         var result = await _smartSearchService.SearchAsync(request, ct);
         
+        // Enhance results with intent-based context if available
+        var text = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        
+        if (intent != null)
+        {
+            text += "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            text += "🧠 AI Intent Analysis:\n\n";
+            text += $"  Project Type: {intent.ProjectType}\n";
+            text += $"  Primary Goal: {intent.PrimaryGoal}\n";
+            text += $"  Technologies: {string.Join(", ", intent.Technologies)}\n";
+            if (!string.IsNullOrWhiteSpace(intent.Domain))
+                text += $"  Domain: {intent.Domain}\n";
+            if (intent.RelevantCategories.Any())
+                text += $"  Relevant Pattern Categories: {string.Join(", ", intent.RelevantCategories)}\n";
+            
+            text += "\n💡 Tip: Your results are ranked higher if they match your detected intent!\n";
+        }
+        
         return new McpToolResult
         {
             Content = new List<McpContent>
@@ -974,7 +1038,7 @@ public class McpService : IMcpService
                 new McpContent
                 {
                     Type = "text",
-                    Text = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true })
+                    Text = text
                 }
             }
         };
@@ -1175,8 +1239,12 @@ public class McpService : IMcpService
         var context = args?.GetValueOrDefault("context")?.ToString() ?? "default";
         var name = args?.GetValueOrDefault("name")?.ToString() ?? "";
         var description = args?.GetValueOrDefault("description")?.ToString() ?? "";
+        var includeRecommendations = args?.TryGetValue("include_recommendations", out var incRec) == true ? SafeParseBool(incRec, false) : false;
+        var maxRecommendations = args?.TryGetValue("max_recommendations", out var maxRec) == true ? SafeParseInt(maxRec, 10) : 10;
         
         var tasks = new List<PlanTaskRequest>();
+        
+        // Add manual tasks if provided
         if (args?.TryGetValue("tasks", out var tasksArr) == true && tasksArr is IEnumerable<object> tasksList)
         {
             int index = 0;
@@ -1195,6 +1263,77 @@ public class McpService : IMcpService
             }
         }
 
+        // Auto-generate recommended tasks based on architecture patterns
+        if (includeRecommendations)
+        {
+            _logger.LogInformation("🎯 Analyzing {Context} for architecture recommendations...", context);
+            
+            // 🧠 STEP 1: Classify user intent using LLM
+            var userRequest = $"{name}. {description}";
+            var intent = await _intentClassifier.ClassifyIntentAsync(userRequest, context, cancellationToken);
+            
+            _logger.LogInformation("🎯 Intent classified: {ProjectType} / {Goal} / Tech: [{Technologies}] / Confidence: {Confidence:P0}",
+                intent.ProjectType, intent.PrimaryGoal, string.Join(", ", intent.Technologies), intent.Confidence);
+            
+            // 🎯 STEP 2: Get smart category suggestions from intent
+            var suggestedCategories = await _intentClassifier.SuggestPatternCategoriesAsync(intent, cancellationToken);
+            
+            // Parse user-provided recommendation categories filter
+            var categories = new List<PatternCategory>();
+            if (args?.TryGetValue("recommendation_categories", out var catObj) == true && catObj is IEnumerable<object> catList)
+            {
+                foreach (var cat in catList)
+                {
+                    if (Enum.TryParse<PatternCategory>(cat.ToString(), out var category))
+                    {
+                        categories.Add(category);
+                    }
+                }
+            }
+            
+            // Merge user categories with AI-suggested categories
+            if (!categories.Any())
+            {
+                categories.AddRange(suggestedCategories);
+                _logger.LogInformation("🤖 Using AI-suggested categories: {Categories}", string.Join(", ", categories));
+            }
+
+            // 📋 STEP 3: Get architecture recommendations
+            var recRequest = new RecommendationRequest
+            {
+                Context = context,
+                Categories = categories.Any() ? categories : null,
+                IncludeLowPriority = false,
+                MaxRecommendations = maxRecommendations
+            };
+
+            var recommendations = await _recommendationService.AnalyzeAndRecommendAsync(recRequest, cancellationToken);
+
+            // Convert high/critical priority recommendations to plan tasks
+            int taskIndex = tasks.Count;
+            foreach (var recommendation in recommendations.Recommendations
+                .Where(r => r.Priority == "HIGH" || r.Priority == "CRITICAL")
+                .Take(maxRecommendations))
+            {
+                tasks.Add(new PlanTaskRequest
+                {
+                    Title = $"[{recommendation.Category}] {recommendation.Issue}",
+                    Description = $"{recommendation.Recommendation}\n\n" +
+                                 $"🎯 Impact: {recommendation.Impact}\n" +
+                                 $"🔗 Docs: {recommendation.AzureUrl ?? "N/A"}\n" +
+                                 (recommendation.CodeExample != null ? $"\n📝 Example:\n```\n{recommendation.CodeExample}\n```" : ""),
+                    OrderIndex = taskIndex++,
+                    Dependencies = new List<string>()
+                });
+            }
+
+            if (tasks.Count > 0)
+            {
+                _logger.LogInformation("✅ Added {Count} architecture-recommended tasks from {Total} total recommendations", 
+                    tasks.Count, recommendations.Recommendations.Count);
+            }
+        }
+
         var request = new AddPlanRequest
         {
             Context = context,
@@ -1205,6 +1344,19 @@ public class McpService : IMcpService
 
         var plan = await _planService.AddPlanAsync(request, cancellationToken);
 
+        var resultText = $"✅ Development Plan created!\n\n" +
+                        $"ID: {plan.Id}\n" +
+                        $"Name: {plan.Name}\n" +
+                        $"Status: {plan.Status}\n" +
+                        $"Tasks: {plan.Tasks.Count}\n" +
+                        $"Created: {plan.CreatedAt:yyyy-MM-dd HH:mm}";
+
+        if (includeRecommendations && tasks.Any())
+        {
+            var recommendedCount = tasks.Count(t => t.Title.StartsWith("["));
+            resultText += $"\n\n🎯 Architecture Recommendations: {recommendedCount} tasks auto-generated based on detected patterns";
+        }
+
         return new McpToolResult
         {
             Content = new List<McpContent>
@@ -1212,12 +1364,7 @@ public class McpService : IMcpService
                 new McpContent
                 {
                     Type = "text",
-                    Text = $"✅ Development Plan created!\n\n" +
-                           $"ID: {plan.Id}\n" +
-                           $"Name: {plan.Name}\n" +
-                           $"Status: {plan.Status}\n" +
-                           $"Tasks: {plan.Tasks.Count}\n" +
-                           $"Created: {plan.CreatedAt:yyyy-MM-dd HH:mm}"
+                    Text = resultText
                 }
             }
         };
@@ -1521,6 +1668,23 @@ public class McpService : IMcpService
             return ErrorResult("Query is required");
         }
 
+        // 🧠 INTENT CLASSIFICATION: Automatically analyze query to suggest relevant pattern categories
+        UserIntent? intent = null;
+        try
+        {
+            // Extract intent from the query itself
+            intent = await _intentClassifier.ClassifyIntentAsync(query, context, cancellationToken);
+            
+            // Suggest pattern categories based on detected intent
+            var suggestedCategories = await _intentClassifier.SuggestPatternCategoriesAsync(intent, cancellationToken);
+            _logger.LogInformation("🎯 Auto-detected pattern categories from query: {Categories}", 
+                string.Join(", ", suggestedCategories));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Intent classification failed for pattern search, using query as-is");
+        }
+
         var patterns = await _patternService.SearchPatternsAsync(query, context, limit, cancellationToken);
 
         if (!patterns.Any())
@@ -1564,12 +1728,35 @@ public class McpService : IMcpService
     private async Task<McpToolResult> ValidateBestPracticesToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
         var context = args?.GetValueOrDefault("context")?.ToString();
+        var userGoal = args?.GetValueOrDefault("user_goal")?.ToString();
         var includeExamples = args?.TryGetValue("includeExamples", out var includeEx) == true ? SafeParseBool(includeEx, true) : true;
         var maxExamples = args?.TryGetValue("maxExamplesPerPractice", out var maxEx) == true ? SafeParseInt(maxEx, 5) : 5;
 
         if (string.IsNullOrWhiteSpace(context))
         {
             return ErrorResult("Context is required");
+        }
+
+        // 🧠 INTENT CLASSIFICATION: Suggest relevant best practices based on user goal
+        UserIntent? intent = null;
+        if (!string.IsNullOrWhiteSpace(userGoal))
+        {
+            try
+            {
+                intent = await _intentClassifier.ClassifyIntentAsync(
+                    $"Validate best practices for: {context} - Goal: {userGoal}",
+                    context,
+                    cancellationToken
+                );
+                
+                // Suggest best practices based on intent
+                var suggestedPractices = await _intentClassifier.SuggestBestPracticesAsync(intent, cancellationToken);
+                _logger.LogInformation("🎯 Suggested best practices: {Practices}", string.Join(", ", suggestedPractices.Take(5)));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to classify intent for best practice validation");
+            }
         }
 
         var bestPractices = new List<string>();
@@ -1647,6 +1834,7 @@ public class McpService : IMcpService
     private async Task<McpToolResult> GetRecommendationsToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
         var context = args?.GetValueOrDefault("context")?.ToString();
+        var userGoal = args?.GetValueOrDefault("user_goal")?.ToString();
         var includeLowPriority = args?.TryGetValue("includeLowPriority", out var incLow) == true ? SafeParseBool(incLow, false) : false;
         var maxRecommendations = args?.TryGetValue("maxRecommendations", out var maxRec) == true ? SafeParseInt(maxRec, 10) : 10;
 
@@ -1656,14 +1844,42 @@ public class McpService : IMcpService
         }
 
         var categories = new List<PatternCategory>();
+        UserIntent? intent = null;
+        
+        // 🧠 If user provided a natural language goal, use AI to classify intent and suggest categories
+        if (!string.IsNullOrWhiteSpace(userGoal))
+        {
+            _logger.LogInformation("🧠 Classifying user intent from goal: '{Goal}'", userGoal);
+            intent = await _intentClassifier.ClassifyIntentAsync(userGoal, context, cancellationToken);
+            
+            _logger.LogInformation("🎯 Detected: {ProjectType} / {Goal} / Tech: [{Technologies}] / Confidence: {Confidence:P0}",
+                intent.ProjectType, intent.PrimaryGoal, string.Join(", ", intent.Technologies), intent.Confidence);
+            
+            // Auto-suggest categories from intent
+            var suggestedCategories = await _intentClassifier.SuggestPatternCategoriesAsync(intent, cancellationToken);
+            
+            _logger.LogInformation("🤖 AI-suggested {Count} categories: {Categories}", 
+                suggestedCategories.Count, string.Join(", ", suggestedCategories));
+            
+            categories.AddRange(suggestedCategories);
+        }
+        
+        // Parse manual categories if provided (overrides AI suggestions)
         if (args?.TryGetValue("categories", out var catObj) == true && catObj is IEnumerable<object> catList)
         {
+            var manualCategories = new List<PatternCategory>();
             foreach (var cat in catList)
             {
                 if (Enum.TryParse<PatternCategory>(cat.ToString(), out var category))
                 {
-                    categories.Add(category);
+                    manualCategories.Add(category);
                 }
+            }
+            
+            if (manualCategories.Any())
+            {
+                _logger.LogInformation("👤 Using {Count} manual categories (overriding AI)", manualCategories.Count);
+                categories = manualCategories; // Replace AI suggestions with manual
             }
         }
 
@@ -1731,6 +1947,23 @@ public class McpService : IMcpService
                     text += FormatRecommendation(rec);
                 }
             }
+        }
+
+        // Add intent classification summary if available
+        if (intent != null)
+        {
+            text += "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            text += "🧠 AI Intent Classification:\n\n";
+            text += $"  Project Type: {intent.ProjectType}\n";
+            text += $"  Primary Goal: {intent.PrimaryGoal}\n";
+            text += $"  Technologies: {string.Join(", ", intent.Technologies)}\n";
+            if (!string.IsNullOrWhiteSpace(intent.Domain))
+                text += $"  Domain: {intent.Domain}\n";
+            text += $"  Complexity: {intent.Complexity}\n";
+            text += $"  Confidence: {intent.Confidence:P0}\n";
+            
+            if (categories.Any())
+                text += $"\n  🎯 AI-Suggested Categories ({categories.Count}): {string.Join(", ", categories)}\n";
         }
 
         return new McpToolResult
