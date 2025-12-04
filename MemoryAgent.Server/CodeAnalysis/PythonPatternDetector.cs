@@ -23,7 +23,8 @@ public class PythonPatternDetector : IPatternDetector
         PatternType.DependencyInjection,
         PatternType.Logging,
         PatternType.ErrorHandling,
-        PatternType.ApiDesign
+        PatternType.ApiDesign,
+        PatternType.PublisherSubscriber
     };
 
     public List<CodePattern> DetectPatterns(string sourceCode, string filePath, string? context = null)
@@ -42,6 +43,7 @@ public class PythonPatternDetector : IPatternDetector
             patterns.AddRange(DetectErrorHandlingPatterns(sourceCode, lines, filePath, context));
             patterns.AddRange(DetectApiDesignPatterns(sourceCode, lines, filePath, context));
             patterns.AddRange(DetectAzureWebPubSubPatterns(sourceCode, lines, filePath, context));
+            patterns.AddRange(DetectPublisherSubscriberPatterns(sourceCode, lines, filePath, context));
             
             // Azure Architecture Patterns
             patterns.AddRange(DetectAzureArchitecturePatternsPython(sourceCode, lines, filePath, context));
@@ -828,6 +830,164 @@ public class PythonPatternDetector : IPatternDetector
                     azureUrl: WebPubSubUrl,
                     context: context
                 ));
+            }
+        }
+
+        return patterns;
+    }
+
+    #endregion
+
+    #region Publisher-Subscriber Patterns
+
+    private List<CodePattern> DetectPublisherSubscriberPatterns(string sourceCode, string[] lines, string filePath, string? context)
+    {
+        var patterns = new List<CodePattern>();
+        const string AzurePubSubUrl = "https://learn.microsoft.com/en-us/azure/architecture/patterns/publisher-subscriber";
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+
+            // Pattern 1: Azure Service Bus (azure-servicebus)
+            if (Regex.IsMatch(line, @"ServiceBusClient|ServiceBusSender|ServiceBusReceiver|get_topic_sender|get_queue_sender|send_messages", RegexOptions.IgnoreCase))
+            {
+                var pattern = CreatePattern(
+                    name: "AzureServiceBus_PubSub",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: "azure-servicebus",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Azure Service Bus for reliable message delivery",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["messaging_technology"] = "Azure Service Bus";
+                pattern.Metadata["library"] = "azure-servicebus";
+                patterns.Add(pattern);
+            }
+
+            // Pattern 2: Azure Event Grid (azure-eventgrid)
+            if (Regex.IsMatch(line, @"EventGridPublisherClient|send_events|CloudEvent|EventGridEvent", RegexOptions.IgnoreCase))
+            {
+                var pattern = CreatePattern(
+                    name: "AzureEventGrid_Publisher",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "azure-eventgrid",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Azure Event Grid for event-driven architecture",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["messaging_technology"] = "Azure Event Grid";
+                pattern.Metadata["library"] = "azure-eventgrid";
+                patterns.Add(pattern);
+            }
+
+            // Pattern 3: Redis Pub/Sub
+            if (Regex.IsMatch(line, @"\.publish\s*\(|\.subscribe\s*\(|\.pubsub\s*\(|r\.publish|redis\.publish", RegexOptions.IgnoreCase) &&
+                sourceCode.Contains("redis"))
+            {
+                var pattern = CreatePattern(
+                    name: "Redis_PubSub",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "redis-py",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Redis pub/sub for lightweight message broadcasting",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["messaging_technology"] = "Redis";
+                pattern.Metadata["library"] = "redis";
+                patterns.Add(pattern);
+            }
+
+            // Pattern 4: RabbitMQ with Pika
+            if (Regex.IsMatch(line, @"pika\.|BlockingConnection|basic_publish|exchange_declare|channel\.publish", RegexOptions.IgnoreCase))
+            {
+                var pattern = CreatePattern(
+                    name: "RabbitMQ_Pika",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: "pika",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "RabbitMQ with Pika for reliable message queuing",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["messaging_technology"] = "RabbitMQ";
+                pattern.Metadata["library"] = "pika";
+                patterns.Add(pattern);
+            }
+
+            // Pattern 5: Kafka (kafka-python, confluent-kafka)
+            if (Regex.IsMatch(line, @"KafkaProducer|KafkaConsumer|produce\s*\(|consume\s*\(", RegexOptions.IgnoreCase))
+            {
+                var pattern = CreatePattern(
+                    name: "Kafka_Python",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "kafka-python",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Apache Kafka for high-throughput event streaming",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["messaging_technology"] = "Apache Kafka";
+                pattern.Metadata["library"] = "kafka-python";
+                patterns.Add(pattern);
+            }
+
+            // Pattern 6: Python asyncio queues (in-process pub/sub)
+            if (Regex.IsMatch(line, @"asyncio\.Queue|queue\.put|queue\.get|Queue\(\)", RegexOptions.IgnoreCase))
+            {
+                var pattern = CreatePattern(
+                    name: "AsyncIO_Queue",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Performance,
+                    implementation: "asyncio.Queue",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Asyncio Queue for in-process async pub/sub",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["in_process"] = true;
+                pattern.Metadata["async"] = true;
+                patterns.Add(pattern);
+            }
+
+            // Pattern 7: Celery (distributed task queue)
+            if (Regex.IsMatch(line, @"@celery\.task|@app\.task|\.delay\(|\.apply_async\(", RegexOptions.IgnoreCase))
+            {
+                var pattern = CreatePattern(
+                    name: "Celery_TaskQueue",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: "celery",
+                    filePath: filePath,
+                    lineNumber: i + 1,
+                    content: GetContext(lines, i, 5),
+                    bestPractice: "Celery for distributed task queue",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                pattern.Metadata["distributed"] = true;
+                pattern.Metadata["library"] = "celery";
+                patterns.Add(pattern);
             }
         }
 

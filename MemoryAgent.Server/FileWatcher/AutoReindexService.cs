@@ -120,6 +120,8 @@ public class AutoReindexService : BackgroundService, IAutoReindexService
             "*.cs", "*.vb", "*.cshtml", "*.razor", 
             "*.py", "*.md", 
             "*.dart",  // Flutter/Dart support
+            "*.tf", "*.tfvars",  // Terraform/Infrastructure as Code support
+            "*.bicep",  // Azure Bicep IaC support
             "*.css", "*.scss", "*.less", 
             "*.js", "*.jsx", "*.ts", "*.tsx",
             "*.json", "*.yml", "*.yaml"

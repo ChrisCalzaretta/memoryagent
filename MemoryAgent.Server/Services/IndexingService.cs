@@ -283,6 +283,7 @@ public class IndexingService : IIndexingService
                 "*.css", "*.scss", "*.less", 
                 "*.js", "*.jsx", "*.ts", "*.tsx",
                 "*.dart",  // Flutter/Dart support
+                "*.tf", "*.tfvars",  // Terraform/Infrastructure as Code support
                 "*.csproj", "*.vbproj", "*.fsproj", "*.sln",
                 "*.json", "*.yml", "*.yaml", "*.config",
                 "*.bicep",

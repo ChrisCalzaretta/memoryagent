@@ -1527,23 +1527,52 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
     {
         var patterns = new List<CodePattern>();
 
-        // Pattern 1: TopicClient / ServiceBusSender for topics
+        // Pattern 1: ServiceBusClient / TopicClient / ServiceBusSender for topics
         var objectCreations = root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>();
         
         foreach (var obj in objectCreations)
         {
             var typeName = obj.Type.ToString();
-            if (typeName.Contains("TopicClient") || typeName.Contains("ServiceBusSender"))
+            if (typeName.Contains("TopicClient") || typeName.Contains("ServiceBusSender") || typeName.Contains("ServiceBusClient"))
+            {
+                var pattern = CreatePattern(
+                    name: "ServiceBus_Client",
+                    type: PatternType.PublisherSubscriber,
+                    category: PatternCategory.Reliability,
+                    implementation: typeName.Contains("ServiceBusClient") ? "AzureServiceBus" : "AzureServiceBusTopics",
+                    filePath: filePath,
+                    node: obj,
+                    sourceCode: sourceCode,
+                    bestPractice: "Publisher-Subscriber pattern using Azure Service Bus",
+                    azureUrl: AzurePubSubUrl,
+                    context: context
+                );
+                
+                pattern.Metadata["messaging_technology"] = "Azure Service Bus";
+                pattern.Metadata["pattern_type"] = "pub-sub";
+                pattern.Metadata["role"] = "client";
+                pattern.Metadata["supports_filtering"] = true;
+                pattern.Metadata["supports_sessions"] = true;
+                patterns.Add(pattern);
+            }
+        }
+
+        // Pattern 1b: CreateSender / CreateReceiver method calls (newer SDK)
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        foreach (var inv in invocations)
+        {
+            var invText = inv.ToString();
+            if (invText.Contains("CreateSender") || invText.Contains("SendMessageAsync") || invText.Contains("SendMessagesAsync"))
             {
                 var pattern = CreatePattern(
                     name: "ServiceBus_TopicPublisher",
                     type: PatternType.PublisherSubscriber,
                     category: PatternCategory.Reliability,
-                    implementation: "AzureServiceBusTopics",
+                    implementation: "AzureServiceBus",
                     filePath: filePath,
-                    node: obj,
+                    node: inv,
                     sourceCode: sourceCode,
-                    bestPractice: "Publisher-Subscriber pattern using Azure Service Bus Topics",
+                    bestPractice: "Publisher-Subscriber pattern using Azure Service Bus",
                     azureUrl: AzurePubSubUrl,
                     context: context
                 );
@@ -1551,8 +1580,6 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
                 pattern.Metadata["messaging_technology"] = "Azure Service Bus";
                 pattern.Metadata["pattern_type"] = "pub-sub";
                 pattern.Metadata["role"] = "publisher";
-                pattern.Metadata["supports_filtering"] = true;
-                pattern.Metadata["supports_sessions"] = true;
                 patterns.Add(pattern);
             }
         }
@@ -1561,7 +1588,7 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
         foreach (var obj in objectCreations)
         {
             var typeName = obj.Type.ToString();
-            if (typeName.Contains("SubscriptionClient") || typeName.Contains("ServiceBusProcessor"))
+            if (typeName.Contains("SubscriptionClient") || typeName.Contains("ServiceBusProcessor") || typeName.Contains("ServiceBusReceiver"))
             {
                 var pattern = CreatePattern(
                     name: "ServiceBus_TopicSubscriber",
@@ -1586,7 +1613,6 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
         }
 
         // Pattern 3: Topic/Subscription configuration
-        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
         foreach (var inv in invocations)
         {
             var invText = inv.ToString();
@@ -1802,13 +1828,18 @@ public class CSharpPatternDetectorEnhanced : IPatternDetector
     {
         var patterns = new List<CodePattern>();
 
-        // Pattern 1: IBus.Publish<T>
+        // Check if IBus is used in the source code (field injection, constructor param, etc.)
+        var hasIBus = sourceCode.Contains("IBus");
+        
+        // Pattern 1: IBus.Publish<T> or _bus.Publish (when IBus is injected)
         var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
         
         foreach (var inv in invocations)
         {
             var invText = inv.ToString();
-            if (invText.Contains("IBus") && invText.Contains(".Publish"))
+            // Match .Publish calls when IBus is present in the file (supports field injection like _bus.Publish)
+            if ((invText.Contains("IBus") && invText.Contains(".Publish")) || 
+                (hasIBus && invText.Contains(".Publish(") && !invText.Contains("redis") && !invText.Contains("channel")))
             {
                 var pattern = CreatePattern(
                     name: "MassTransit_Publisher",

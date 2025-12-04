@@ -13,6 +13,9 @@ public class CompositeCodeParser : ICodeParser
     private readonly PythonASTParser _pythonParser;
     private readonly VBNetASTParser _vbParser;
     private readonly DartParser _dartParser;
+    private readonly TerraformParser _terraformParser;
+    private readonly BicepParser _bicepParser;
+    private readonly ARMTemplateParser _armParser;
     private readonly ILogger<CompositeCodeParser> _logger;
 
     public CompositeCodeParser(
@@ -21,6 +24,9 @@ public class CompositeCodeParser : ICodeParser
         PythonASTParser pythonParser,
         VBNetASTParser vbParser,
         DartParser dartParser,
+        TerraformParser terraformParser,
+        BicepParser bicepParser,
+        ARMTemplateParser armParser,
         ILogger<CompositeCodeParser> logger)
     {
         _roslynParser = roslynParser;
@@ -28,6 +34,9 @@ public class CompositeCodeParser : ICodeParser
         _pythonParser = pythonParser;
         _vbParser = vbParser;
         _dartParser = dartParser;
+        _terraformParser = terraformParser;
+        _bicepParser = bicepParser;
+        _armParser = armParser;
         _logger = logger;
     }
 
@@ -53,6 +62,15 @@ public class CompositeCodeParser : ICodeParser
             
             // Dart/Flutter files - Custom parser with pattern detection
             ".dart" => await _dartParser.ParseFileAsync(filePath, context, cancellationToken),
+            
+            // Terraform files - HCL parser with IaC pattern detection
+            ".tf" or ".tfvars" => await _terraformParser.ParseFileAsync(filePath, context, cancellationToken),
+            
+            // Azure Bicep files - Bicep IaC parser
+            ".bicep" => await _bicepParser.ParseFileAsync(filePath, context, cancellationToken),
+            
+            // Azure ARM Templates - JSON template parser (checks if it's an ARM template)
+            ".json" => await _armParser.ParseFileAsync(filePath, context, cancellationToken),
             
             // Unsupported types
             _ => CreateUnsupportedResult(filePath, extension, context)
@@ -81,6 +99,15 @@ public class CompositeCodeParser : ICodeParser
             
             // Dart/Flutter code - Custom parser with pattern detection
             ".dart" => await _dartParser.ParseCodeAsync(code, filePath, context, cancellationToken),
+            
+            // Terraform code - HCL parser with IaC pattern detection
+            ".tf" or ".tfvars" => await _terraformParser.ParseCodeAsync(filePath, code, context, cancellationToken),
+            
+            // Azure Bicep code - Bicep IaC parser
+            ".bicep" => await _bicepParser.ParseCodeAsync(code, filePath, context, cancellationToken),
+            
+            // Azure ARM Templates - JSON template parser
+            ".json" => await _armParser.ParseCodeAsync(code, filePath, context, cancellationToken),
             
             // Unsupported types
             _ => CreateUnsupportedResult(filePath, extension, context)

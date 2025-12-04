@@ -1,5 +1,7 @@
 using MemoryAgent.Server.CodeAnalysis;
 using MemoryAgent.Server.Services;
+using MemoryAgent.Server.Services.PatternValidation;
+using MemoryAgent.Server.Services.Mcp;
 using MemoryAgent.Server.FileWatcher;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,11 +47,25 @@ builder.Services.AddSingleton<TypeScriptASTParser>(); // JS/TS/React/Node.js par
 builder.Services.AddSingleton<PythonASTParser>();      // Python parser (ast module via Python.NET)
 builder.Services.AddSingleton<VBNetASTParser>();       // VB.NET parser (Roslyn AST)
 builder.Services.AddSingleton<DartParser>();           // Dart/Flutter parser with pattern detection
+builder.Services.AddSingleton<TerraformParser>();      // Terraform/HCL parser with IaC pattern detection
+builder.Services.AddSingleton<BicepParser>();          // Azure Bicep parser
+builder.Services.AddSingleton<ARMTemplateParser>();    // Azure ARM Template parser
 builder.Services.AddSingleton<ICodeParser, CompositeCodeParser>(); // Composite router
 builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddSingleton<ISemgrepService, SemgrepService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();
+
+// MCP Service (refactored) - Orchestrator + 8 Category Handlers
 builder.Services.AddScoped<IMcpService, McpService>();
+builder.Services.AddScoped<IMcpToolHandler, IndexingToolHandler>();
+builder.Services.AddScoped<IMcpToolHandler, GraphAnalysisToolHandler>();
+builder.Services.AddScoped<IMcpToolHandler, TodoToolHandler>();
+builder.Services.AddScoped<IMcpToolHandler, PlanToolHandler>();
+builder.Services.AddScoped<IMcpToolHandler, PatternValidationToolHandler>();
+builder.Services.AddScoped<IMcpToolHandler, CodeAnalysisToolHandler>();
+builder.Services.AddScoped<IMcpToolHandler, WorkspaceToolHandler>();
+builder.Services.AddScoped<IMcpToolHandler, TransformationToolHandler>();
+
 builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
 builder.Services.AddScoped<IPatternIndexingService, PatternIndexingService>();
 builder.Services.AddScoped<IBestPracticeValidationService, BestPracticeValidationService>();
@@ -57,6 +73,27 @@ builder.Services.AddScoped<IRecommendationService, RecommendationService>();
 builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.AutoReindexService>();
 builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.IAutoReindexService>(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
+
+// Pattern Validators (refactored from single 2913-line file into 17 focused validators)
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.CachingPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.ResiliencePatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.ValidationPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.AgentFrameworkPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.AgentLightningPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.SemanticKernelPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.AutoGenPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.SecurityPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.ErrorHandlingPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.PluginArchitecturePatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.PublisherSubscriberPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.FlutterPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.DartPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.MicrosoftExtensionsAIPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.TerraformPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.BicepPatternValidator>();
+builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.ARMTemplatePatternValidator>();
+
+// Pattern Validation Orchestrator
 builder.Services.AddScoped<IPatternValidationService, PatternValidationService>();
 
 // TODO and Plan Management

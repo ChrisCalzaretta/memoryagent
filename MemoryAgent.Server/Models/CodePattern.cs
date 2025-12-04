@@ -202,6 +202,11 @@ public enum PatternType
     // Microsoft.Extensions.AI - Unified AI abstractions for .NET
     MicrosoftExtensionsAI,       // Microsoft.Extensions.AI patterns (IChatClient, IEmbeddingGenerator, etc.)
     
+    // Infrastructure as Code
+    Terraform,                   // Terraform/HCL patterns (resources, modules, state, providers, security)
+    Bicep,                       // Azure Bicep IaC patterns (resources, modules, parameters, decorators)
+    ARMTemplate,                 // Azure ARM templates (parameters, variables, resources, outputs, functions)
+    
     Unknown
 }
 
@@ -272,7 +277,11 @@ public enum PatternCategory
     
     // Microsoft.Extensions.AI specific categories
     DependencyInjection,         // Service registration and DI patterns
-    Configuration                // Configuration and options patterns
+    Configuration,               // Configuration and options patterns
+    
+    // Infrastructure as Code specific categories
+    InfrastructureAsCode,        // Resource definitions, modules, state management (Terraform)
+    SecurityAntiPattern          // Security anti-patterns (hardcoded secrets, missing encryption)
 }
 
 /// <summary>

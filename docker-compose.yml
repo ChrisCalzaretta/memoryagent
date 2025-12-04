@@ -91,6 +91,10 @@ services:
       - d:\Memory\${PROJECT_NAME:-default}\ollama:/root/.ollama
       - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
     entrypoint: ["/bin/bash", "/usr/local/bin/ollama-entrypoint.sh"]
+    environment:
+      # Force Ollama to use only GPU 1 (5070 Ti 16GB) - avoids crashing 3090
+      - CUDA_VISIBLE_DEVICES=1
+      - NVIDIA_VISIBLE_DEVICES=1
     healthcheck:
       test: ["CMD", "bash", "-c", "ollama list | grep -q mxbai-embed-large"]
       interval: 10s

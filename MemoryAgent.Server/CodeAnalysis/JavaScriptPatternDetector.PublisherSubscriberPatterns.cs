@@ -117,7 +117,7 @@ public partial class JavaScriptPatternDetector
                     name: "RxJS_Subject",
                     type: PatternType.PublisherSubscriber,
                     category: PatternCategory.Performance,
-                    implementation: "RxJS Subject",
+                    implementation: "RxJS",
                     filePath: filePath,
                     lineNumber: i + 1,
                     content: GetContext(lines, i, 5),
@@ -129,17 +129,19 @@ public partial class JavaScriptPatternDetector
                 
                 pattern.Metadata["hot_observable"] = true;
                 pattern.Metadata["multicast"] = true;
+                pattern.Metadata["subject_type"] = "Subject";
                 patterns.Add(pattern);
             }
 
-            // .subscribe()
-            if (Regex.IsMatch(lines[i], @"\.subscribe\s*\(", RegexOptions.IgnoreCase) && sourceCode.Contains("Observable"))
+            // .subscribe() - check for RxJS context (Observable, Subject, rxjs import)
+            if (Regex.IsMatch(lines[i], @"\.subscribe\s*\(", RegexOptions.IgnoreCase) && 
+                (sourceCode.Contains("Observable") || sourceCode.Contains("Subject") || sourceCode.Contains("rxjs")))
             {
                 var pattern = CreatePattern(
                     name: "RxJS_Subscriber",
                     type: PatternType.PublisherSubscriber,
                     category: PatternCategory.Performance,
-                    implementation: "RxJS Subscribe",
+                    implementation: "RxJS",
                     filePath: filePath,
                     lineNumber: i + 1,
                     content: GetContext(lines, i, 3),
