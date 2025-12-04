@@ -282,6 +282,7 @@ public class IndexingService : IIndexingService
                 "*.cs", "*.vb", "*.cshtml", "*.razor", "*.py", "*.md", 
                 "*.css", "*.scss", "*.less", 
                 "*.js", "*.jsx", "*.ts", "*.tsx",
+                "*.dart",  // Flutter/Dart support
                 "*.csproj", "*.vbproj", "*.fsproj", "*.sln",
                 "*.json", "*.yml", "*.yaml", "*.config",
                 "*.bicep",
@@ -297,12 +298,13 @@ public class IndexingService : IIndexingService
                 .Distinct()
                 .ToList();
 
-            _logger.LogInformation("Found {Count} code files to index ({CSharp} .cs, {VB} .vb, {Razor} .cshtml/.razor, {Python} .py, {Markdown} .md, {Styles} .css/.scss/.less, {JavaScript} .js/.ts, {Project} .csproj/.sln, {Config} config files, {Docker} Docker)", 
+            _logger.LogInformation("Found {Count} code files to index ({CSharp} .cs, {VB} .vb, {Razor} .cshtml/.razor, {Python} .py, {Dart} .dart, {Markdown} .md, {Styles} .css/.scss/.less, {JavaScript} .js/.ts, {Project} .csproj/.sln, {Config} config files, {Docker} Docker)", 
                 codeFiles.Count,
                 codeFiles.Count(f => f.EndsWith(".cs")),
                 codeFiles.Count(f => f.EndsWith(".vb")),
                 codeFiles.Count(f => f.EndsWith(".cshtml") || f.EndsWith(".razor")),
                 codeFiles.Count(f => f.EndsWith(".py")),
+                codeFiles.Count(f => f.EndsWith(".dart")),
                 codeFiles.Count(f => f.EndsWith(".md")),
                 codeFiles.Count(f => f.EndsWith(".css") || f.EndsWith(".scss") || f.EndsWith(".less")),
                 codeFiles.Count(f => f.EndsWith(".js") || f.EndsWith(".ts") || f.EndsWith(".jsx") || f.EndsWith(".tsx")),

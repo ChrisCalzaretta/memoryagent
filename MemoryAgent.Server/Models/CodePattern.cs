@@ -157,6 +157,10 @@ public enum PatternType
     // Blazor Patterns (ASP.NET Core)
     Blazor,              // Blazor component patterns (lifecycle, data binding, forms, routing, JS interop, render modes)
     
+    // Flutter & Dart Patterns
+    Flutter,             // Flutter framework patterns (widgets, state management, navigation, performance, lifecycle)
+    Dart,                // Dart language patterns (async, null safety, collections, error handling, code quality)
+    
     // Azure Architecture Patterns (Complete Coverage)
     Ambassador,                   // Helper services that send network requests on behalf of consumer
     AntiCorruptionLayer,         // Façade between modern app and legacy system
@@ -246,6 +250,13 @@ public enum PatternCategory
     JavaScriptInterop,           // IJSRuntime, JSImport, JSExport, JS interop patterns
     Rendering,                   // Render modes (Server, WebAssembly, Auto, Static)
     EventHandling,               // EventCallback, event handlers, UI events
+    
+    // Flutter/Dart specific categories  
+    UserExperience,              // UI/UX patterns, animations, accessibility, theming
+    DataAccess,                  // HTTP clients, data fetching, caching
+    Testing,                     // Unit tests, widget tests, integration tests
+    Correctness,                 // Type safety, null safety, compile-time checks
+    CodeQuality,                 // Extensions, mixins, patterns, code organization
     
     // Azure Architecture Pattern specific categories
     DataManagement,              // CQRS, Event Sourcing, Index Table, Materialized View, Static Content, Valet Key

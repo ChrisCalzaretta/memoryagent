@@ -119,6 +119,7 @@ public class AutoReindexService : BackgroundService, IAutoReindexService
         { 
             "*.cs", "*.vb", "*.cshtml", "*.razor", 
             "*.py", "*.md", 
+            "*.dart",  // Flutter/Dart support
             "*.css", "*.scss", "*.less", 
             "*.js", "*.jsx", "*.ts", "*.tsx",
             "*.json", "*.yml", "*.yaml"
