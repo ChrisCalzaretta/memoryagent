@@ -19,3 +19,5 @@ Check for and fix rules violations:
 7. Ask for approval to fix HIGH violations
 8. Document MEDIUM violations for future work
 
+
+

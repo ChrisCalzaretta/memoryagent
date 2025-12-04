@@ -14,3 +14,5 @@ Follow this workflow:
 7. analyze_code_complexity on component (must be < 10 cyclomatic complexity)
 8. validate_best_practices
 
+
+

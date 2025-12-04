@@ -426,41 +426,82 @@ Return JSON:
     
     private ExtractedComponent ParseExtractedComponent(string llmResponse, string name, string filePath)
     {
-        var json = llmResponse.Trim();
-        if (json.StartsWith("```"))
+        try
         {
-            json = Regex.Replace(json, @"```(?:json)?\s*", "");
-            json = json.TrimEnd('`').Trim();
-        }
-        
-        var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        
-        var component = new ExtractedComponent
-        {
-            Name = name,
-            FilePath = filePath,
-            Code = root.GetProperty("component_code").GetString() ?? "",
-            CSS = root.TryGetProperty("component_css", out var css) ? css.GetString() : null
-        };
-        
-        // Parse refactorings
-        if (root.TryGetProperty("refactorings", out var refactorings))
-        {
-            foreach (var refactor in refactorings.EnumerateArray())
+            var json = llmResponse.Trim();
+            if (json.StartsWith("```"))
             {
-                component.Refactorings.Add(new ComponentRefactoring
-                {
-                    FilePath = refactor.GetProperty("file_path").GetString() ?? "",
-                    LineStart = refactor.GetProperty("line_start").GetInt32(),
-                    LineEnd = refactor.GetProperty("line_end").GetInt32(),
-                    OldCode = refactor.GetProperty("old_code").GetString() ?? "",
-                    NewCode = refactor.GetProperty("new_code").GetString() ?? ""
-                });
+                json = Regex.Replace(json, @"```(?:json)?\s*", "");
+                json = json.TrimEnd('`').Trim();
             }
+            
+            // Try to find JSON object in the response if it doesn't start with {
+            if (!json.StartsWith("{"))
+            {
+                var jsonMatch = Regex.Match(json, @"\{[\s\S]*\}", RegexOptions.Singleline);
+                if (jsonMatch.Success)
+                {
+                    json = jsonMatch.Value;
+                    _logger.LogWarning("LLM returned text with embedded JSON, extracting...");
+                }
+                else
+                {
+                    _logger.LogWarning("LLM returned text instead of JSON: {Response}", 
+                        llmResponse.Length > 200 ? llmResponse[..200] + "..." : llmResponse);
+                    
+                    // Return component with the LLM's explanation as the code
+                    return new ExtractedComponent
+                    {
+                        Name = name,
+                        FilePath = filePath,
+                        Code = $"// LLM Note: {llmResponse.Trim()}",
+                        CSS = null
+                    };
+                }
+            }
+            
+            var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            
+            var component = new ExtractedComponent
+            {
+                Name = name,
+                FilePath = filePath,
+                Code = root.GetProperty("component_code").GetString() ?? "",
+                CSS = root.TryGetProperty("component_css", out var css) ? css.GetString() : null
+            };
+            
+            // Parse refactorings
+            if (root.TryGetProperty("refactorings", out var refactorings))
+            {
+                foreach (var refactor in refactorings.EnumerateArray())
+                {
+                    component.Refactorings.Add(new ComponentRefactoring
+                    {
+                        FilePath = refactor.GetProperty("file_path").GetString() ?? "",
+                        LineStart = refactor.GetProperty("line_start").GetInt32(),
+                        LineEnd = refactor.GetProperty("line_end").GetInt32(),
+                        OldCode = refactor.GetProperty("old_code").GetString() ?? "",
+                        NewCode = refactor.GetProperty("new_code").GetString() ?? ""
+                    });
+                }
+            }
+            
+            return component;
         }
-        
-        return component;
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Failed to parse component extraction response: {Response}", 
+                llmResponse.Length > 500 ? llmResponse[..500] + "..." : llmResponse);
+            
+            return new ExtractedComponent
+            {
+                Name = name,
+                FilePath = filePath,
+                Code = $"// Component extraction failed: {ex.Message}\n// LLM Response: {llmResponse}",
+                CSS = null
+            };
+        }
     }
 }
 

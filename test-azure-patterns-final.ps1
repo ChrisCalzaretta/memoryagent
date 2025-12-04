@@ -65,3 +65,5 @@ Write-Host "✅ Docker containers running" -ForegroundColor Green
 Write-Host "✅ $total pattern detection methods ready`n" -ForegroundColor Green
 
 
+
+

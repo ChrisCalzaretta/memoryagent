@@ -15,3 +15,5 @@ while true; do
     echo "ping" | timeout 60 ollama run deepseek-coder-v2:16b > /dev/null 2>&1 || true
 done
 
+
+

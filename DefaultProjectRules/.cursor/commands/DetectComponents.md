@@ -15,3 +15,5 @@ Follow this workflow:
    - Proposed interface (parameters, events)
 5. Ask which components to extract
 
+
+

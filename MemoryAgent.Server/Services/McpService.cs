@@ -2619,13 +2619,36 @@ public class McpService : IMcpService
         Dictionary<string, object>? args,
         CancellationToken cancellationToken)
     {
-        var componentCandidateJson = args?.GetValueOrDefault("componentCandidateJson")?.ToString();
+        // Handle componentCandidateJson - it can be passed as a JSON string OR as a JSON object
+        string? componentCandidateJson = null;
+        var candidateArg = args?.GetValueOrDefault("componentCandidateJson");
+        if (candidateArg != null)
+        {
+            if (candidateArg is JsonElement jsonElement)
+            {
+                // If it's a JsonElement, serialize it to a JSON string
+                componentCandidateJson = jsonElement.GetRawText();
+            }
+            else if (candidateArg is string str)
+            {
+                componentCandidateJson = str;
+            }
+            else
+            {
+                // Fallback: try to serialize the object to JSON
+                componentCandidateJson = JsonSerializer.Serialize(candidateArg);
+            }
+        }
+        
         var outputPath = args?.GetValueOrDefault("outputPath")?.ToString();
 
         if (string.IsNullOrWhiteSpace(componentCandidateJson) || string.IsNullOrWhiteSpace(outputPath))
         {
             return ErrorResult("componentCandidateJson and outputPath are required");
         }
+
+        _logger.LogDebug("ExtractComponent - JSON received (first 200 chars): {Json}", 
+            componentCandidateJson.Length > 200 ? componentCandidateJson[..200] + "..." : componentCandidateJson);
 
         var transformationTools = _serviceProvider.GetRequiredService<MCP.TransformationTools>();
         var result = await transformationTools.ExtractComponent(componentCandidateJson, outputPath);

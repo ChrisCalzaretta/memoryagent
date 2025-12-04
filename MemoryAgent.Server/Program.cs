@@ -44,6 +44,7 @@ builder.Services.AddSingleton<RoslynParser>();         // C# parser (Roslyn AST)
 builder.Services.AddSingleton<TypeScriptASTParser>(); // JS/TS/React/Node.js parser (TS Compiler API)
 builder.Services.AddSingleton<PythonASTParser>();      // Python parser (ast module via Python.NET)
 builder.Services.AddSingleton<VBNetASTParser>();       // VB.NET parser (Roslyn AST)
+builder.Services.AddSingleton<DartParser>();           // Dart/Flutter parser with pattern detection
 builder.Services.AddSingleton<ICodeParser, CompositeCodeParser>(); // Composite router
 builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddSingleton<ISemgrepService, SemgrepService>();

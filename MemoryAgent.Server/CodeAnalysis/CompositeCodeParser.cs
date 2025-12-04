@@ -12,6 +12,7 @@ public class CompositeCodeParser : ICodeParser
     private readonly TypeScriptASTParser _tsParser;
     private readonly PythonASTParser _pythonParser;
     private readonly VBNetASTParser _vbParser;
+    private readonly DartParser _dartParser;
     private readonly ILogger<CompositeCodeParser> _logger;
 
     public CompositeCodeParser(
@@ -19,12 +20,14 @@ public class CompositeCodeParser : ICodeParser
         TypeScriptASTParser tsParser,
         PythonASTParser pythonParser,
         VBNetASTParser vbParser,
+        DartParser dartParser,
         ILogger<CompositeCodeParser> logger)
     {
         _roslynParser = roslynParser;
         _tsParser = tsParser;
         _pythonParser = pythonParser;
         _vbParser = vbParser;
+        _dartParser = dartParser;
         _logger = logger;
     }
 
@@ -47,6 +50,9 @@ public class CompositeCodeParser : ICodeParser
             
             // Python files - Python ast module via Python.NET
             ".py" => await _pythonParser.ParseFileAsync(filePath, context, cancellationToken),
+            
+            // Dart/Flutter files - Custom parser with pattern detection
+            ".dart" => await _dartParser.ParseFileAsync(filePath, context, cancellationToken),
             
             // Unsupported types
             _ => CreateUnsupportedResult(filePath, extension, context)
@@ -72,6 +78,9 @@ public class CompositeCodeParser : ICodeParser
             
             // Python code - Python ast module via Python.NET
             ".py" => await _pythonParser.ParseCodeAsync(code, filePath, context, cancellationToken),
+            
+            // Dart/Flutter code - Custom parser with pattern detection
+            ".dart" => await _dartParser.ParseCodeAsync(code, filePath, context, cancellationToken),
             
             // Unsupported types
             _ => CreateUnsupportedResult(filePath, extension, context)

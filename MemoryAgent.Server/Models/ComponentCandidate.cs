@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace MemoryAgent.Server.Models;
 
 /// <summary>
@@ -5,23 +8,41 @@ namespace MemoryAgent.Server.Models;
 /// </summary>
 public class ComponentCandidate
 {
+    [JsonPropertyName("id")]
     public string Id { get; set; } = Guid.NewGuid().ToString();
+    
+    [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+    
+    [JsonPropertyName("description")]
     public string Description { get; set; } = string.Empty;
     
     // Pattern detection
+    [JsonPropertyName("occurrences")]
     public int Occurrences { get; set; }
+    
+    [JsonPropertyName("similarity")]
     public float Similarity { get; set; }
+    
+    [JsonPropertyName("locations")]
     public List<ComponentOccurrence> Locations { get; set; } = new();
     
     // Proposed component interface
+    [JsonPropertyName("proposedInterface")]
     public ComponentInterface ProposedInterface { get; set; } = new();
     
     // Impact analysis
+    [JsonPropertyName("linesSaved")]
     public int LinesSaved { get; set; }
+    
+    [JsonPropertyName("priority")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public Priority Priority { get; set; }
+    
+    [JsonPropertyName("valueScore")]
     public float ValueScore { get; set; }  // 0-100
     
+    [JsonPropertyName("detectedAt")]
     public DateTime DetectedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -30,11 +51,21 @@ public class ComponentCandidate
 /// </summary>
 public class ComponentOccurrence
 {
+    [JsonPropertyName("filePath")]
     public string FilePath { get; set; } = string.Empty;
+    
+    [JsonPropertyName("lineStart")]
     public int LineStart { get; set; }
+    
+    [JsonPropertyName("lineEnd")]
     public int LineEnd { get; set; }
+    
+    [JsonPropertyName("code")]
     public string Code { get; set; } = string.Empty;
-    public Dictionary<string, object> Metadata { get; set; } = new();
+    
+    // Use JsonElement for arbitrary JSON data - avoids Dictionary<string, object> deserialization issues
+    [JsonPropertyName("metadata")]
+    public Dictionary<string, JsonElement> Metadata { get; set; } = new();
 }
 
 /// <summary>
@@ -42,8 +73,13 @@ public class ComponentOccurrence
 /// </summary>
 public class ComponentInterface
 {
+    [JsonPropertyName("parameters")]
     public List<ComponentParameter> Parameters { get; set; } = new();
+    
+    [JsonPropertyName("events")]
     public List<ComponentEvent> Events { get; set; } = new();
+    
+    [JsonPropertyName("dependencies")]
     public List<string> Dependencies { get; set; } = new();
 }
 
@@ -52,10 +88,19 @@ public class ComponentInterface
 /// </summary>
 public class ComponentParameter
 {
+    [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+    
+    [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
+    
+    [JsonPropertyName("required")]
     public bool Required { get; set; }
+    
+    [JsonPropertyName("defaultValue")]
     public string? DefaultValue { get; set; }
+    
+    [JsonPropertyName("description")]
     public string Description { get; set; } = string.Empty;
 }
 
@@ -64,8 +109,13 @@ public class ComponentParameter
 /// </summary>
 public class ComponentEvent
 {
+    [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+    
+    [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
+    
+    [JsonPropertyName("description")]
     public string Description { get; set; } = string.Empty;
 }
 
@@ -74,11 +124,22 @@ public class ComponentEvent
 /// </summary>
 public class ExtractedComponent
 {
+    [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+    
+    [JsonPropertyName("filePath")]
     public string FilePath { get; set; } = string.Empty;
+    
+    [JsonPropertyName("code")]
     public string Code { get; set; } = string.Empty;
+    
+    [JsonPropertyName("css")]
     public string? CSS { get; set; }
+    
+    [JsonPropertyName("interface")]
     public ComponentInterface Interface { get; set; } = new();
+    
+    [JsonPropertyName("refactorings")]
     public List<ComponentRefactoring> Refactorings { get; set; } = new();
 }
 
@@ -87,10 +148,19 @@ public class ExtractedComponent
 /// </summary>
 public class ComponentRefactoring
 {
+    [JsonPropertyName("filePath")]
     public string FilePath { get; set; } = string.Empty;
+    
+    [JsonPropertyName("lineStart")]
     public int LineStart { get; set; }
+    
+    [JsonPropertyName("lineEnd")]
     public int LineEnd { get; set; }
+    
+    [JsonPropertyName("oldCode")]
     public string OldCode { get; set; } = string.Empty;
+    
+    [JsonPropertyName("newCode")]
     public string NewCode { get; set; } = string.Empty;
 }
 

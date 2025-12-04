@@ -13,3 +13,5 @@ Run comprehensive validation before committing or deploying:
 9. index_file on all changed files
 10. Show final quality report and confirm ready for commit/deploy
 
+
+

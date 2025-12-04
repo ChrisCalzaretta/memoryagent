@@ -100,6 +100,7 @@ services:
     ports:
       - "11434:11434"
     environment:
+      - CUDA_VISIBLE_DEVICES=0  # Force GPU 0 (RTX 3090) only - has 24GB VRAM
       - OLLAMA_KEEP_ALIVE=-1  # Keep models loaded in VRAM indefinitely
     volumes:
       - d:\Memory\shared\ollama:/root/.ollama

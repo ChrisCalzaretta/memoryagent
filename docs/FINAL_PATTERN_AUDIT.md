@@ -173,3 +173,5 @@ Need to add 126 pattern detection methods across 3 languages:
 Time to add the missing 126 pattern detectors!
 
 
+
+

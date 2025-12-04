@@ -138,3 +138,5 @@ patterns.Add(new CodePattern
 **Status:** Day 1 - 42 patterns identified, 36 added to C# (with errors), fixing in progress
 
 
+
+
