@@ -95,6 +95,8 @@ services:
       # Force Ollama to use only GPU 1 (5070 Ti 16GB) - avoids crashing 3090
       - CUDA_VISIBLE_DEVICES=1
       - NVIDIA_VISIBLE_DEVICES=1
+      # Keep models loaded in VRAM indefinitely (-1 = never unload)
+      - OLLAMA_KEEP_ALIVE=-1
     healthcheck:
       test: ["CMD", "bash", "-c", "ollama list | grep -q mxbai-embed-large"]
       interval: 10s
