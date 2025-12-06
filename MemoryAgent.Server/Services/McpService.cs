@@ -30,8 +30,7 @@ public class McpService : IMcpService
     // Tools that manage sessions themselves - don't auto-start session for these
     private static readonly HashSet<string> _sessionManagementTools = new()
     {
-        "start_session",
-        "end_session",
+        "workspace_status",
         "register_workspace",
         "unregister_workspace"
     };

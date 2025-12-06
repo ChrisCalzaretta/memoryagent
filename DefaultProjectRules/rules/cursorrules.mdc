@@ -21,8 +21,9 @@ alwaysApply: true
 ### Session Management (AUTOMATIC ✅)
 **AUTO** Sessions are automatically started on first tool call per context
 **AUTO** Files in tool arguments are automatically recorded as "discussed"
-**OPTIONAL** Call `end_session` with summary when work is complete (recommended)
+**AUTO** Context = workspace folder name (e.g., "memoryagent")
 **OPTIONAL** Call `record_file_edited` for files edited outside tool calls
+**OPTIONAL** Call `workspace_status` to see what Lightning knows about this workspace
 
 ### Q&A Learning (MANDATORY)
 **ALWAYS** Call `find_similar_questions` FIRST before answering any question
@@ -136,7 +137,7 @@ alwaysApply: true
 
 ---
 
-## 📋 COMPLETE MCP TOOL LIST (25 Tools)
+## 📋 COMPLETE MCP TOOL LIST (24 Tools)
 
 ### 🔍 Search (1 tool)
 | Tool | Description | When to Use |
@@ -148,12 +149,11 @@ alwaysApply: true
 |------|-------------|-------------|
 | `index` | Index code (scope: file, directory, reindex) | After file changes, new folders, refactoring |
 
-### 🧠 Session & Learning (6 tools)
+### 🧠 Session & Learning (5 tools)
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `start_session` | Start learning session | Beginning of conversation |
-| `end_session` | End session with summary | End of conversation |
-| `record_file_discussed` | Record file was discussed | Any file is mentioned |
+| `workspace_status` | Quick overview: sessions, Q&A, files, health | Check what Lightning knows |
+| `record_file_discussed` | Record file was discussed (AUTO for tool args) | Any file is mentioned |
 | `record_file_edited` | Record file was edited | After file edits |
 | `store_qa` | Store Q&A for recall | After useful answers |
 | `find_similar_questions` | Find similar past questions | BEFORE answering questions |

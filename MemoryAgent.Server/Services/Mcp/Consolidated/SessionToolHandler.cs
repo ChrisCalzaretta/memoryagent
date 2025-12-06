@@ -26,31 +26,16 @@ public class SessionToolHandler : IMcpToolHandler
         {
             new McpTool
             {
-                Name = "start_session",
-                Description = "Start a learning session. CALL THIS AT THE START OF EVERY CONVERSATION. The Memory Agent tracks files discussed and edited during the session.",
+                Name = "workspace_status",
+                Description = "Get a quick overview of what Agent Lightning knows about this workspace: active sessions, Q&A stored, files tracked, learning health.",
                 InputSchema = new
                 {
                     type = "object",
                     properties = new
                     {
-                        context = new { type = "string", description = "Project context name" }
+                        context = new { type = "string", description = "Project context name (defaults to workspace folder)" }
                     },
-                    required = new[] { "context" }
-                }
-            },
-            new McpTool
-            {
-                Name = "end_session",
-                Description = "End the current learning session with an optional summary. CALL THIS WHEN WORK IS COMPLETE.",
-                InputSchema = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        sessionId = new { type = "string", description = "Session ID to end" },
-                        summary = new { type = "string", description = "Summary of what was accomplished" }
-                    },
-                    required = new[] { "sessionId" }
+                    required = Array.Empty<string>()
                 }
             },
             new McpTool
@@ -126,8 +111,7 @@ public class SessionToolHandler : IMcpToolHandler
     {
         return toolName switch
         {
-            "start_session" => await StartSessionAsync(args, cancellationToken),
-            "end_session" => await EndSessionAsync(args, cancellationToken),
+            "workspace_status" => await WorkspaceStatusAsync(args, cancellationToken),
             "record_file_discussed" => await RecordFileDiscussedAsync(args, cancellationToken),
             "record_file_edited" => await RecordFileEditedAsync(args, cancellationToken),
             "store_qa" => await StoreQAAsync(args, cancellationToken),
@@ -136,75 +120,84 @@ public class SessionToolHandler : IMcpToolHandler
         };
     }
 
-    #region Session Management
+    #region Workspace Status
 
-    private async Task<McpToolResult> StartSessionAsync(Dictionary<string, object>? args, CancellationToken ct)
+    private async Task<McpToolResult> WorkspaceStatusAsync(Dictionary<string, object>? args, CancellationToken ct)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(context))
-            return ErrorResult("context is required");
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant() ?? "default";
 
-        // Check for existing active session first
-        var existingSession = await _learningService.GetActiveSessionAsync(context, ct);
-        if (existingSession != null)
+        var output = $"🧠 Agent Lightning - Workspace Status\n";
+        output += $"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+        output += $"📁 Context: {context}\n\n";
+
+        // Active Session
+        var activeSession = await _learningService.GetActiveSessionAsync(context, ct);
+        if (activeSession != null)
         {
-            var duration = (DateTime.UtcNow - existingSession.StartedAt).TotalMinutes;
-            return new McpToolResult
-            {
-                Content = new List<McpContent>
-                {
-                    new() { 
-                        Type = "text", 
-                        Text = $"🟢 Active Session Found\n\n" +
-                               $"Session ID: {existingSession.Id}\n" +
-                               $"Context: {existingSession.Context}\n" +
-                               $"Started: {existingSession.StartedAt:u}\n" +
-                               $"Duration: {duration:F0} minutes\n\n" +
-                               $"📂 Files Discussed: {existingSession.FilesDiscussed.Count}\n" +
-                               $"✏️ Files Edited: {existingSession.FilesEdited.Count}\n\n" +
-                               $"⚠️ Using existing session. Call end_session first if you want a new session." 
-                    }
-                }
-            };
+            var duration = (DateTime.UtcNow - activeSession.StartedAt).TotalMinutes;
+            output += $"🟢 Active Session\n";
+            output += $"   ID: {activeSession.Id}\n";
+            output += $"   Started: {activeSession.StartedAt:g}\n";
+            output += $"   Duration: {duration:F0} minutes\n";
+            output += $"   Files Discussed: {activeSession.FilesDiscussed.Count}\n";
+            output += $"   Files Edited: {activeSession.FilesEdited.Count}\n\n";
+        }
+        else
+        {
+            output += $"⚪ No Active Session (will auto-start on next tool call)\n\n";
         }
 
-        var session = await _learningService.StartSessionAsync(context, ct);
-        
+        // Recent Sessions
+        var recentSessions = await _learningService.GetRecentSessionsAsync(context, 5, ct);
+        output += $"📜 Recent Sessions: {recentSessions.Count}\n";
+        foreach (var s in recentSessions.Take(3))
+        {
+            var status = s.EndedAt.HasValue ? "✅" : "🟢";
+            output += $"   {status} {s.StartedAt:d} - {s.FilesDiscussed.Count} files\n";
+        }
+        output += "\n";
+
+        // Q&A Knowledge
+        var similarTest = await _learningService.FindSimilarQuestionsAsync("test", context, 1, ct);
+        output += $"💡 Q&A Knowledge Base: Active\n";
+        output += $"   Use find_similar_questions to search\n";
+        output += $"   Use store_qa to add new knowledge\n\n";
+
+        // Important Files
+        var importantFiles = await _learningService.GetMostImportantFilesAsync(context, 5, ct);
+        if (importantFiles.Any())
+        {
+            output += $"⭐ Top Important Files:\n";
+            foreach (var f in importantFiles.Take(5))
+            {
+                output += $"   • {Path.GetFileName(f.FilePath)} ({f.ImportanceScore:F1})\n";
+            }
+            output += "\n";
+        }
+
+        // Tool Usage
+        var toolMetrics = await _learningService.GetToolUsageMetricsAsync(context, ct);
+        if (toolMetrics.Any())
+        {
+            var totalCalls = toolMetrics.Sum(m => m.CallCount);
+            output += $"🔧 Tool Usage: {totalCalls:N0} calls across {toolMetrics.Count} tools\n\n";
+        }
+
+        output += $"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        output += $"✨ Sessions auto-start. Files auto-track from tool args.\n";
+
         return new McpToolResult
         {
             Content = new List<McpContent>
             {
-                new() { 
-                    Type = "text", 
-                    Text = $"🆕 Session Started\n\n" +
-                           $"Session ID: {session.Id}\n" +
-                           $"Context: {session.Context}\n" +
-                           $"Started: {session.StartedAt:u}\n\n" +
-                           $"⚠️ IMPORTANT: Use this session ID for all record_file_discussed and record_file_edited calls.\n" +
-                           $"Remember to call end_session when work is complete." 
-                }
+                new() { Type = "text", Text = output }
             }
         };
     }
 
-    private async Task<McpToolResult> EndSessionAsync(Dictionary<string, object>? args, CancellationToken ct)
-    {
-        var sessionId = args?.GetValueOrDefault("sessionId")?.ToString();
-        var summary = args?.GetValueOrDefault("summary")?.ToString();
-        
-        if (string.IsNullOrWhiteSpace(sessionId))
-            return ErrorResult("sessionId is required");
+    #endregion
 
-        await _learningService.EndSessionAsync(sessionId, summary, ct);
-        
-        return new McpToolResult
-        {
-            Content = new List<McpContent>
-            {
-                new() { Type = "text", Text = $"✅ Session Ended\n\nSession ID: {sessionId}\nSummary: {summary ?? "(none)"}" }
-            }
-        };
-    }
+    #region File Tracking
 
     private async Task<McpToolResult> RecordFileDiscussedAsync(Dictionary<string, object>? args, CancellationToken ct)
     {
