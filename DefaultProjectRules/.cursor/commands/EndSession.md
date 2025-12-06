@@ -1,41 +1,41 @@
----
-name: Workspace Status
----
-# Workspace Status - What Does Agent Lightning Know?
+# End Session - NOT NEEDED
 
-Get a quick overview of what Agent Lightning has learned about this workspace.
+## ✅ Sessions Don't Need to Be Ended!
 
-## When to Use
-- At the start of a conversation to see context
-- To check what files have been tracked
-- To see Q&A knowledge base status
-- To review recent activity
+**You don't need to manually end sessions.**
 
-## What It Shows
+The learning system works continuously:
+- Sessions are reused across chats in the same workspace
+- All interactions are tracked automatically
+- Learning persists indefinitely
 
-- **Active Session**: Current session info (auto-created)
-- **Recent Sessions**: Past work sessions
-- **Q&A Knowledge**: Stored question-answer pairs
-- **Important Files**: Top files by importance score
-- **Tool Usage**: How many tool calls in this workspace
+## Check What's Been Learned
 
-## Example
+Use `workspace_status` instead:
 
 ```
-workspace_status(context: "memoryagent")
-
-→ Shows:
-  📁 Context: memoryagent
-  🟢 Active Session (auto-created)
-  📜 Recent Sessions: 5
-  💡 Q&A Knowledge Base: Active
-  ⭐ Top Important Files
-  🔧 Tool Usage: 42 calls
+Use MCP tool: workspace_status
+- context: "[workspace name]"
 ```
 
-## Notes
+This shows:
+- Active session info
+- Q&A pairs stored
+- Important files learned
+- Tool usage metrics
 
-- Sessions are **automatic** - no need to start/end them
-- Context = workspace folder name (lowercase)
-- Files are auto-tracked from tool arguments
+## When Sessions "End"
 
+Sessions effectively end when:
+- You close Cursor (wrapper shuts down)
+- You switch to a different workspace
+
+But this is automatic - no action needed!
+
+## The Learning Persists
+
+Even when a session "ends":
+- Q&A mappings remain
+- File importance scores persist
+- Co-edit patterns are saved
+- All learning is retained

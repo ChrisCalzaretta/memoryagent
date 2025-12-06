@@ -1,36 +1,45 @@
----
-name: Start Session
----
-# Start Learning Session
+# Session Management - AUTOMATIC
 
-Start an Agent Lightning learning session to track context throughout this conversation.
+## ✅ Sessions Are Now Automatic!
 
-## Steps
+**You don't need to manually start sessions anymore.**
 
-1. Start session:
-   - Call `start_session` with project context
-   - If active session exists, it will be returned automatically
-   - Note the session ID for all subsequent tracking
+Sessions automatically start on the first MCP tool call in a workspace.
 
-2. Review recent history:
-   - Call `get_insights` with category='sessions' to understand past work
-   - Call `get_important_files` to see priority files
+## What Happens Automatically
 
-3. Report session status:
-   - Display session ID
-   - Show recent context if available
-   - List most important files to review
+1. **Auto-Start**: When you call ANY MCP tool, a session starts if none exists
+2. **Auto-Context**: Workspace name is automatically used as context
+3. **Auto-Recording**: Files in tool arguments are automatically recorded as "discussed"
 
-## Example
+## Check Session Status
+
+Use `workspace_status` to see your current session:
 
 ```
-start_session(context: "MyProject")
-→ Returns session ID and status
-
-get_insights(category: "sessions", context: "myproject", limit: 5)
-→ Shows recent sessions
-
-get_important_files(context: "myproject", limit: 10)
-→ Shows priority files to review
+Use MCP tool: workspace_status
+- context: "[workspace name]"
 ```
 
+## Manual Recording (Optional)
+
+If you discuss a file that wasn't in a tool argument:
+
+```
+Use MCP tool: record_file_discussed
+- sessionId: "[from workspace_status]"
+- filePath: "[file you discussed]"
+```
+
+If you edit a file outside of MCP tools:
+
+```
+Use MCP tool: record_file_edited
+- sessionId: "[from workspace_status]"  
+- filePath: "[file you edited]"
+```
+
+## Note
+
+Sessions persist across chat sessions in the same workspace.
+The learning system continuously learns from your interactions.
