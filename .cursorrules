@@ -16,13 +16,13 @@ alwaysApply: true
 
 ---
 
-## 🧠 Agent Lightning - Learning System (USE EVERY SESSION)
+## 🧠 Agent Lightning - Learning System (AUTO-ENABLED)
 
-### Session Management (MANDATORY)
-**ALWAYS** Call `start_session` at the beginning of any conversation
-**ALWAYS** Call `end_session` with summary when work is complete
-**ALWAYS** Call `record_file_discussed` when ANY file is mentioned or viewed
-**ALWAYS** Call `record_file_edited` AFTER every file edit
+### Session Management (AUTOMATIC ✅)
+**AUTO** Sessions are automatically started on first tool call per context
+**AUTO** Files in tool arguments are automatically recorded as "discussed"
+**OPTIONAL** Call `end_session` with summary when work is complete (recommended)
+**OPTIONAL** Call `record_file_edited` for files edited outside tool calls
 
 ### Q&A Learning (MANDATORY)
 **ALWAYS** Call `find_similar_questions` FIRST before answering any question
@@ -111,8 +111,6 @@ alwaysApply: true
 3. Breaking changes > 10 files without approval
 4. Missing critical patterns (no auth/validation)
 5. Legacy patterns in new code (AutoGen, old SK Planners)
-6. No active session (call `start_session` immediately!)
-7. File edited without calling `record_file_edited`
 
 ---
 

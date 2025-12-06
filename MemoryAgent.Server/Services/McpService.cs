@@ -23,8 +23,21 @@ public class McpService : IMcpService
         "get_tool_usage",
         "get_popular_tools", 
         "get_recent_tool_invocations",
-        "get_tool_patterns"
+        "get_tool_patterns",
+        "get_insights" // Can call itself via category='tools'
     };
+    
+    // Tools that manage sessions themselves - don't auto-start session for these
+    private static readonly HashSet<string> _sessionManagementTools = new()
+    {
+        "start_session",
+        "end_session",
+        "register_workspace",
+        "unregister_workspace"
+    };
+    
+    // Cache of active sessions per context to avoid repeated lookups
+    private readonly Dictionary<string, string> _activeSessionCache = new();
 
     public McpService(
         IEnumerable<IMcpToolHandler> handlers,
@@ -74,6 +87,12 @@ public class McpService : IMcpService
 
         try
         {
+            // AUTO-SESSION: Ensure a session exists for tools that need context
+            var sessionId = await EnsureSessionExistsAsync(toolCall, cancellationToken);
+            
+            // AUTO-RECORD: Track files mentioned in tool arguments
+            await AutoRecordFilesFromArgumentsAsync(sessionId, toolCall.Arguments, cancellationToken);
+            
             var result = await handler.HandleToolAsync(toolCall.Name, toolCall.Arguments, cancellationToken);
             stopwatch.Stop();
             
@@ -190,6 +209,125 @@ public class McpService : IMcpService
         }
         
         return null;
+    }
+    
+    /// <summary>
+    /// AUTO-SESSION: Automatically starts a session if one doesn't exist for the context.
+    /// This ensures every tool call has session context for learning.
+    /// </summary>
+    private async Task<string?> EnsureSessionExistsAsync(McpToolCall toolCall, CancellationToken cancellationToken)
+    {
+        // Skip session management for tools that handle sessions themselves
+        if (_sessionManagementTools.Contains(toolCall.Name))
+            return null;
+            
+        // Extract context from arguments
+        var context = toolCall.Arguments?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
+        
+        // If no context provided, try to extract from other arguments or use default
+        if (string.IsNullOrWhiteSpace(context))
+        {
+            // Some tools might not have context - use a default
+            context = "default";
+        }
+        
+        // Check cache first
+        if (_activeSessionCache.TryGetValue(context, out var cachedSessionId))
+        {
+            // Verify session is still active
+            var existingSession = await _learningService.GetActiveSessionAsync(context, cancellationToken);
+            if (existingSession != null && existingSession.Id == cachedSessionId)
+            {
+                return cachedSessionId;
+            }
+            // Cache is stale, remove it
+            _activeSessionCache.Remove(context);
+        }
+        
+        // Check for existing active session
+        var activeSession = await _learningService.GetActiveSessionAsync(context, cancellationToken);
+        if (activeSession != null)
+        {
+            _activeSessionCache[context] = activeSession.Id;
+            return activeSession.Id;
+        }
+        
+        // AUTO-START: No active session, create one automatically
+        try
+        {
+            _logger.LogInformation("🚀 Auto-starting session for context: {Context}", context);
+            var newSession = await _learningService.StartSessionAsync(context, cancellationToken);
+            _activeSessionCache[context] = newSession.Id;
+            _logger.LogInformation("✅ Auto-session started: {SessionId} for context: {Context}", newSession.Id, context);
+            return newSession.Id;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to auto-start session for context: {Context}", context);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// AUTO-RECORD: Automatically records files mentioned in tool arguments as "discussed".
+    /// This helps the learning system understand which files are being worked on.
+    /// </summary>
+    private async Task AutoRecordFilesFromArgumentsAsync(string? sessionId, Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || args == null)
+            return;
+            
+        try
+        {
+            // Extract file paths from various argument names
+            var fileArgNames = new[] { "filePath", "path", "sourcePath", "targetPath", "outputPath", "exampleOldPath", "exampleNewPath" };
+            var filePaths = new HashSet<string>();
+            
+            foreach (var argName in fileArgNames)
+            {
+                if (args.TryGetValue(argName, out var value) && value != null)
+                {
+                    var path = value.ToString();
+                    if (!string.IsNullOrWhiteSpace(path) && (path.Contains('/') || path.Contains('\\') || path.Contains('.')))
+                    {
+                        filePaths.Add(path);
+                    }
+                }
+            }
+            
+            // Also check for relevantFiles array
+            if (args.TryGetValue("relevantFiles", out var filesObj) && filesObj != null)
+            {
+                IEnumerable<string>? filesList = filesObj switch
+                {
+                    IEnumerable<string> list => list,
+                    System.Text.Json.JsonElement je when je.ValueKind == System.Text.Json.JsonValueKind.Array 
+                        => je.EnumerateArray().Select(e => e.GetString()).Where(s => s != null).Cast<string>(),
+                    _ => null
+                };
+                
+                if (filesList != null)
+                {
+                    foreach (var file in filesList)
+                    {
+                        if (!string.IsNullOrWhiteSpace(file))
+                            filePaths.Add(file);
+                    }
+                }
+            }
+            
+            // Record each file as discussed
+            foreach (var filePath in filePaths)
+            {
+                await _learningService.RecordFileDiscussedAsync(sessionId, filePath, cancellationToken);
+                _logger.LogDebug("📁 Auto-recorded file as discussed: {FilePath}", filePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't let auto-recording failures break the tool call
+            _logger.LogWarning(ex, "Failed to auto-record files from arguments");
+        }
     }
 
     public async Task<List<McpTool>> GetToolsAsync(CancellationToken cancellationToken = default)
