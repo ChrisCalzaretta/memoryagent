@@ -137,7 +137,7 @@ alwaysApply: true
 
 ---
 
-## 📋 COMPLETE MCP TOOL LIST (24 Tools)
+## 📋 COMPLETE MCP TOOL LIST (25 Tools)
 
 ### 🔍 Search (1 tool)
 | Tool | Description | When to Use |
@@ -192,6 +192,13 @@ alwaysApply: true
 | `manage_prompts` | Manage LLM prompts (action: list, get_history, create_version, start_ab_test, etc.) | Prompt management |
 | `manage_patterns` | Manage patterns (action: list, get_metrics, suggest_new, evolve, deprecate, etc.) | Pattern management |
 | `feedback` | Record prompt/pattern feedback (type: prompt, pattern) | After using prompts/patterns |
+
+### 🧠 Code Understanding (3 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `get_context` | Get relevant context for a task/question from the codebase | Before starting any task |
+| `explain_code` | Explain what a piece of code or file does | Understanding unfamiliar code |
+| `find_examples` | Find usage examples of a function/class/pattern | Learning how to use something |
 
 ---
 

@@ -61,16 +61,17 @@ builder.Services.AddScoped<IReindexService, ReindexService>();
 builder.Services.AddScoped<IMcpService, McpService>();
 
 // CONSOLIDATED TOOL HANDLERS (25 tools)
-builder.Services.AddScoped<IMcpToolHandler, SearchToolHandler>();       // 1: smartsearch
-builder.Services.AddScoped<IMcpToolHandler, IndexToolHandler>();        // 2: index
-builder.Services.AddScoped<IMcpToolHandler, SessionToolHandler>();      // 3-8: session & learning tools
-builder.Services.AddScoped<IMcpToolHandler, AnalysisToolHandler>();     // 9-12: analysis & validation
-builder.Services.AddScoped<IMcpToolHandler, IntelligenceToolHandler>(); // 13-16: recommendations & insights
-builder.Services.AddScoped<IMcpToolHandler, PlanningToolHandler>();     // 17-20: plans & todos
-builder.Services.AddScoped<IMcpToolHandler, TransformToolHandler>();    // 21-22: transform & migration
-builder.Services.AddScoped<IMcpToolHandler, EvolvingToolHandler>();     // 23-25: prompts, patterns, feedback
+builder.Services.AddScoped<IMcpToolHandler, SearchToolHandler>();           // 1: smartsearch
+builder.Services.AddScoped<IMcpToolHandler, IndexToolHandler>();            // 2: index
+builder.Services.AddScoped<IMcpToolHandler, SessionToolHandler>();          // 3-7: session & learning tools
+builder.Services.AddScoped<IMcpToolHandler, AnalysisToolHandler>();         // 8-11: analysis & validation
+builder.Services.AddScoped<IMcpToolHandler, IntelligenceToolHandler>();     // 12-15: recommendations & insights
+builder.Services.AddScoped<IMcpToolHandler, PlanningToolHandler>();         // 16-19: plans & todos
+builder.Services.AddScoped<IMcpToolHandler, TransformToolHandler>();        // 20-21: transform & migration
+builder.Services.AddScoped<IMcpToolHandler, EvolvingToolHandler>();         // 22-24: prompts, patterns, feedback
+builder.Services.AddScoped<IMcpToolHandler, CodeUnderstandingToolHandler>();// 25: get_context, explain_code, find_examples
 
-// Workspace handler (kept separate - auto-called by wrapper)
+// Workspace handler (kept separate - auto-called by wrapper, not visible to AI)
 builder.Services.AddScoped<IMcpToolHandler, WorkspaceToolHandler>();
 
 builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
