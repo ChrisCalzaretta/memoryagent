@@ -333,8 +333,12 @@ public class McpService : IMcpService
     {
         await Task.CompletedTask;
 
+        // Internal tools that are auto-called by wrapper, not shown to AI
+        var internalTools = new HashSet<string> { "register_workspace", "unregister_workspace" };
+
         var allTools = _handlers
             .SelectMany(handler => handler.GetTools())
+            .Where(tool => !internalTools.Contains(tool.Name)) // Filter out internal tools
             .OrderBy(tool => tool.Name)
             .ToList();
 
