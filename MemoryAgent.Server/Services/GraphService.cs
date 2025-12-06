@@ -519,6 +519,9 @@ public class GraphService : IGraphService, IDisposable
     {
         await using var session = _driver.AsyncSession();
         
+        // IMPORTANT: Normalize context to lowercase for consistent search
+        var normalizedContext = context?.ToLowerInvariant();
+        
         try
         {
             return await session.ExecuteReadAsync(async tx =>
@@ -533,9 +536,9 @@ public class GraphService : IGraphService, IDisposable
                     ["limit"] = limit
                 };
                 
-                if (!string.IsNullOrWhiteSpace(context))
+                if (!string.IsNullOrWhiteSpace(normalizedContext))
                 {
-                    parameters["context"] = context;
+                    parameters["context"] = normalizedContext;
                 }
                 
                 // Escape special characters for Lucene full-text search
@@ -546,9 +549,9 @@ public class GraphService : IGraphService, IDisposable
                 {
                     // Use full-text index for 10x faster search
                     // The index searches across name, content, summary, purpose, signature
-                    var contextFilter = string.IsNullOrWhiteSpace(context) 
+                    var contextFilter = string.IsNullOrWhiteSpace(normalizedContext) 
                         ? "" 
-                        : "WHERE node.context = $context";
+                        : "WHERE toLower(node.context) = $context";
                     
                     cypher = $@"
                         CALL db.index.fulltext.queryNodes('code_fulltext', $escapedQuery) 
@@ -563,9 +566,9 @@ public class GraphService : IGraphService, IDisposable
                     // Fallback to CONTAINS-based search if full-text index doesn't exist
                     _logger.LogWarning("Full-text index not available, falling back to CONTAINS search");
                     
-                    var contextFilter = string.IsNullOrWhiteSpace(context) 
+                    var contextFilter = string.IsNullOrWhiteSpace(normalizedContext) 
                         ? "" 
-                        : "AND n.context = $context";
+                        : "AND toLower(n.context) = $context";
                     
                     cypher = $@"
                         MATCH (n)
@@ -612,7 +615,7 @@ public class GraphService : IGraphService, IDisposable
                 }
                 
                 _logger.LogInformation("Neo4j full-text search for '{Query}' in context '{Context}' returned {Count} results", 
-                    query, context ?? "all", results.Count);
+                    query, normalizedContext ?? "all", results.Count);
                 
                 return results;
             });

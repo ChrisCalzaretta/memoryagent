@@ -39,25 +39,28 @@ public class IndexingService : IIndexingService
     {
         var stopwatch = Stopwatch.StartNew();
         var result = new IndexResult();
+        
+        // IMPORTANT: Normalize context to lowercase for consistent storage/search across Neo4j and Qdrant
+        var normalizedContext = context?.ToLowerInvariant();
 
         try
         {
             // Translate path from host to container if needed
             var containerPath = _pathTranslation.TranslateToContainerPath(filePath);
-            _logger.LogInformation("Indexing file: {FilePath} (translated to: {ContainerPath})", filePath, containerPath);
+            _logger.LogInformation("Indexing file: {FilePath} (translated to: {ContainerPath}) in context: {Context}", filePath, containerPath, normalizedContext);
 
             // Step 0: Ensure Qdrant collections exist for this context
-            await _vectorService.InitializeCollectionsForContextAsync(context, cancellationToken);
+            await _vectorService.InitializeCollectionsForContextAsync(normalizedContext, cancellationToken);
             
             // Step 1: Delete existing data for this file (if any) to avoid duplicates
             _logger.LogInformation("Checking for existing data for file: {FilePath}", containerPath);
             await Task.WhenAll(
-                _vectorService.DeleteByFilePathAsync(containerPath, context, cancellationToken),
+                _vectorService.DeleteByFilePathAsync(containerPath, normalizedContext, cancellationToken),
                 _graphService.DeleteByFilePathAsync(containerPath, cancellationToken)
             );
 
             // Step 1: Parse the file
-            var parseResult = await _codeParser.ParseFileAsync(containerPath, context, cancellationToken);
+            var parseResult = await _codeParser.ParseFileAsync(containerPath, normalizedContext, cancellationToken);
             if (!parseResult.Success)
             {
                 result.Errors.AddRange(parseResult.Errors);
@@ -83,7 +86,7 @@ public class IndexingService : IIndexingService
                         Content = pattern.Content,
                         FilePath = containerPath,
                         LineNumber = pattern.LineNumber,
-                        Context = context ?? "default",
+                        Context = normalizedContext ?? "default",
                         Metadata = new Dictionary<string, object>
                         {
                             ["pattern_type"] = pattern.Type.ToString(),
@@ -195,7 +198,7 @@ public class IndexingService : IIndexingService
                             Content = finding.CodeSnippet,
                             IsPositivePattern = false,  // Security findings are issues/anti-patterns
                             Confidence = finding.Severity == "ERROR" ? 1.0f : 0.8f,
-                            Context = context ?? "default",
+                            Context = normalizedContext ?? "default",
                             BestPractice = finding.Metadata.OWASP ?? "OWASP Top 10",
                             AzureBestPracticeUrl = "https://owasp.org/www-project-top-ten/",
                             Metadata = new Dictionary<string, object>
