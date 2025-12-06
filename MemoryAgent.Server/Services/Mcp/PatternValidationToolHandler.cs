@@ -64,7 +64,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
                     properties = new
                     {
                         context = new { type = "string", description = "Project context to validate" },
-                        bestPractices = new { type = "array", description = "Specific practices to check (optional, defaults to all 21 practices)" },
+                        bestPractices = new { type = "array", items = new { type = "string" }, description = "Specific practices to check (optional, defaults to all 21 practices)" },
                         includeExamples = new { type = "boolean", description = "Include code examples in results", @default = true },
                         maxExamplesPerPractice = new { type = "number", description = "Maximum examples per practice", @default = 5 }
                     },
@@ -81,7 +81,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
                     properties = new
                     {
                         context = new { type = "string", description = "Project context to analyze" },
-                        categories = new { type = "array", description = "Focus on specific categories (optional)" },
+                        categories = new { type = "array", items = new { type = "string" }, description = "Focus on specific categories (optional)" },
                         includeLowPriority = new { type = "boolean", description = "Include low-priority recommendations", @default = false },
                         maxRecommendations = new { type = "number", description = "Maximum recommendations to return", @default = 10 }
                     },
@@ -91,7 +91,13 @@ public class PatternValidationToolHandler : IMcpToolHandler
             new McpTool
             {
                 Name = "get_available_best_practices",
-                Description = "Get list of all available Azure best practices that can be validated."
+                Description = "Get list of all available Azure best practices that can be validated.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>()
+                }
             },
             new McpTool
             {
@@ -136,7 +142,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
                     properties = new
                     {
                         context = new { type = "string", description = "Project context to validate" },
-                        pattern_types = new { type = "array", description = "Specific pattern types to check (optional)" }
+                        pattern_types = new { type = "array", items = new { type = "string" }, description = "Specific pattern types to check (optional)" }
                     },
                     required = new[] { "context" }
                 }

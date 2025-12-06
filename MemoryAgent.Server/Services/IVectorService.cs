@@ -57,5 +57,69 @@ public interface IVectorService
     /// Health check for Qdrant
     /// </summary>
     Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default);
+    
+    #region Agent Lightning (Learning) Operations
+    
+    /// <summary>
+    /// Store a Q&A mapping with its question embedding in the lightning collection
+    /// </summary>
+    Task StoreLightningQAAsync(
+        string id,
+        string question,
+        float[] questionEmbedding,
+        string answer,
+        List<string> relevantFiles,
+        string context,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Search for similar questions using vector similarity in the lightning collection
+    /// </summary>
+    Task<List<LightningQAResult>> SearchSimilarQuestionsAsync(
+        float[] questionEmbedding,
+        string context,
+        int limit = 5,
+        float minimumScore = 0.7f,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Store a session snapshot in the lightning collection
+    /// </summary>
+    Task StoreLightningSessionAsync(
+        string sessionId,
+        float[] sessionEmbedding,
+        string summary,
+        List<string> filesDiscussed,
+        List<string> filesEdited,
+        string context,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Store importance data point in the lightning collection
+    /// </summary>
+    Task StoreLightningImportanceAsync(
+        string id,
+        string filePath,
+        float[] fileEmbedding,
+        float importanceScore,
+        int accessCount,
+        int editCount,
+        string context,
+        CancellationToken cancellationToken = default);
+    
+    #endregion
+}
+
+/// <summary>
+/// Result from searching similar questions in lightning collection
+/// </summary>
+public class LightningQAResult
+{
+    public string Id { get; set; } = string.Empty;
+    public string Question { get; set; } = string.Empty;
+    public string Answer { get; set; } = string.Empty;
+    public List<string> RelevantFiles { get; set; } = new();
+    public float Score { get; set; }
+    public DateTime StoredAt { get; set; }
 }
 

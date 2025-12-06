@@ -44,10 +44,10 @@ public class PlanToolHandler : IMcpToolHandler
                         context = new { type = "string", description = "Project context" },
                         name = new { type = "string", description = "Plan name" },
                         description = new { type = "string", description = "Plan description" },
-                        tasks = new { type = "array", description = "Array of tasks" },
+                        tasks = new { type = "array", items = new { type = "object" }, description = "Array of tasks" },
                         include_recommendations = new { type = "boolean", description = "Auto-generate tasks from architecture recommendations", @default = false },
                         max_recommendations = new { type = "number", description = "Max recommended tasks to add", @default = 10 },
-                        recommendation_categories = new { type = "array", description = "Specific categories to recommend (optional)" }
+                        recommendation_categories = new { type = "array", items = new { type = "string" }, description = "Specific categories to recommend (optional)" }
                     },
                     required = new[] { "context", "name", "tasks" }
                 }

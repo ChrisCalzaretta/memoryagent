@@ -2,136 +2,262 @@
 alwaysApply: true
 ---
 
-# Memory Agent - AI-Powered Code Intelligence Rules
+# Memory Agent Rules - MANDATORY FOR EVERY QUERY
 
-## Core Workflow Rules
+## 🚨 CRITICAL - MCP TOOLS ARE REQUIRED ON EVERY QUERY
+
+**ALWAYS** On EVERY query, call at least ONE MCP tool before responding
+**ALWAYS** Start sessions with `start_session` at conversation start
+**ALWAYS** Use `smartsearch` or `query` before answering ANY code question
+**ALWAYS** Record files discussed with `record_file_discussed`
+**ALWAYS** Record files edited with `record_file_edited`
+**ALWAYS** Check `find_similar_questions` before answering - instant recall!
+**ALWAYS** Store useful Q&A with `store_qa` for future learning
+
+---
+
+## 🧠 Agent Lightning - Learning System (USE EVERY SESSION)
+
+### Session Management (MANDATORY)
+**ALWAYS** Call `start_session` at the beginning of any conversation
+**ALWAYS** Call `end_session` with summary when work is complete
+**ALWAYS** Call `get_active_session` to check if session exists before starting new one
+**ALWAYS** Call `get_recent_sessions` to understand previous work context
+
+### File Tracking (MANDATORY)
+**ALWAYS** Call `record_file_discussed` when ANY file is mentioned or viewed
+**ALWAYS** Call `record_file_edited` AFTER every file edit
+**ALWAYS** Call `get_important_files` to prioritize what to review first
+**ALWAYS** Call `get_coedited_files` to find related files that need updates
+**ALWAYS** Call `get_file_clusters` to understand module boundaries
+
+### Q&A Learning (MANDATORY)
+**ALWAYS** Call `find_similar_questions` FIRST before answering any question
+**ALWAYS** Call `store_qa` after providing a useful answer
+**ALWAYS** Include relevant file paths in Q&A storage
+**ALWAYS** Call `detect_domains` to tag files by business domain
+
+### Importance Tracking
+**ALWAYS** Call `recalculate_importance` weekly or after major changes
+
+---
+
+## 🔍 Search & Query (MANDATORY)
+
+**ALWAYS** Use `smartsearch` FIRST for any question - try different terms if no results
+**ALWAYS** Use `query` for semantic code search
+**ALWAYS** Use `search_patterns` to find existing implementations before writing new code
+**ALWAYS** Call `index_file` after ANY file change
+**ALWAYS** Call `index_directory` for new folders
+**ALWAYS** Call `reindex` after major refactoring
+
+---
+
+## 📊 Analysis Tools (USE WHEN ANALYZING)
+
+**ALWAYS** Call `dependency_chain` when understanding class relationships
+**ALWAYS** Call `impact_analysis` before ANY code change
+**ALWAYS** Call `find_circular_dependencies` when analyzing architecture
+**ALWAYS** Call `analyze_code_complexity` before commits, reviews, refactoring
+
+---
+
+## ✅ Validation Tools (USE BEFORE COMPLETING TASKS)
+
+**ALWAYS** Call `validate_best_practices` before task completion
+**ALWAYS** Call `validate_security` before deploying
+**ALWAYS** Call `validate_pattern_quality` for patterns scoring < 8
+**ALWAYS** Call `validate_project` for major features
+**ALWAYS** Call `validate_task` before marking plan tasks complete
+**ALWAYS** Call `find_anti_patterns` when refactoring
+**ALWAYS** Call `get_recommendations` after indexing new code
+**ALWAYS** Call `get_migration_path` for legacy patterns
+**ALWAYS** Call `get_available_best_practices` to see all validation options
+
+---
+
+## 📋 Planning & TODO Tools
+
+**ALWAYS** Call `create_plan` for multi-step tasks
+**ALWAYS** Call `get_plan_status` to check progress
+**ALWAYS** Call `update_task_status` as tasks complete
+**ALWAYS** Call `complete_plan` when all tasks done
+**ALWAYS** Call `search_plans` to find existing plans
+**ALWAYS** Call `add_todo` for technical debt tracking
+**ALWAYS** Call `search_todos` to find existing issues
+**ALWAYS** Call `update_todo_status` when addressing TODOs
+
+---
+
+## 🎨 Transformation Tools (USE FOR UI/CODE MODERNIZATION)
+
+**ALWAYS** Call `analyze_css` before CSS changes
+**ALWAYS** Call `transform_css` to modernize CSS
+**ALWAYS** Call `transform_page` for Blazor/Razor modernization
+**ALWAYS** Call `learn_transformation` from before/after examples
+**ALWAYS** Call `apply_transformation` to reuse patterns
+**ALWAYS** Call `list_transformation_patterns` to see available patterns
+**ALWAYS** Call `detect_reusable_components` for UI cleanup
+**ALWAYS** Call `extract_component` to create shared components
+
+---
+
+## 🔧 Workspace Tools
+
+**ALWAYS** `register_workspace` is called automatically on startup
+**ALWAYS** `unregister_workspace` is called automatically on shutdown
+
+---
+
+## 📝 Core Workflow Rules
 
 **ALWAYS** Review/understand first, then DISCUSS changes before implementing
-**ALWAYS** Search with `smartsearch` first for any question - try different terms if no results
-**ALWAYS** After tasks: reindex files (`index_file`), update memory, ensure tests pass
 **ALWAYS** Build and compile after every file change
-**ALWAYS** Call `dependency_chain`, `impact_analysis`, `find_circular_dependencies` when analyzing
 **ALWAYS** Summarize at 65% context and re-add rules
-**ALWAYS** Keep files under 800 lines - refactor if exceeding
+**ALWAYS** Keep files under 1500 lines - refactor if exceeding
+**ALWAYS** Write integration tests for every method
+**ALWAYS** Tests must pass before continuing
 
-## Database & Export Rules
+---
 
-**ALWAYS** Generate export scripts DYNAMICALLY from `INFORMATION_SCHEMA` - NEVER hardcode schemas
-**ALWAYS** Handle missing tables/columns gracefully (log warnings, don't error)
+## 🗄️ Database & Export Rules
+
+**ALWAYS** Generate export scripts DYNAMICALLY from `INFORMATION_SCHEMA`
+**ALWAYS** Handle missing tables/columns gracefully
 **ALWAYS** Ensure table queries work 100% of the time
 
-## Plugin Architecture
+---
+
+## 🔌 Plugin Architecture Rules
 
 **ALWAYS** Check `ProjectPluginActivations` - plugins must be ACTIVATED before use
-**ALWAYS** Use `PluginManager.GetActivePluginAsync(projectId, pluginId)` - returns initialized instances
+**ALWAYS** Use `PluginManager.GetActivePluginAsync(projectId, pluginId)`
 **ALWAYS** On plugin config changes: Save → `InvalidatePluginCacheAsync` → `RefreshPluginAsync` → Verify
 **ALWAYS** Store config in `Configuration` JSON: connection strings, API keys, endpoints
-**ALWAYS** PluginType enums: `LLM`, `Embedding`, `VectorSearch`, `DataSource`
 
-**DataSource Plugins - TWO Data Stores:**
-1. `PluginActivation.Configuration` JSON = REAL connection string
-2. `DataSource.ConnectionString` JSON = TABLE METADATA (Schema, TableName, WhereClause)
+---
 
-**NEVER** Try to decrypt `DataSource.ConnectionString` - it's JSON metadata, not encrypted!
-**NEVER** Query `ProjectPluginActivations` from UI - use `PluginManager`
-**NEVER** Assume plugin is active - always verify with `GetActivePluginAsync()`
+## 📄 Prompt Template Rules
 
-## Prompt Templates
-
-**ALWAYS** Use `IPromptTemplateService.RenderPromptAsync(promptKey, variables, companyId)` - NEVER hardcode prompts
-**ALWAYS** Prompt key format: `"category.purpose"` (e.g., `"embedding.field_description"`)
+**ALWAYS** Use `IPromptTemplateService.RenderPromptAsync(promptKey, variables, companyId)`
+**ALWAYS** Prompt key format: `"category.purpose"`
 **ALWAYS** 3-tier hierarchy: Project Override > Company Override > System Default
-**ALWAYS** Define new prompts in `DatabaseSeeder.cs` with `CompanyId = null`
 
-## Testing
+---
 
-**ALWAYS** Write integration tests ONLY - no mocks
-**ALWAYS** Every method must have integration tests covering: happy path, errors, edge cases, timeouts, concurrency
-**ALWAYS** Tests must pass before continuing
-**ALWAYS** Use `search_patterns` to find test patterns first
-
-## Code Complexity
-
-**ALWAYS** Use `analyze_code_complexity` before: commits, code review, refactoring, merging, after file save
-
-## Pattern Validation Workflow
-
-### On File Save (.cs, .py, .vb):
-1. `index_file` → 2. `search_patterns` → 3. `validate_pattern_quality` for each pattern
-
-### Quality Thresholds:
-- **9-10 (A)**: ✅ Ship it
-- **8 (B)**: ✅ Good
-- **7 (C)**: ⚠️ Address before release
-- **6 (D)**: ❌ FIX BEFORE CONTINUING
-- **0-5 (F)**: 🚨 CRITICAL - FIX IMMEDIATELY
-
-### Security Thresholds:
-- **< 8/10**: STOP and fix high/critical vulnerabilities
-- **8-9/10**: Acceptable for development
-- **10/10**: Maintain vigilance
-
-### Pattern Implementation Checklist:
-
-**Caching:** Expiration policy, null checks, concurrency protection, key prefixes
-**Retry:** Exponential backoff, circuit breaker, logging, timeout policies
-**Agent Framework:** Timeout/CancellationToken, input validation, retry, telemetry
-**Validation:** Descriptive errors, DataAnnotations/FluentValidation, validate all inputs
-**Security:** Auth, input sanitization, secrets in config, HTTPS
-
-### Before Major Refactoring:
-1. `impact_analysis` → 2. `dependency_chain` → 3. `find_circular_dependencies` → 4. Get confirmation if > 10 files affected
-
-## MCP Tool Priority
-
-### Analysis Order:
-`smartsearch` → `search_patterns` → `dependency_chain` → `impact_analysis` → `validate_pattern_quality` → `get_recommendations`
-
-### After Changes:
-Build ✅ → `index_file` → `validate_security` → `find_anti_patterns` → `get_recommendations`
-
-## Validation Triggers
-
-**ALWAYS** After indexing: `get_recommendations`
-**ALWAYS** Before task complete: `validate_best_practices`
-**ALWAYS** Before deploying: `validate_security`
-**ALWAYS** When refactoring: `find_anti_patterns`
-**ALWAYS** After major feature: `validate_project`
-**ALWAYS** Weekly/before releases: Full project validation + security audit
-
-## 🚨 BLOCKING CONDITIONS - STOP if:
+## 🚨 BLOCKING CONDITIONS - STOP AND FIX IF:
 
 1. Security score < 8/10 or CRITICAL severity issues
 2. Pattern quality score < 6 (Grade D/F)
 3. Breaking changes > 10 files without approval
 4. Missing critical patterns (no auth/validation)
 5. Legacy patterns in new code (AutoGen, old SK Planners)
-
-### Plugin Architecture - BLOCK if:
-- Security score < 8/10
-- Signature verification missing
-- No process isolation for untrusted plugins
-- No circuit breaker/bulkhead patterns
-- Mutable state in stateless plugins
-
-## Plugin Anti-Patterns (Avoid):
-
-❌ Tight coupling, mutable shared state, no isolation, no error handling
-❌ Hardcoded paths, no versioning, no disposal, synchronous loading
-❌ No health checks, no signature verification
-
-## Quick Reference
-
-**Stuck?** `smartsearch` examples → `search_patterns` → `get_recommendations` → check `/docs`
-**Learning?** Search patterns → show scores → explain why → provide examples
-**Context:** Always include `"context": "project_name"` in MCP calls
-
-## Success Metrics
-
-Track: Pattern scores ↑, Security > 8/10, Critical issues → 0, Test coverage ↑, Legacy patterns ↓
-
-**Celebrate:** Grade A pattern 🎉, Security 10/10 🔒✅, Zero critical issues ✨, All recommendations addressed 🚀
+6. No active session (call `start_session` immediately!)
+7. File edited without calling `record_file_edited`
 
 ---
 
-**Goal: Code that Works ✅ Is Secure ✅ Is Maintainable ✅ Follows Best Practices ✅ Is Consistent ✅**
+## 📊 Quality Thresholds
+
+### Pattern Quality Scores
+- **9-10 (A)**: ✅ Ship it
+- **8 (B)**: ✅ Good
+- **7 (C)**: ⚠️ Address before release
+- **6 (D)**: ❌ FIX BEFORE CONTINUING
+- **0-5 (F)**: 🚨 CRITICAL - FIX IMMEDIATELY
+
+### Security Scores
+- **10/10**: 🔒 Perfect
+- **8-9/10**: ✅ Acceptable
+- **< 8/10**: 🚨 FIX CRITICAL/HIGH issues
+
+### Code Complexity
+- **< 10**: ✅ Excellent
+- **10-15**: ✅ Acceptable
+- **15-20**: ⚠️ Needs refactoring
+- **> 20**: 🚨 MUST refactor
+
+---
+
+## 📋 COMPLETE MCP TOOL LIST (49 Tools)
+
+### Agent Lightning - Learning (13 tools) 🧠
+| Tool | Use When |
+|------|----------|
+| `start_session` | Beginning of conversation |
+| `end_session` | End of conversation |
+| `get_active_session` | Check if session exists |
+| `get_recent_sessions` | Review past work |
+| `record_file_discussed` | Any file is mentioned |
+| `record_file_edited` | After file edits |
+| `get_important_files` | Prioritize review |
+| `get_coedited_files` | Find related files |
+| `get_file_clusters` | Understand modules |
+| `find_similar_questions` | BEFORE answering questions |
+| `store_qa` | After useful answers |
+| `detect_domains` | Tag file business domains |
+| `recalculate_importance` | Weekly maintenance |
+
+### Search & Index (6 tools) 🔍
+| Tool | Use When |
+|------|----------|
+| `smartsearch` | ANY code question |
+| `query` | Semantic code search |
+| `index_file` | After file changes |
+| `index_directory` | New folders |
+| `reindex` | Major refactoring |
+| `search_patterns` | Find implementations |
+
+### Analysis (4 tools) 📊
+| Tool | Use When |
+|------|----------|
+| `dependency_chain` | Class relationships |
+| `impact_analysis` | Before changes |
+| `find_circular_dependencies` | Architecture review |
+| `analyze_code_complexity` | Before commits |
+
+### Validation (9 tools) ✅
+| Tool | Use When |
+|------|----------|
+| `validate_best_practices` | Task completion |
+| `validate_security` | Before deploy |
+| `validate_pattern_quality` | Pattern review |
+| `validate_project` | Major features |
+| `validate_task` | Plan tasks |
+| `find_anti_patterns` | Refactoring |
+| `get_recommendations` | After indexing |
+| `get_migration_path` | Legacy patterns |
+| `get_available_best_practices` | See options |
+
+### Planning & TODO (8 tools) 📋
+| Tool | Use When |
+|------|----------|
+| `create_plan` | Multi-step tasks |
+| `get_plan_status` | Check progress |
+| `update_task_status` | Task updates |
+| `complete_plan` | All done |
+| `search_plans` | Find plans |
+| `add_todo` | Track debt |
+| `search_todos` | Find issues |
+| `update_todo_status` | Fix TODOs |
+
+### Transformation (8 tools) 🎨
+| Tool | Use When |
+|------|----------|
+| `analyze_css` | Before CSS changes |
+| `transform_css` | Modernize CSS |
+| `transform_page` | Blazor/Razor pages |
+| `learn_transformation` | From examples |
+| `apply_transformation` | Reuse patterns |
+| `list_transformation_patterns` | See patterns |
+| `detect_reusable_components` | UI cleanup |
+| `extract_component` | Create shared |
+
+### Workspace (2 tools) 🔧
+| Tool | Use When |
+|------|----------|
+| `register_workspace` | Auto on startup |
+| `unregister_workspace` | Auto on shutdown |
+
+---
+

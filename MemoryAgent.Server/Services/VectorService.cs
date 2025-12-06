@@ -30,6 +30,10 @@ public class VectorService : IVectorService
     
     private static string GetPatternsCollection(string? context) => 
         string.IsNullOrWhiteSpace(context) ? "patterns" : $"{context.ToLower()}_patterns";
+    
+    // Agent Lightning collection - stores session data, Q&A embeddings, importance metrics
+    private static string GetLightningCollection(string? context) => 
+        string.IsNullOrWhiteSpace(context) ? "lightning" : $"{context.ToLower()}_lightning";
 
     public VectorService(
         IConfiguration configuration,
@@ -99,13 +103,15 @@ public class VectorService : IVectorService
         await CreateCollectionIfNotExistsAsync(GetClassesCollection(context), cancellationToken);
         await CreateCollectionIfNotExistsAsync(GetMethodsCollection(context), cancellationToken);
         await CreateCollectionIfNotExistsAsync(GetPatternsCollection(context), cancellationToken);
+        await CreateCollectionIfNotExistsAsync(GetLightningCollection(context), cancellationToken);
 
-        _logger.LogInformation("✅ Qdrant collections initialized for {Context}: {Files}, {Classes}, {Methods}, {Patterns}",
+        _logger.LogInformation("✅ Qdrant collections initialized for {Context}: {Files}, {Classes}, {Methods}, {Patterns}, {Lightning}",
             normalized,
             GetFilesCollection(context),
             GetClassesCollection(context),
             GetMethodsCollection(context),
-            GetPatternsCollection(context));
+            GetPatternsCollection(context),
+            GetLightningCollection(context));
     }
 
     private async Task CreateCollectionIfNotExistsAsync(string collectionName, CancellationToken cancellationToken)
@@ -591,6 +597,282 @@ public class VectorService : IVectorService
         }
         return 0;
     }
+
+    #region Agent Lightning (Learning) Operations
+
+    public async Task StoreLightningQAAsync(
+        string id,
+        string question,
+        float[] questionEmbedding,
+        string answer,
+        List<string> relevantFiles,
+        string context,
+        CancellationToken cancellationToken = default)
+    {
+        var collection = GetLightningCollection(context);
+        
+        try
+        {
+            // Ensure collection exists
+            await InitializeCollectionsForContextAsync(context, cancellationToken);
+            
+            var payload = new Dictionary<string, object>
+            {
+                ["type"] = "qa",
+                ["question"] = question,
+                ["answer"] = answer,
+                ["relevant_files"] = relevantFiles,
+                ["context"] = context,
+                ["stored_at"] = DateTime.UtcNow.ToString("O"),
+                ["times_asked"] = 1
+            };
+
+            var point = new
+            {
+                id,
+                vector = questionEmbedding,
+                payload
+            };
+
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                var upsertRequest = new { points = new[] { point } };
+                var json = JsonSerializer.Serialize(upsertRequest);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PutAsync(
+                    $"/collections/{collection}/points?wait=true", 
+                    content, 
+                    cancellationToken);
+                
+                response.EnsureSuccessStatusCode();
+            });
+
+            _logger.LogInformation("⚡ Stored Q&A in lightning collection: {Question}", 
+                question.Length > 50 ? question[..50] + "..." : question);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error storing Q&A in lightning collection");
+            throw;
+        }
+    }
+
+    public async Task<List<LightningQAResult>> SearchSimilarQuestionsAsync(
+        float[] questionEmbedding,
+        string context,
+        int limit = 5,
+        float minimumScore = 0.7f,
+        CancellationToken cancellationToken = default)
+    {
+        var collection = GetLightningCollection(context);
+        var results = new List<LightningQAResult>();
+        
+        try
+        {
+            // Ensure collection exists
+            await InitializeCollectionsForContextAsync(context, cancellationToken);
+            
+            var searchRequest = new
+            {
+                vector = questionEmbedding,
+                limit,
+                score_threshold = minimumScore,
+                filter = new
+                {
+                    must = new[]
+                    {
+                        new { key = "type", match = new { value = "qa" } }
+                    }
+                },
+                with_payload = true
+            };
+
+            var json = JsonSerializer.Serialize(searchRequest);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync(
+                $"/collections/{collection}/points/search",
+                content,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Lightning Q&A search failed: {Status}", response.StatusCode);
+                return results;
+            }
+
+            var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var searchResponse = JsonSerializer.Deserialize<QdrantSearchResponse>(responseJson);
+
+            if (searchResponse?.Result != null)
+            {
+                foreach (var result in searchResponse.Result)
+                {
+                    if (result.Payload == null) continue;
+
+                    var qa = new LightningQAResult
+                    {
+                        Id = result.Id ?? "",
+                        Question = GetPayloadString(result.Payload, "question"),
+                        Answer = GetPayloadString(result.Payload, "answer"),
+                        Score = result.Score
+                    };
+                    
+                    // Parse relevant files
+                    if (result.Payload.TryGetValue("relevant_files", out var filesElement) && 
+                        filesElement.ValueKind == JsonValueKind.Array)
+                    {
+                        qa.RelevantFiles = filesElement.EnumerateArray()
+                            .Where(e => e.ValueKind == JsonValueKind.String)
+                            .Select(e => e.GetString() ?? "")
+                            .Where(s => !string.IsNullOrEmpty(s))
+                            .ToList();
+                    }
+                    
+                    // Parse stored_at
+                    var storedAtStr = GetPayloadString(result.Payload, "stored_at");
+                    if (DateTime.TryParse(storedAtStr, out var storedAt))
+                    {
+                        qa.StoredAt = storedAt;
+                    }
+
+                    results.Add(qa);
+                }
+            }
+
+            _logger.LogDebug("⚡ Lightning Q&A search returned {Count} results", results.Count);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching lightning Q&A collection");
+            return results;
+        }
+    }
+
+    public async Task StoreLightningSessionAsync(
+        string sessionId,
+        float[] sessionEmbedding,
+        string summary,
+        List<string> filesDiscussed,
+        List<string> filesEdited,
+        string context,
+        CancellationToken cancellationToken = default)
+    {
+        var collection = GetLightningCollection(context);
+        
+        try
+        {
+            await InitializeCollectionsForContextAsync(context, cancellationToken);
+            
+            var payload = new Dictionary<string, object>
+            {
+                ["type"] = "session",
+                ["session_id"] = sessionId,
+                ["summary"] = summary,
+                ["files_discussed"] = filesDiscussed,
+                ["files_edited"] = filesEdited,
+                ["context"] = context,
+                ["stored_at"] = DateTime.UtcNow.ToString("O")
+            };
+
+            // Use session ID as the point ID
+            var idHash = System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes($"session:{sessionId}"));
+            var deterministicId = Convert.ToHexString(idHash).ToLowerInvariant();
+
+            var point = new
+            {
+                id = deterministicId,
+                vector = sessionEmbedding,
+                payload
+            };
+
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                var upsertRequest = new { points = new[] { point } };
+                var json = JsonSerializer.Serialize(upsertRequest);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PutAsync(
+                    $"/collections/{collection}/points?wait=true", 
+                    content, 
+                    cancellationToken);
+                
+                response.EnsureSuccessStatusCode();
+            });
+
+            _logger.LogInformation("⚡ Stored session in lightning collection: {SessionId}", sessionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error storing session in lightning collection");
+            throw;
+        }
+    }
+
+    public async Task StoreLightningImportanceAsync(
+        string id,
+        string filePath,
+        float[] fileEmbedding,
+        float importanceScore,
+        int accessCount,
+        int editCount,
+        string context,
+        CancellationToken cancellationToken = default)
+    {
+        var collection = GetLightningCollection(context);
+        
+        try
+        {
+            await InitializeCollectionsForContextAsync(context, cancellationToken);
+            
+            var payload = new Dictionary<string, object>
+            {
+                ["type"] = "importance",
+                ["file_path"] = filePath,
+                ["importance_score"] = importanceScore,
+                ["access_count"] = accessCount,
+                ["edit_count"] = editCount,
+                ["context"] = context,
+                ["updated_at"] = DateTime.UtcNow.ToString("O")
+            };
+
+            // Use file path as deterministic ID
+            var idHash = System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes($"importance:{context}:{filePath}"));
+            var deterministicId = Convert.ToHexString(idHash).ToLowerInvariant();
+
+            var point = new
+            {
+                id = deterministicId,
+                vector = fileEmbedding,
+                payload
+            };
+
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                var upsertRequest = new { points = new[] { point } };
+                var json = JsonSerializer.Serialize(upsertRequest);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PutAsync(
+                    $"/collections/{collection}/points?wait=true", 
+                    content, 
+                    cancellationToken);
+                
+                response.EnsureSuccessStatusCode();
+            });
+
+            _logger.LogDebug("⚡ Stored importance in lightning collection: {FilePath}", filePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error storing importance in lightning collection");
+            throw;
+        }
+    }
+
+    #endregion
 
     // DTOs for Qdrant HTTP API responses
     private class QdrantSearchResponse

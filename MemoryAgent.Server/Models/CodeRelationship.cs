@@ -83,6 +83,58 @@ public enum RelationshipType
     Binds,              // Custom model binder
     Filters,            // Action/Exception filter
     RateLimits,         // Rate limiting policy
-    HandlesException    // Exception filter handling
+    HandlesException,   // Exception filter handling
+    
+    // ═══════════════════════════════════════════════════════════════
+    // LEARNING & SESSION RELATIONSHIPS (Agent Lightning)
+    // These relationships enable the Memory Agent to learn and remember
+    // ═══════════════════════════════════════════════════════════════
+    
+    // Session & Conversation Context
+    DiscussedIn,        // Code was discussed in a session
+    ModifiedDuring,     // Code was modified during a session
+    AccessedIn,         // Code was accessed in a session
+    QuestionedAbout,    // Question was asked about this code
+    AnsweredWith,       // Code was used to answer a question
+    
+    // Edit History & Co-occurrence
+    CoEditedWith,       // Files frequently edited together
+    EditedAfter,        // This file was edited after another
+    EditedBefore,       // This file was edited before another
+    AlwaysEditedWith,   // Strong co-edit pattern (always together)
+    
+    // Semantic Understanding
+    RelatedTo,          // Semantically related via embedding similarity
+    AlternativeTo,      // Alternative implementation
+    DeprecatedFor,      // Deprecated in favor of another
+    ReplacedBy,         // Replaced by newer code
+    Supersedes,         // This code supersedes older code
+    
+    // Documentation & Examples
+    DocumentedIn,       // Documented in README/wiki/docs
+    HasExample,         // Has usage example
+    TestedBy,           // Has corresponding test
+    ExampleOf,          // Is an example of a pattern/concept
+    
+    // Temporal & History
+    CreatedBefore,      // Temporal ordering
+    ModifiedAfter,      // Modification sequence
+    BrokenBy,           // Code broke after this change
+    FixedBy,            // Code fixed by this change
+    RequiresUpdate,     // Needs update when dependency changes
+    
+    // Bug & Feature Tracking
+    FixedBug,           // Fixed a specific bug
+    ImplementedFeature, // Implemented a specific feature
+    ReviewedBy,         // Code reviewed (link to review)
+    
+    // Business Domain
+    BelongsToDomain,    // Belongs to business domain (Auth, Billing, etc.)
+    CrossesDomain,      // Crosses domain boundaries
+    
+    // Importance & Priority
+    IsCriticalFor,      // Critical for a feature/system
+    IsEntryPointFor,    // Entry point for a workflow
+    DependedOnBy        // Many things depend on this (high impact)
 }
 

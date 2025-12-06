@@ -29,8 +29,7 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
+      # Ollama runs externally at 10.0.0.20:11434
     deploy:
       resources:
         limits:
@@ -94,34 +93,8 @@ services:
       - memory-net
     restart: unless-stopped
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: memory-agent-ollama
-    ports:
-      - "11434:11434"
-    environment:
-      - CUDA_VISIBLE_DEVICES=1  # Force GPU 0 (RTX 3090) only - has 24GB VRAM
-      - OLLAMA_KEEP_ALIVE=-1  # Keep models loaded in VRAM indefinitely
-    volumes:
-      - d:\Memory\shared\ollama:/root/.ollama
-      - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
-    entrypoint: ["/bin/bash", "/usr/local/bin/ollama-entrypoint.sh"]
-    healthcheck:
-      test: ["CMD", "bash", "-c", "ollama list | grep -q mxbai-embed-large"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    networks:
-      - memory-net
-    restart: unless-stopped
+  # Ollama removed - using external Ollama at 10.0.0.20:11434
+  # Start locally with: ollama serve
 
 networks:
   memory-net:

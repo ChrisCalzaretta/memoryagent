@@ -13,6 +13,7 @@ public class SmartSearchService : ISmartSearchService
     private readonly IVectorService _vectorService;
     private readonly IGraphService _graphService;
     private readonly IPatternIndexingService _patternService;
+    private readonly ILearningService _learningService;
     private readonly ILogger<SmartSearchService> _logger;
 
     // Graph query patterns
@@ -54,12 +55,14 @@ public class SmartSearchService : ISmartSearchService
         IVectorService vectorService,
         IGraphService graphService,
         IPatternIndexingService patternService,
+        ILearningService learningService,
         ILogger<SmartSearchService> logger)
     {
         _embeddingService = embeddingService;
         _vectorService = vectorService;
         _graphService = graphService;
         _patternService = patternService;
+        _learningService = learningService;
         _logger = logger;
     }
 
@@ -89,6 +92,12 @@ public class SmartSearchService : ISmartSearchService
                 _ => await ExecuteSemanticFirstSearchAsync(request, cancellationToken)
             };
 
+            // Enhance results with learned importance scores (Agent Lightning)
+            if (!string.IsNullOrWhiteSpace(request.Context))
+            {
+                results = await EnhanceResultsWithLearningAsync(results, request.Query, request.Context, cancellationToken);
+            }
+
             // Apply pagination
             response.TotalFound = results.Count;
             response.Results = results
@@ -103,6 +112,7 @@ public class SmartSearchService : ISmartSearchService
             response.Metadata["returnedResults"] = response.Results.Count;
             response.Metadata["offset"] = request.Offset;
             response.Metadata["limit"] = request.Limit;
+            response.Metadata["learningEnhanced"] = !string.IsNullOrWhiteSpace(request.Context);
 
             _logger.LogInformation(
                 "Smart search completed: {Results} results in {Duration}ms using {Strategy}",
@@ -538,6 +548,74 @@ public class SmartSearchService : ISmartSearchService
         public string Content { get; set; } = string.Empty;
         public float Score { get; set; }
         public Dictionary<string, object> Metadata { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Enhance search results with learned importance scores (Agent Lightning pattern).
+    /// Re-ranks results based on:
+    /// - Access patterns (how often files are accessed)
+    /// - Edit frequency (how often files are edited)
+    /// - Selection history (what users click on)
+    /// - Reward signals from past interactions
+    /// </summary>
+    private async Task<List<SmartSearchResult>> EnhanceResultsWithLearningAsync(
+        List<SmartSearchResult> results,
+        string query,
+        string context,
+        CancellationToken cancellationToken)
+    {
+        if (!results.Any())
+            return results;
+
+        try
+        {
+            // Get importance metrics for all result files
+            var enhancedResults = new List<(SmartSearchResult Result, float EnhancedScore)>();
+            
+            foreach (var result in results)
+            {
+                var importance = await _learningService.GetImportanceAsync(result.FilePath, context, cancellationToken);
+                var importanceScore = importance?.ImportanceScore ?? 0.5f;
+                var recencyScore = importance?.RecencyScore ?? 0.5f;
+                
+                // Record that this file appeared in search results (for future learning)
+                await _learningService.RecordSearchResultAsync(result.FilePath, context, cancellationToken);
+                
+                // Calculate enhanced score:
+                // - Base score from search (0-1)
+                // - Importance boost (1.0 + importanceScore * 0.5) = 1.0 to 1.5x
+                // - Recency boost (1.0 + recencyScore * 0.2) = 1.0 to 1.2x
+                var enhancedScore = result.Score 
+                    * (1.0f + importanceScore * 0.5f) 
+                    * (1.0f + recencyScore * 0.2f);
+                
+                // Add learning metadata to result
+                result.Metadata["importance_score"] = importanceScore;
+                result.Metadata["recency_score"] = recencyScore;
+                result.Metadata["enhanced_score"] = enhancedScore;
+                result.Metadata["original_score"] = result.Score;
+                
+                // Update the score
+                result.Score = enhancedScore;
+                
+                enhancedResults.Add((result, enhancedScore));
+            }
+            
+            // Re-rank by enhanced score
+            var rerankedResults = enhancedResults
+                .OrderByDescending(r => r.EnhancedScore)
+                .Select(r => r.Result)
+                .ToList();
+            
+            _logger.LogDebug("🧠 Enhanced {Count} results with learned importance scores", results.Count);
+            
+            return rerankedResults;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to enhance results with learning, returning original results");
+            return results;
+        }
     }
 }
 

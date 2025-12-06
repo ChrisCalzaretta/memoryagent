@@ -101,6 +101,8 @@ public class McpService : IMcpService
 
         return request.Method switch
         {
+            "initialize" => HandleInitializeAsync(request),
+            "notifications/initialized" => null, // Client notification, no response needed
             "tools/list" => await HandleListToolsAsync(request, cancellationToken),
             "tools/call" => await HandleCallToolAsync(request, cancellationToken),
             _ => new McpResponse
@@ -111,6 +113,30 @@ public class McpService : IMcpService
                 {
                     Code = -32601,
                     Message = $"Method not found: {request.Method}"
+                }
+            }
+        };
+    }
+
+    private McpResponse HandleInitializeAsync(McpRequest request)
+    {
+        _logger.LogInformation("🤝 MCP Initialize handshake");
+        
+        return new McpResponse
+        {
+            JsonRpc = "2.0",
+            Id = request.Id,
+            Result = new
+            {
+                protocolVersion = "2024-11-05",
+                capabilities = new
+                {
+                    tools = new { listChanged = true }
+                },
+                serverInfo = new
+                {
+                    name = "memory-code-agent",
+                    version = "1.0.0"
                 }
             }
         };

@@ -65,11 +65,15 @@ builder.Services.AddScoped<IMcpToolHandler, PatternValidationToolHandler>();
 builder.Services.AddScoped<IMcpToolHandler, CodeAnalysisToolHandler>();
 builder.Services.AddScoped<IMcpToolHandler, WorkspaceToolHandler>();
 builder.Services.AddScoped<IMcpToolHandler, TransformationToolHandler>();
+builder.Services.AddScoped<IMcpToolHandler, LearningToolHandler>();  // Agent Lightning learning tools
 
 builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
 builder.Services.AddScoped<IPatternIndexingService, PatternIndexingService>();
 builder.Services.AddScoped<IBestPracticeValidationService, BestPracticeValidationService>();
 builder.Services.AddScoped<IRecommendationService, RecommendationService>();
+
+// Learning Service (Agent Lightning) - Session tracking, Q&A learning, importance scoring
+builder.Services.AddSingleton<ILearningService, LearningService>();
 builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.AutoReindexService>();
 builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.IAutoReindexService>(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
