@@ -63,9 +63,10 @@ function sendToMcpServer(jsonRpcRequest) {
         jsonRpcRequest.id !== 'register-workspace' &&
         jsonRpcRequest.id !== 'unregister-workspace') {
       const params = jsonRpcRequest.params;
-      if (params && params.arguments && !params.arguments.context && CONTEXT_NAME !== 'default') {
-        params.arguments.context = CONTEXT_NAME;
-        log(`Auto-injected context: ${CONTEXT_NAME}`);
+      if (params && params.arguments && !params.arguments.context && CONTEXT_NAME && CONTEXT_NAME !== 'unknown') {
+        // Always inject workspace folder as context (normalized to lowercase)
+        params.arguments.context = CONTEXT_NAME.toLowerCase();
+        log(`Auto-injected context from workspace: ${params.arguments.context}`);
       }
     }
     
