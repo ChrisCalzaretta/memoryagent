@@ -206,11 +206,22 @@ alwaysApply: true
 
 ### `index` Parameters
 ```
-scope: "file" | "directory" | "reindex"
+scope: "file" | "directory" | "reindex" | "status"
 path: string (required)
 context: string (required)
 recursive: boolean (for directory, default: true)
 removeStale: boolean (for reindex, default: true)
+background: boolean (run in background to avoid timeout, default: false)
+jobId: string (check status of background job with scope='status')
+```
+
+**💡 For large projects**: Use `background: true` to avoid timeout:
+```
+index(scope: "reindex", path: ".", context: "myproject", background: true)
+→ Returns job ID immediately, continues indexing in background
+
+index(scope: "status", jobId: "abc12345", path: ".", context: "myproject")
+→ Check job progress
 ```
 
 ### `validate` Parameters
