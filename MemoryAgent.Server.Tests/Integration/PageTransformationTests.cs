@@ -220,6 +220,7 @@ public class IntegrationTestBase : IDisposable
         services.AddScoped<MemoryAgent.Server.Services.IPageTransformationService, MemoryAgent.Server.Services.PageTransformationService>();
         services.AddScoped<MemoryAgent.Server.Services.ICSSTransformationService, MemoryAgent.Server.Services.CSSTransformationService>();
         services.AddScoped<MemoryAgent.Server.Services.IComponentExtractionService, MemoryAgent.Server.Services.ComponentExtractionService>();
+        services.AddSingleton<MemoryAgent.Server.Services.IPromptService, TestPromptService>();
         
         // Add mock/test implementations of code parsers if needed
         // For now, we'll let the tests fail if they try to parse actual code

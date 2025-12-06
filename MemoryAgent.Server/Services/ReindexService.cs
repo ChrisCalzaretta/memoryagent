@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using MemoryAgent.Server.Models;
 
@@ -32,7 +33,8 @@ public class ReindexService : IReindexService
         string? context = null,
         string? path = null,
         bool removeStale = true,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<int>? progressCallback = null)
     {
         var stopwatch = Stopwatch.StartNew();
         var result = new ReindexResult { Success = true };
@@ -127,6 +129,7 @@ public class ReindexService : IReindexService
                         await _vectorService.DeleteByFilePathAsync(deletedFile, context, ct);
                         await _graphService.DeleteByFilePathAsync(deletedFile, ct);
                         Interlocked.Increment(ref filesRemoved);
+                        progressCallback?.Invoke(1);
                     }
                     catch (Exception ex)
                     {
@@ -157,6 +160,7 @@ public class ReindexService : IReindexService
                         if (fileResult.Success)
                         {
                             Interlocked.Increment(ref filesAdded);
+                            progressCallback?.Invoke(1);
                         }
                         else
                         {
@@ -220,10 +224,11 @@ public class ReindexService : IReindexService
                     {
                         try
                         {
-                            var fileResult = await _indexingService.IndexFileAsync(modifiedFile, context, ct);
+                        var fileResult = await _indexingService.IndexFileAsync(modifiedFile, context, ct);
                             if (fileResult.Success)
                             {
                                 Interlocked.Increment(ref filesUpdated);
+                                progressCallback?.Invoke(1);
                             }
                             else
                             {

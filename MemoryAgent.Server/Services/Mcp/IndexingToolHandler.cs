@@ -192,7 +192,11 @@ public class IndexingToolHandler : IMcpToolHandler
         if (string.IsNullOrWhiteSpace(path))
             return ErrorResult("Path is required");
 
-        var result = await _reindexService.ReindexAsync(path, context, removeStale, ct);
+        var result = await _reindexService.ReindexAsync(
+            context: context,
+            path: path,
+            removeStale: removeStale,
+            cancellationToken: ct);
         
         return new McpToolResult
         {

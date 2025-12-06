@@ -1,3 +1,4 @@
+using System;
 using Moq;
 using MemoryAgent.Server.Models;
 using MemoryAgent.Server.Services;
@@ -93,7 +94,8 @@ public class ConsolidatedToolHandlerTests
         var mockIndexing = new Mock<IIndexingService>();
         var mockReindex = new Mock<IReindexService>();
         var mockLogger = new Mock<ILogger<IndexToolHandler>>();
-        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockLogger.Object);
+        var mockServiceProvider = new Mock<IServiceProvider>();
+        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockServiceProvider.Object, mockLogger.Object);
 
         // Act
         var tools = handler.GetTools().ToList();
@@ -110,7 +112,8 @@ public class ConsolidatedToolHandlerTests
         var mockIndexing = new Mock<IIndexingService>();
         var mockReindex = new Mock<IReindexService>();
         var mockLogger = new Mock<ILogger<IndexToolHandler>>();
-        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockLogger.Object);
+        var mockServiceProvider = new Mock<IServiceProvider>();
+        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockServiceProvider.Object, mockLogger.Object);
 
         // Act
         var result = await handler.HandleToolAsync("index", new Dictionary<string, object>(), CancellationToken.None);
@@ -129,7 +132,8 @@ public class ConsolidatedToolHandlerTests
         
         var mockReindex = new Mock<IReindexService>();
         var mockLogger = new Mock<ILogger<IndexToolHandler>>();
-        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockLogger.Object);
+        var mockServiceProvider = new Mock<IServiceProvider>();
+        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockServiceProvider.Object, mockLogger.Object);
 
         var args = new Dictionary<string, object>
         {
@@ -156,7 +160,8 @@ public class ConsolidatedToolHandlerTests
         
         var mockReindex = new Mock<IReindexService>();
         var mockLogger = new Mock<ILogger<IndexToolHandler>>();
-        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockLogger.Object);
+        var mockServiceProvider = new Mock<IServiceProvider>();
+        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockServiceProvider.Object, mockLogger.Object);
 
         var args = new Dictionary<string, object>
         {
@@ -180,11 +185,17 @@ public class ConsolidatedToolHandlerTests
         // Arrange
         var mockIndexing = new Mock<IIndexingService>();
         var mockReindex = new Mock<IReindexService>();
-        mockReindex.Setup(r => r.ReindexAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+        mockReindex.Setup(r => r.ReindexAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<Action<int>>()))
             .ReturnsAsync(new ReindexResult { Success = true, FilesAdded = 5, FilesUpdated = 3 });
         
         var mockLogger = new Mock<ILogger<IndexToolHandler>>();
-        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockLogger.Object);
+        var mockServiceProvider = new Mock<IServiceProvider>();
+        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockServiceProvider.Object, mockLogger.Object);
 
         var args = new Dictionary<string, object>
         {
@@ -198,7 +209,7 @@ public class ConsolidatedToolHandlerTests
 
         // Assert
         Assert.False(result.IsError);
-        mockReindex.Verify(r => r.ReindexAsync("memoryagent", "/workspace", true, It.IsAny<CancellationToken>()), Times.Once);
+        mockReindex.Verify(r => r.ReindexAsync("memoryagent", "/workspace", true, It.IsAny<CancellationToken>(), It.IsAny<Action<int>>()), Times.Once);
     }
 
     #endregion
@@ -375,6 +386,7 @@ public class ConsolidatedToolHandlerTests
         var indexHandler = new IndexToolHandler(
             Mock.Of<IIndexingService>(), 
             Mock.Of<IReindexService>(), 
+            Mock.Of<IServiceProvider>(),
             Mock.Of<ILogger<IndexToolHandler>>());
         totalTools += indexHandler.GetTools().Count();
 
@@ -434,7 +446,8 @@ public class ConsolidatedToolHandlerTests
         var mockIndexing = new Mock<IIndexingService>();
         var mockReindex = new Mock<IReindexService>();
         var mockLogger = new Mock<ILogger<IndexToolHandler>>();
-        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockLogger.Object);
+        var mockServiceProvider = new Mock<IServiceProvider>();
+        var handler = new IndexToolHandler(mockIndexing.Object, mockReindex.Object, mockServiceProvider.Object, mockLogger.Object);
 
         // Missing context
         var args = new Dictionary<string, object>

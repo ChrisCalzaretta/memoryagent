@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Threading;
 using MemoryAgent.Server.Models;
 
 namespace MemoryAgent.Server.Services.Mcp.Consolidated;
@@ -33,6 +34,8 @@ public class IndexToolHandler : IMcpToolHandler
 
     public class BackgroundIndexJob
     {
+        private int _filesProcessed;
+
         public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
         public string Context { get; set; } = "";
         public string Path { get; set; } = "";
@@ -40,8 +43,14 @@ public class IndexToolHandler : IMcpToolHandler
         public DateTime StartedAt { get; set; } = DateTime.UtcNow;
         public DateTime? CompletedAt { get; set; }
         public string Status { get; set; } = "Running"; // Running, Completed, Failed
-        public int FilesProcessed { get; set; }
+        public int FilesProcessed
+        {
+            get => _filesProcessed;
+            set => _filesProcessed = value;
+        }
         public List<string> Errors { get; set; } = new();
+
+        public void IncrementProcessed() => Interlocked.Increment(ref _filesProcessed);
     }
 
     public IEnumerable<McpTool> GetTools()
@@ -121,12 +130,16 @@ public class IndexToolHandler : IMcpToolHandler
             case "reindex":
                 var removeStale = SafeParseBool(args?.GetValueOrDefault("removeStale"), true);
                 operation = removeStale ? "Reindex (with cleanup)" : "Reindex (preserve stale)";
-                var reindexResult = await _reindexService.ReindexAsync(context, path, removeStale, ct);
+                var reindexResult = await _reindexService.ReindexAsync(
+                    context: context,
+                    path: path,
+                    removeStale: removeStale,
+                    cancellationToken: ct);
                 // Map ReindexResult to IndexResult for unified output
                 result = new IndexResult 
                 { 
                     Success = reindexResult.Success, 
-                    FilesIndexed = reindexResult.FilesAdded + reindexResult.FilesUpdated,
+                    FilesIndexed = reindexResult.FilesAdded + reindexResult.FilesUpdated + reindexResult.FilesRemoved,
                     Errors = reindexResult.Errors
                 };
                 break;
@@ -207,8 +220,13 @@ public class IndexToolHandler : IMcpToolHandler
                 else if (scope == "reindex")
                 {
                     var removeStale = SafeParseBool(args?.GetValueOrDefault("removeStale"), true);
-                    var result = await reindexService.ReindexAsync(context, path, removeStale, CancellationToken.None);
-                    job.FilesProcessed = result.FilesAdded + result.FilesUpdated;
+                    var result = await reindexService.ReindexAsync(
+                        context: context,
+                        path: path,
+                        removeStale: removeStale,
+                        cancellationToken: CancellationToken.None,
+                        progressCallback: _ => job.IncrementProcessed());
+                    job.FilesProcessed = result.FilesAdded + result.FilesUpdated + result.FilesRemoved;
                     job.Errors = result.Errors;
                     job.Status = result.Success ? "Completed" : "Failed";
                 }
