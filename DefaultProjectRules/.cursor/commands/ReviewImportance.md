@@ -1,5 +1,5 @@
 ---
-name: Review File Important
+name: Review File Importance
 ---
 # Review File Importance
 
@@ -18,7 +18,7 @@ Review the most important files in the project based on learned patterns.
    - Review the importance scores and access patterns
 
 2. Understand file clusters:
-   - Call `get_file_clusters` to see logical groupings
+   - Call `get_coedited_files` with `includeClusters: true`
    - These are files frequently edited together
 
 3. For a specific file, find co-edited files:
@@ -26,6 +26,23 @@ Review the most important files in the project based on learned patterns.
    - These files likely need updates when the main file changes
 
 4. Refresh rankings if stale:
-   - Call `recalculate_importance` to decay old scores
+   - Call `get_insights` with category='recalculate' to decay old scores
    - Do this weekly or after major refactoring
+
+## Example
+
+```
+get_important_files(context: "myproject", limit: 20)
+→ Shows most important files with scores
+
+get_coedited_files(
+  filePath: "Services/AuthService.cs",
+  context: "myproject",
+  includeClusters: true
+)
+→ Shows related files and clusters
+
+get_insights(category: "recalculate", context: "myproject")
+→ Refreshes importance rankings
+```
 

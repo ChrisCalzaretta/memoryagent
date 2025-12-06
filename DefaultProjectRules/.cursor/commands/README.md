@@ -6,12 +6,11 @@ The Memory Agent MCP tools MUST be used on every query. See `cursorrules.mdc` fo
 
 ---
 
-## 🧠 Agent Lightning Commands (NEW - USE EVERY SESSION)
+## 🧠 Agent Lightning Commands (USE EVERY SESSION)
 
 ### `StartSession.md` - Start Learning Session ⭐ REQUIRED
 Start Agent Lightning session at the beginning of every conversation.
-- Checks for active session
-- Creates new session if needed
+- Creates or retrieves active session
 - Reviews recent context
 
 ### `EndSession.md` - End Learning Session ⭐ REQUIRED
@@ -34,13 +33,12 @@ Store useful Q&A pairs for instant recall later.
 ### `FindAnswer.md` - Check Knowledge Base First ⭐ REQUIRED
 ALWAYS check cached answers before answering questions.
 - Instant recall of previous answers
-- Falls back to search if no match
+- Falls back to smartsearch if no match
 
 ### `ReviewImportance.md` - Review File Importance
 See most important files based on learned patterns.
 - Prioritize code review
-- Understand file clusters
-- Find co-edited files
+- Find co-edited files and clusters
 
 ---
 
@@ -66,18 +64,10 @@ Detect and fix cursorrules.mdc violations.
 ## 🎨 Blazor/Razor Transformation Commands
 
 ### `TransformPage.md` - Transform Blazor/Razor Page
-Complete page transformation workflow:
-- Analyze CSS quality baseline
-- Transform with all modernization options
-- Extract components, add error handling
-- Validate quality improvements (must be ≥ 7/10)
+Complete page transformation: CSS modernization, component extraction, error handling.
 
 ### `TransformCSS.md` - Transform & Modernize CSS
-CSS modernization workflow:
-- Extract inline styles
-- Generate CSS variables
-- Modernize layout (Flexbox/Grid)
-- Add responsive design & accessibility
+CSS modernization: variables, Flexbox/Grid, responsive design, accessibility.
 
 ### `AnalyzeUIQuality.md` - Analyze UI/CSS Quality
 Project-wide CSS quality analysis with prioritized recommendations.
@@ -107,12 +97,7 @@ Extract detected component candidates into reusable components.
 ## 🚀 Advanced Transformation Commands
 
 ### `BatchTransformProject.md` - Batch Transform Entire Project
-Full project transformation workflow:
-- Analyze all pages
-- Prioritize by quality scores
-- Transform in batches
-- Extract reusable components
-- Final validation
+Full project transformation workflow with prioritization and validation.
 
 ### `ValidateTransformation.md` - Validate Transformation Quality
 Comprehensive validation after transformations (CSS quality, complexity, security).
@@ -120,12 +105,6 @@ Comprehensive validation after transformations (CSS quality, complexity, securit
 ---
 
 ## 📊 Quality Thresholds
-
-### CSS Quality Scores
-- **9-10 (A)**: ✅ Production ready
-- **7-8 (B/C)**: ✅ Acceptable
-- **5-6 (D)**: ⚠️ Needs improvement
-- **0-4 (F)**: 🚨 CRITICAL - fix immediately
 
 ### Pattern Quality Scores
 - **9-10 (A)**: ✅ Ship it
@@ -175,99 +154,70 @@ Comprehensive validation after transformations (CSS quality, complexity, securit
 5. `ValidateWork.md` → continuous validation
 6. `PreFlightCheck.md` → final validation
 
-### For Project-Wide Cleanup
-1. `BatchTransformProject.md` → transform entire project
-2. `RulesViolation.md` → fix rule violations
-3. `PreFlightCheck.md` → ensure deployment readiness
-
 ### Ending Any Session (REQUIRED)
 1. `StoreKnowledge.md` → save useful Q&A
 2. `EndSession.md` → close with summary
 
 ---
 
-## 📋 COMPLETE MCP TOOL LIST (49 Tools)
+## 📋 COMPLETE MCP TOOL LIST (25 Tools)
 
-### 🧠 Agent Lightning - Learning (13 tools)
-
+### 🔍 Search (1 tool)
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `start_session` | Start learning session | Beginning of conversation |
+| `smartsearch` | Unified smart search (auto-detects semantic/graph/pattern strategy) | ANY code question |
+
+### 📥 Indexing (1 tool)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `index` | Index code (scope: file, directory, reindex) | After file changes |
+
+### 🧠 Session & Learning (6 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `start_session` | Start learning session (returns existing if active) | Beginning of conversation |
 | `end_session` | End session with summary | End of conversation |
-| `get_active_session` | Check if session exists | Before starting new session |
-| `get_recent_sessions` | Review past work | Context recovery |
-| `record_file_discussed` | Track file discussion | Any file mentioned |
-| `record_file_edited` | Track file edit | After file changes |
-| `get_important_files` | Most important files | Prioritize review |
-| `get_coedited_files` | Files edited together | Find related files |
-| `get_file_clusters` | Logical file groupings | Understand modules |
-| `find_similar_questions` | Check for cached Q&A | BEFORE answering |
-| `store_qa` | Save Q&A for recall | After useful answers |
-| `detect_domains` | Tag business domains | Categorize files |
-| `recalculate_importance` | Refresh rankings | Weekly maintenance |
-
-### 🔍 Search & Index (6 tools)
-
-| Tool | Description | When to Use |
-|------|-------------|-------------|
-| `smartsearch` | Smart code search | ANY question |
-| `query` | Semantic search | Find by meaning |
-| `index_file` | Index single file | After file change |
-| `index_directory` | Index folder | New directories |
-| `reindex` | Update all indexes | Major refactoring |
-| `search_patterns` | Find patterns | Before writing code |
+| `record_file_discussed` | Record file was discussed | Any file mentioned |
+| `record_file_edited` | Record file was edited | After file edits |
+| `store_qa` | Store Q&A for recall | After useful answers |
+| `find_similar_questions` | Find similar past questions | BEFORE answering |
 
 ### 📊 Analysis (4 tools)
-
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `dependency_chain` | Class dependencies | Understanding structure |
-| `impact_analysis` | Change impact | Before changes |
-| `find_circular_dependencies` | Circular deps | Architecture review |
-| `analyze_code_complexity` | Complexity metrics | Before commits |
+| `impact_analysis` | What code is impacted | Before changes |
+| `dependency_chain` | Dependencies + circular detection | Understanding relationships |
+| `analyze_complexity` | Code complexity metrics | Before commits |
+| `validate` | Unified validation (6 scopes) | Before task completion |
 
-### ✅ Validation (9 tools)
-
+### 🎯 Intelligence (4 tools)
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `validate_best_practices` | Azure best practices | Task completion |
-| `validate_security` | Security audit | Before deploy |
-| `validate_pattern_quality` | Pattern scoring | Pattern review |
-| `validate_project` | Full validation | Major features |
-| `validate_task` | Task validation | Plan tasks |
-| `find_anti_patterns` | Anti-patterns | Refactoring |
-| `get_recommendations` | Get suggestions | After indexing |
-| `get_migration_path` | Migration steps | Legacy patterns |
-| `get_available_best_practices` | List all practices | See options |
+| `get_recommendations` | Architecture recommendations | After indexing |
+| `get_important_files` | Most important files | Prioritize review |
+| `get_coedited_files` | Files edited together + clusters | Find related files |
+| `get_insights` | Metrics (7 categories incl. domains, recalculate) | View/refresh metrics |
 
-### 📋 Planning & TODO (8 tools)
-
+### 📋 Planning (2 tools)
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `create_plan` | Create dev plan | Multi-step tasks |
-| `get_plan_status` | Plan progress | Check status |
-| `update_task_status` | Update task | Task changes |
-| `complete_plan` | Complete plan | All done |
-| `search_plans` | Find plans | Lookup |
-| `add_todo` | Add TODO | Track debt |
-| `search_todos` | Find TODOs | Find issues |
-| `update_todo_status` | Update TODO | Fix issues |
+| `manage_plan` | Plans (6 actions: create, get_status, update_task, complete, search, validate_task) | Plan operations |
+| `manage_todos` | TODOs (3 actions: add, search, update_status) | TODO operations |
 
-### 🎨 Transformation (8 tools)
-
+### 🎨 Transformation (2 tools)
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `analyze_css` | CSS quality | Before CSS changes |
-| `transform_css` | Modernize CSS | CSS updates |
-| `transform_page` | Transform page | Blazor/Razor |
-| `learn_transformation` | Learn pattern | From examples |
-| `apply_transformation` | Apply pattern | Reuse patterns |
-| `list_transformation_patterns` | List patterns | See available |
-| `detect_reusable_components` | Find components | UI cleanup |
-| `extract_component` | Extract component | Create shared |
+| `transform` | Transform code (8 types incl. list_patterns) | UI/Code modernization |
+| `get_migration_path` | Migration path for legacy patterns | Upgrading legacy code |
+
+### 🔄 Evolving System (3 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `manage_prompts` | Manage LLM prompts (10 actions) | Prompt management |
+| `manage_patterns` | Manage patterns (8 actions) | Pattern management |
+| `feedback` | Record prompt/pattern feedback | After using prompts/patterns |
 
 ### 🔧 Workspace (2 tools)
-
 | Tool | Description | When to Use |
 |------|-------------|-------------|
 | `register_workspace` | Register workspace | Auto on startup |
@@ -275,26 +225,76 @@ Comprehensive validation after transformations (CSS quality, complexity, securit
 
 ---
 
-## ✨ What's New
+## 🔧 Tool Parameter Quick Reference
 
-**6 New Agent Lightning Commands:**
-- StartSession, EndSession, RecordContext
-- StoreKnowledge, FindAnswer, ReviewImportance
+### `index`
+```
+scope: "file" | "directory" | "reindex"
+path: string (required)
+context: string (required)
+```
 
-**13 New Agent Lightning MCP Tools:**
-- Session management (start, end, get active, get recent)
-- File tracking (record discussed, record edited)
-- Importance scoring (get important, get co-edited, get clusters)
-- Q&A learning (find similar, store Q&A, detect domains)
-- Maintenance (recalculate importance)
+### `validate`
+```
+scope: "best_practices" | "security" | "pattern_quality" | "anti_patterns" | "project" | "list_best_practices" | "all"
+context: string (required except for list_best_practices)
+```
 
-**Total: 21 Commands, 49 MCP Tools**
+### `manage_plan`
+```
+action: "create" | "get_status" | "update_task" | "complete" | "search" | "validate_task"
+# For create: context, name, tasks (required)
+# For others: planId, taskId, status as needed
+```
+
+### `manage_todos`
+```
+action: "add" | "search" | "update_status"
+# For add: context, title (required)
+# For update_status: todoId, status
+# For search: context, priority, todoStatus (optional filters)
+```
+
+### `transform`
+```
+type: "page" | "css" | "analyze_css" | "learn_pattern" | "apply_pattern" | "detect_components" | "extract_component" | "list_patterns"
+sourcePath: string (for most types)
+```
+
+### `get_insights`
+```
+category: "patterns" | "prompts" | "tools" | "sessions" | "domains" | "recalculate" | "all"
+context: string (for sessions, domains, recalculate)
+filePath: string (for domains)
+```
+
+---
+
+## ✨ What's New (v2.0)
+
+**Consolidated from 73+ tools to 25 tools:**
+- Better AI decision-making with fewer, clearer options
+- Parameterized tools (action/scope/type) for related functionality
+- Auto-initialization of prompts and patterns on startup
+
+**Key Consolidations:**
+- `manage_plan` replaces create_plan + 5 other plan tools
+- `manage_todos` replaces add_todo + 2 other todo tools
+- `validate` replaces 6 validation tools (via scope param)
+- `transform` replaces 8 transformation tools (via type param)
+- `get_insights` replaces 7 insight tools (via category param)
+- `start_session` now returns existing session if active
+
+**New Evolving System:**
+- `manage_prompts`: LLM prompts with versioning & A/B testing
+- `manage_patterns`: Patterns with usefulness tracking
+- `feedback`: Record outcomes for learning
 
 ---
 
 ## 🔧 Powered by
 
-- **Neo4j** - Graph database for relationships and dependencies
+- **Neo4j** - Graph database for relationships, dependencies, prompts, and patterns
 - **Qdrant** - Vector database for semantic search + Lightning learning
 - **Ollama** - LLM inference (mxbai-embed-large embeddings)
 - **DeepSeek Coder V2** - Code transformations

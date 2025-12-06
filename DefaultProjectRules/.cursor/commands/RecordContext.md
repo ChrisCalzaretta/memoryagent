@@ -12,9 +12,9 @@ Record file interactions to help Agent Lightning learn importance and co-edit pa
 
 ## Steps
 
-1. Get active session:
-   - Call `get_active_session` to get session ID
-   - If no session, call `start_session` first
+1. Ensure you have an active session:
+   - Call `start_session` if not already started
+   - Use the session ID for all tracking
 
 2. For files DISCUSSED (viewed, mentioned, analyzed):
    - Call `record_file_discussed` with session ID and file path
@@ -23,9 +23,21 @@ Record file interactions to help Agent Lightning learn importance and co-edit pa
 3. For files EDITED (modified, created, refactored):
    - Call `record_file_edited` with session ID and file path
    - Do this AFTER every file edit
-   - Call `index_file` to update the search index
+   - Call `index` with scope='file' to update the search index
 
 4. Check related files:
    - Call `get_coedited_files` to find files that should also be updated
-   - Call `get_file_clusters` to understand module boundaries
+   - Use `includeClusters: true` to see file groupings
+
+## Example
+
+```
+record_file_discussed(sessionId: "abc-123", filePath: "Services/AuthService.cs")
+
+record_file_edited(sessionId: "abc-123", filePath: "Services/AuthService.cs")
+
+index(scope: "file", path: "Services/AuthService.cs", context: "myproject")
+
+get_coedited_files(filePath: "Services/AuthService.cs", context: "myproject", includeClusters: true)
+```
 

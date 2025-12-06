@@ -56,11 +56,11 @@ alwaysApply: true
 
 ## 📋 Planning & TODO
 
-**ALWAYS** Call `create_plan` for multi-step tasks
+**ALWAYS** Call `manage_plan` with action='create' for multi-step tasks
 **ALWAYS** Call `manage_plan` with action='get_status' to check progress
 **ALWAYS** Call `manage_plan` with action='update_task' as tasks complete
 **ALWAYS** Call `manage_plan` with action='validate_task' before completing tasks
-**ALWAYS** Call `add_todo` for technical debt tracking
+**ALWAYS** Call `manage_todos` with action='add' for technical debt tracking
 **ALWAYS** Call `manage_todos` with action='search' to find existing issues
 
 ---
@@ -174,20 +174,18 @@ alwaysApply: true
 | `get_recommendations` | Architecture recommendations | After indexing |
 | `get_important_files` | Most important files by usage | Prioritize review |
 | `get_coedited_files` | Files edited together + clusters | Find related files |
-| `get_insights` | System insights (category: patterns, prompts, tools, sessions, all) | View metrics |
+| `get_insights` | System insights (category: patterns, prompts, tools, sessions, domains, recalculate, all) | View metrics |
 
-### 📋 Planning (4 tools)
+### 📋 Planning (2 tools)
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `create_plan` | Create dev plan with tasks | Multi-step tasks |
-| `manage_plan` | Manage plans (action: get_status, update_task, complete, search, validate_task) | Plan operations |
-| `add_todo` | Add TODO item | Track debt |
-| `manage_todos` | Manage TODOs (action: search, update_status) | TODO operations |
+| `manage_plan` | Manage plans (action: create, get_status, update_task, complete, search, validate_task) | Plan operations |
+| `manage_todos` | Manage TODOs (action: add, search, update_status) | TODO operations |
 
 ### 🎨 Transformation (2 tools)
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `transform` | Transform code (type: page, css, analyze_css, learn_pattern, apply_pattern, detect_components, extract_component) | UI/Code modernization |
+| `transform` | Transform code (type: page, css, analyze_css, learn_pattern, apply_pattern, detect_components, extract_component, list_patterns) | UI/Code modernization |
 | `get_migration_path` | Migration path for legacy patterns | Upgrading legacy code |
 
 ### 🔄 Evolving System (3 tools)
@@ -212,33 +210,63 @@ removeStale: boolean (for reindex, default: true)
 
 ### `validate` Parameters
 ```
-context: string (required)
-scope: "best_practices" | "security" | "pattern_quality" | "anti_patterns" | "project" | "all"
+context: string (required, except for list_best_practices)
+scope: "best_practices" | "security" | "pattern_quality" | "anti_patterns" | "project" | "list_best_practices" | "all"
 patternId: string (required for pattern_quality)
 minSeverity: "low" | "medium" | "high" | "critical"
+includeAutoFix: boolean (default: true)
+includeLegacy: boolean (for anti_patterns, default: true)
 ```
 
 ### `transform` Parameters
 ```
-type: "page" | "css" | "analyze_css" | "learn_pattern" | "apply_pattern" | "detect_components" | "extract_component"
-sourcePath: string
+type: "page" | "css" | "analyze_css" | "learn_pattern" | "apply_pattern" | "detect_components" | "extract_component" | "list_patterns"
+sourcePath: string (required for most types)
 outputPath: string (optional)
-# Type-specific options available
+context: string (for list_patterns filtering)
+# Type-specific options: extractComponents, modernizeCSS, addErrorHandling, addLoadingStates, addAccessibility, generateVariables, modernizeLayout, addResponsive
 ```
 
 ### `manage_plan` Parameters
 ```
-action: "get_status" | "update_task" | "complete" | "search" | "validate_task"
-planId: string (required for most actions)
+action: "create" | "get_status" | "update_task" | "complete" | "search" | "validate_task"
+planId: string (required for get_status, update_task, complete, validate_task)
 taskId: string (for update_task, validate_task)
-status: string (for update_task)
+status: string (for update_task): Pending, InProgress, Blocked, Completed, Cancelled
+# For action='create':
+context: string (required)
+name: string (required)
+tasks: array of {title, description, orderIndex} (required)
+includeRecommendations: boolean (default: false)
+maxRecommendations: number (default: 10)
+```
+
+### `manage_todos` Parameters
+```
+action: "add" | "search" | "update_status"
+# For action='add':
+context: string (required)
+title: string (required)
+description: string (optional)
+priority: "Low" | "Medium" | "High" | "Critical" (default: Medium)
+filePath: string (optional)
+lineNumber: number (optional)
+assignedTo: string (optional)
+# For action='update_status':
+todoId: string (required)
+status: "Pending" | "InProgress" | "Completed" | "Cancelled"
+# For action='search':
+context: string, priority: string, todoStatus: string, assignedTo: string (all optional filters)
 ```
 
 ### `get_insights` Parameters
 ```
-category: "patterns" | "prompts" | "tools" | "sessions" | "all"
-context: string (optional)
+category: "patterns" | "prompts" | "tools" | "sessions" | "domains" | "recalculate" | "all"
+context: string (required for sessions, domains, recalculate)
 limit: number (default: 10)
+# For category='domains':
+filePath: string (required)
+content: string (optional - file content)
 ```
 
 ---

@@ -24,17 +24,31 @@ Store useful question-answer pairs so Agent Lightning can instantly recall them 
      - `relevantFiles`: Array of file paths that were involved
      - `context`: Project context name
 
-3. Tag business domains:
-   - Call `detect_domains` on main files to categorize by business domain
+3. Tag business domains (optional):
+   - Call `get_insights` with category='domains' to categorize by business domain
 
-4. Example:
-```json
-{
-  "question": "How does authentication work?",
-  "answer": "Authentication uses JWT tokens via AuthService...",
-  "relevantFiles": ["Services/AuthService.cs", "Controllers/AuthController.cs"],
-  "context": "MyProject"
-}
+## Example
+
+```
+find_similar_questions(
+  question: "How does authentication work?",
+  context: "myproject"
+)
+→ Check if already stored
+
+store_qa(
+  question: "How does authentication work?",
+  answer: "Authentication uses JWT tokens via AuthService. The flow is: 1) User submits credentials to /auth/login, 2) AuthService validates against database, 3) JWT token generated with claims, 4) Token returned to client for subsequent requests.",
+  relevantFiles: ["Services/AuthService.cs", "Controllers/AuthController.cs"],
+  context: "myproject"
+)
+
+get_insights(
+  category: "domains",
+  filePath: "Services/AuthService.cs",
+  context: "myproject"
+)
+→ Tags file with "Authentication" domain
 ```
 
 ## Benefits

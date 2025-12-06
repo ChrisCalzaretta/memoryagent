@@ -7,21 +7,30 @@ Start an Agent Lightning learning session to track context throughout this conve
 
 ## Steps
 
-1. Check for existing active session:
-   - Call `get_active_session` with current context
-   - If active session exists, use it
-   - If no session, create new one
-
-2. Start new session if needed:
+1. Start session:
    - Call `start_session` with project context
+   - If active session exists, it will be returned automatically
    - Note the session ID for all subsequent tracking
 
-3. Review recent history:
-   - Call `get_recent_sessions` to understand past work
+2. Review recent history:
+   - Call `get_insights` with category='sessions' to understand past work
    - Call `get_important_files` to see priority files
 
-4. Report session status:
+3. Report session status:
    - Display session ID
    - Show recent context if available
    - List most important files to review
+
+## Example
+
+```
+start_session(context: "MyProject")
+→ Returns session ID and status
+
+get_insights(category: "sessions", context: "myproject", limit: 5)
+→ Shows recent sessions
+
+get_important_files(context: "myproject", limit: 10)
+→ Shows priority files to review
+```
 
