@@ -39,5 +39,8 @@ EXPOSE 5000
 COPY --from=publish /app/publish .
 # Copy TypeScript parser script (not included in .NET publish)
 COPY MemoryAgent.Server/CodeAnalysis/ts-parser.js /app/CodeAnalysis/
+
+# Ensure local TypeScript runtime dependency for the parser (global installs can be missing in runtime resolution)
+RUN npm install --prefix /app/CodeAnalysis typescript
 ENTRYPOINT ["dotnet", "MemoryAgent.Server.dll"]
 
