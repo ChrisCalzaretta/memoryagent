@@ -120,6 +120,64 @@ services:
       - memory-net
     restart: unless-stopped
 
+  # CodingOrchestrator - Coordinates the multi-agent workflow
+  coding-orchestrator:
+    build:
+      context: .
+      dockerfile: CodingOrchestrator.Server/Dockerfile
+    container_name: memory-coding-orchestrator
+    ports:
+      - "5003:5003"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5003
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+      - CodingAgent__BaseUrl=http://memory-coding-agent:5001
+      - ValidationAgent__BaseUrl=http://memory-validation-agent:5002
+    depends_on:
+      - mcp-server
+      - coding-agent
+      - validation-agent
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  # CodingAgent - Generates and fixes code using LLM
+  coding-agent:
+    build:
+      context: .
+      dockerfile: CodingAgent.Server/Dockerfile
+    container_name: memory-coding-agent
+    ports:
+      - "5001:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5001
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+    depends_on:
+      - mcp-server
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  # ValidationAgent - Validates code quality
+  validation-agent:
+    build:
+      context: .
+      dockerfile: ValidationAgent.Server/Dockerfile
+    container_name: memory-validation-agent
+    ports:
+      - "5002:5002"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5002
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+    depends_on:
+      - mcp-server
+    networks:
+      - memory-net
+    restart: unless-stopped
+
 networks:
   memory-net:
     name: memory-shared-net

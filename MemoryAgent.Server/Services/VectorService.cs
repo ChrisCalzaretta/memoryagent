@@ -210,10 +210,10 @@ public class VectorService : IVectorService
                         ["indexed_at"] = memory.IndexedAt.ToString("O")
                     };
 
-                    // Add metadata
+                    // Add metadata (converting JsonElement to primitive types)
                     foreach (var (key, value) in memory.Metadata)
                     {
-                        payload[key] = value;
+                        payload[key] = ConvertFromJsonElement(value);
                     }
 
                     // Generate deterministic ID based on content to enable upserts (prevents 409 conflicts)
@@ -558,7 +558,28 @@ public class VectorService : IVectorService
         CodeMemoryType.Property => GetMethodsCollection(context), // Properties go with methods
         CodeMemoryType.Interface => GetClassesCollection(context), // Interfaces go with classes
         CodeMemoryType.Pattern => GetPatternsCollection(context),
-        _ => throw new ArgumentException($"Unknown code memory type: {type}")
+        
+        // Additional types mapped to appropriate collections
+        CodeMemoryType.Test => GetClassesCollection(context),       // Tests are class-like
+        CodeMemoryType.Enum => GetClassesCollection(context),       // Enums go with classes
+        CodeMemoryType.Record => GetClassesCollection(context),     // Records are class-like
+        CodeMemoryType.Struct => GetClassesCollection(context),     // Structs are class-like
+        CodeMemoryType.Delegate => GetClassesCollection(context),   // Delegates go with classes
+        CodeMemoryType.Event => GetMethodsCollection(context),      // Events go with methods
+        CodeMemoryType.Constant => GetMethodsCollection(context),   // Constants go with methods
+        CodeMemoryType.Repository => GetClassesCollection(context), // Architecture patterns
+        CodeMemoryType.Service => GetClassesCollection(context),
+        CodeMemoryType.Controller => GetClassesCollection(context),
+        CodeMemoryType.Middleware => GetClassesCollection(context),
+        CodeMemoryType.Filter => GetClassesCollection(context),
+        CodeMemoryType.DbContext => GetClassesCollection(context),
+        CodeMemoryType.Entity => GetClassesCollection(context),
+        CodeMemoryType.Migration => GetClassesCollection(context),
+        CodeMemoryType.Component => GetClassesCollection(context),  // Frontend components
+        CodeMemoryType.Hook => GetMethodsCollection(context),       // React hooks are function-like
+        CodeMemoryType.Endpoint => GetMethodsCollection(context),   // API endpoints are method-like
+        
+        _ => GetClassesCollection(context) // Default fallback to classes
     };
 
     private static CodeMemoryType GetCodeMemoryType(string collection)
@@ -596,6 +617,41 @@ public class VectorService : IVectorService
                 return intVal;
         }
         return 0;
+    }
+
+    /// <summary>
+    /// Converts a value to a JSON-serializable type, handling JsonElement specifically
+    /// </summary>
+    private static object ConvertFromJsonElement(object? value)
+    {
+        if (value is JsonElement je)
+        {
+            return ConvertJsonElement(je);
+        }
+        
+        return value ?? "";
+    }
+
+    /// <summary>
+    /// Converts a JsonElement to a primitive type for Qdrant serialization
+    /// </summary>
+    private static object ConvertJsonElement(JsonElement je)
+    {
+        return je.ValueKind switch
+        {
+            JsonValueKind.String => je.GetString() ?? "",
+            JsonValueKind.Number when je.TryGetInt64(out var l) => l,
+            JsonValueKind.Number when je.TryGetDouble(out var d) => d,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => "",
+            JsonValueKind.Array => je.EnumerateArray()
+                .Select(ConvertJsonElement)
+                .ToList(),
+            JsonValueKind.Object => je.EnumerateObject()
+                .ToDictionary(p => p.Name, p => ConvertJsonElement(p.Value)),
+            _ => je.ToString()
+        };
     }
 
     #region Agent Lightning (Learning) Operations

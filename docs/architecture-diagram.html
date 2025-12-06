@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Agent Architecture - Memory Agent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0d1117;
+            color: #f0f6fc;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 30px;
+        }
+        .diagram-container {
+            background: #161b22;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid #30363d;
+        }
+        .diagram-container img {
+            width: 100%;
+            height: auto;
+        }
+        .details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: #161b22;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #30363d;
+        }
+        .card h2 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        .card h2 .badge {
+            font-size: 0.7rem;
+            background: #238636;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: normal;
+        }
+        .card ul {
+            list-style: none;
+            padding-left: 5px;
+        }
+        .card li {
+            padding: 6px 0;
+            border-bottom: 1px solid #21262d;
+            color: #c9d1d9;
+        }
+        .card li:last-child {
+            border-bottom: none;
+        }
+        .card li code {
+            background: #21262d;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        .flow-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .flow-step .number {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        .flow-step .content {
+            flex: 1;
+        }
+        .flow-step .content strong {
+            color: #58a6ff;
+        }
+        .orchestrator { color: #a78bfa; }
+        .coding { color: #34d399; }
+        .validation { color: #f59e0b; }
+        .memory { color: #38bdf8; }
+        
+        @media (max-width: 768px) {
+            .details {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Multi-Agent Code Generation Architecture</h1>
+        <p class="subtitle">Agent Lightning Memory System + Iterative Coding-Validation Loop</p>
+        
+        <div class="diagram-container">
+            <img src="architecture-diagram.svg" alt="Architecture Diagram">
+        </div>
+        
+        <div class="details">
+            <!-- Two Communication Paths -->
+            <div class="card">
+                <h2>📜 Two Communication Paths</h2>
+                <div class="flow-step">
+                    <div class="number" style="background: linear-gradient(135deg, #00b4db, #0083b0);">🔵</div>
+                    <div class="content">
+                        <strong>Direct MCP Path</strong> → Cursor uses 25+ MCP tools directly with MemoryAgent (smartsearch, store_qa, validate, etc.)
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="number" style="background: linear-gradient(135deg, #667eea, #764ba2);">🟣</div>
+                    <div class="content">
+                        <strong>Orchestrated Path</strong> → Full coding task workflow through Orchestrator
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Orchestration Flow -->
+            <div class="card">
+                <h2>🟣 Orchestrated Task Flow</h2>
+                <div class="flow-step">
+                    <div class="number">1a</div>
+                    <div class="content">
+                        <strong>User Request</strong> → OrchestrateTaskRequest to Orchestrator
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="number">2</div>
+                    <div class="content">
+                        <strong>Get Context</strong> → Query Lightning Memory for relevant files, Q&A, patterns
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="number">3</div>
+                    <div class="content">
+                        <strong>Generate Code</strong> → CodingAgent produces FileChanges[]
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="number">4</div>
+                    <div class="content">
+                        <strong>Validate Code</strong> → ValidationAgent scores 0-10, returns Issues[]
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="number">5</div>
+                    <div class="content">
+                        <strong>Loop</strong> → If score &lt; 8, go back to step 3 with feedback
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="number">6</div>
+                    <div class="content">
+                        <strong>Learn</strong> → Store Q&A + Record prompt feedback for RL
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="number">7</div>
+                    <div class="content">
+                        <strong>Return</strong> → Generated files to user
+                    </div>
+                </div>
+            </div>
+            
+            <!-- CodingOrchestrator -->
+            <div class="card">
+                <h2 class="orchestrator">🎯 CodingOrchestrator <span class="badge">Port 5003</span></h2>
+                <ul>
+                    <li>📁 <code>TaskOrchestrator.cs</code> - Main orchestration logic</li>
+                    <li>📁 <code>JobManager.cs</code> - Async job queue management</li>
+                    <li>🔗 HTTP clients to all agents with Polly retry</li>
+                    <li>⚙️ Max 5 iterations, Min score 8/10</li>
+                    <li>📊 Tracks phase timeline for debugging</li>
+                </ul>
+            </div>
+            
+            <!-- CodingAgent -->
+            <div class="card">
+                <h2 class="coding">⚡ CodingAgent <span class="badge">Port 5001</span></h2>
+                <ul>
+                    <li>📁 <code>CodeGenerationService.cs</code> - LLM code generation</li>
+                    <li>📁 <code>PromptBuilder.cs</code> - Builds prompts from context</li>
+                    <li>🔗 <code>POST /api/agent/generate</code> - Initial generation</li>
+                    <li>🔗 <code>POST /api/agent/fix</code> - Fix based on validation feedback</li>
+                    <li>📝 Returns <code>FileChanges[]</code> with content + explanation</li>
+                </ul>
+            </div>
+            
+            <!-- ValidationAgent -->
+            <div class="card">
+                <h2 class="validation">✅ ValidationAgent <span class="badge">Port 5002</span></h2>
+                <ul>
+                    <li>📁 <code>ValidationService.cs</code> - Code quality validation</li>
+                    <li>🔗 <code>POST /api/agent/validate</code> - Validate files</li>
+                    <li>📋 Rules: Security, Best Practices, Patterns</li>
+                    <li>📊 Score 0-10, Pass threshold ≥ 8</li>
+                    <li>🐛 Returns <code>Issues[]</code> with suggestions</li>
+                    <li>🧠 Queries MemoryAgent for pattern validation</li>
+                </ul>
+            </div>
+            
+            <!-- MemoryAgent -->
+            <div class="card">
+                <h2 class="memory">🧠 MemoryAgent (Lightning) <span class="badge">Port 5000</span></h2>
+                <ul>
+                    <li>📁 <code>McpController.cs</code> - MCP JSON-RPC endpoint</li>
+                    <li>🔧 25+ MCP Tools: smartsearch, get_context, store_qa, etc.</li>
+                    <li>🔗 <code>/sse</code> - Server-Sent Events for Cursor</li>
+                    <li>🔗 <code>/mcp</code> - HTTP POST for MCP requests</li>
+                    <li>🔗 <code>/api/mcp/call</code> - Tool invocation endpoint</li>
+                    <li>⚡ Auto-session, Auto-file tracking</li>
+                    <li>📈 Prompt feedback → Reinforcement Learning</li>
+                </ul>
+            </div>
+            
+            <!-- Infrastructure -->
+            <div class="card">
+                <h2>🏗️ Infrastructure</h2>
+                <ul>
+                    <li>📊 <strong>Qdrant</strong> (6333) - Vector database for semantic embeddings</li>
+                    <li>🕸️ <strong>Neo4j</strong> (7687) - Graph database for code relationships</li>
+                    <li>🦙 <strong>Ollama</strong> (11434) - Local LLM (mxbai-embed-large)</li>
+                    <li>🐳 Docker Compose orchestration</li>
+                    <li>🔄 Shared network: <code>${PROJECT_NAME}-net</code></li>
+                </ul>
+            </div>
+            
+            <!-- Key Files -->
+            <div class="card">
+                <h2>📂 Key Files</h2>
+                <ul>
+                    <li><code>CodingOrchestrator.Server/Services/TaskOrchestrator.cs</code></li>
+                    <li><code>CodingOrchestrator.Server/Clients/*.cs</code></li>
+                    <li><code>CodingAgent.Server/Services/CodeGenerationService.cs</code></li>
+                    <li><code>ValidationAgent.Server/Services/ValidationService.cs</code></li>
+                    <li><code>MemoryAgent.Server/Controllers/McpController.cs</code></li>
+                    <li><code>Shared/AgentContracts/Requests/*.cs</code></li>
+                    <li><code>Shared/AgentContracts/Responses/*.cs</code></li>
+                    <li><code>docker-compose.yml</code></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

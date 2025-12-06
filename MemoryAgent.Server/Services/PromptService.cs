@@ -8,7 +8,7 @@ namespace MemoryAgent.Server.Services;
 /// Service for managing versioned, evolving prompts with outcome tracking.
 /// Stores prompts in Neo4j with full version history.
 /// </summary>
-public class PromptService : IPromptService
+public class PromptService : IPromptService, IDisposable
 {
     private readonly IDriver _driver;
     private readonly ILogger<PromptService> _logger;
@@ -1214,6 +1214,21 @@ Return JSON:
             WasSuccessful = props.ContainsKey("wasSuccessful") ? props["wasSuccessful"].As<bool?>() : null,
             UserRating = props.ContainsKey("userRating") ? props["userRating"].As<int?>() : null
         };
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    /// <summary>
+    /// Dispose Neo4j driver connection on shutdown.
+    /// CRITICAL: Prevents database corruption when container stops.
+    /// </summary>
+    public void Dispose()
+    {
+        _logger.LogInformation("PromptService: Disposing Neo4j driver connection...");
+        _driver?.Dispose();
+        _logger.LogInformation("PromptService: Neo4j driver disposed successfully");
     }
 
     #endregion

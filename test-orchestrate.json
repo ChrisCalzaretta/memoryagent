@@ -1,0 +1,8 @@
+{
+  "task": "Create a simple HelloWorld service with a SayHello method",
+  "context": "memoryagent",
+  "workspacePath": "E:\\GitHub\\MemoryAgent",
+  "background": true,
+  "maxIterations": 3,
+  "minValidationScore": 8
+}

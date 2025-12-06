@@ -6,6 +6,28 @@ The Memory Agent MCP tools MUST be used on every query. See `cursorrules.mdc` fo
 
 ---
 
+## 🤖 Multi-Agent Code Generation (NEW!)
+
+### `GenerateCode.md` - Start Multi-Agent Coding Task ⭐
+Start a coding task with automatic validation loop.
+- CodingAgent generates code using LLM (deepseek-v2:16b)
+- ValidationAgent validates with rules + LLM (phi4)
+- Iterates until score >= 8/10 or max iterations
+
+### `CheckCodeTask.md` - Check Task Status
+Monitor progress and get generated code when complete.
+- Shows progress percentage, current phase, iteration
+- Returns generated files when task completes
+
+### `ListCodeTasks.md` - List All Tasks
+See all active and recent coding tasks.
+- Shows status: Running, Complete, Failed, Cancelled
+
+### `CancelCodeTask.md` - Cancel Running Task
+Stop a task that's no longer needed.
+
+---
+
 ## 🧠 Agent Lightning Commands (USE EVERY SESSION)
 
 ### `StartSession.md` - Start Learning Session ⭐ REQUIRED
@@ -132,6 +154,14 @@ Comprehensive validation after transformations (CSS quality, complexity, securit
 1. `StartSession.md` → begin learning session
 2. `FindAnswer.md` → check existing knowledge first
 
+### For New Code Generation (Multi-Agent) ⭐ NEW
+1. `GenerateCode.md` → start multi-agent task
+2. `CheckCodeTask.md` → monitor progress
+3. Wait for completion (30-120 seconds)
+4. Review generated code, apply to project
+5. `RecordContext.md` → track generated files
+6. `StoreKnowledge.md` → save learnings
+
 ### For Bug Fixes
 1. `FixBug.md` → fix issue
 2. `RecordContext.md` → track files touched
@@ -160,7 +190,15 @@ Comprehensive validation after transformations (CSS quality, complexity, securit
 
 ---
 
-## 📋 COMPLETE MCP TOOL LIST (25 Tools)
+## 📋 COMPLETE MCP TOOL LIST (29 Tools)
+
+### 🤖 Multi-Agent Coding (4 tools) - `coding-orchestrator` MCP Server
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `orchestrate_task` | Start multi-agent coding (CodingAgent + ValidationAgent loop) | New services, complex implementations |
+| `get_task_status` | Check progress, get generated files | After starting task |
+| `cancel_task` | Cancel running task | When no longer needed |
+| `list_tasks` | List active/recent tasks | See what's running |
 
 ### 🔍 Search (1 tool)
 | Tool | Description | When to Use |
@@ -270,8 +308,16 @@ filePath: string (for domains)
 
 ---
 
-## ✨ What's New (v2.0)
+## ✨ What's New (v3.0)
 
+### 🤖 Multi-Agent Code Generation (NEW!)
+- **CodingOrchestrator**: Coordinates multi-agent workflow
+- **CodingAgent**: Generates/fixes code using LLM with smart model rotation
+- **ValidationAgent**: Validates code quality using rules + LLM analysis
+- **Smart Model Rotation**: Uses different models on retry for fresh perspectives
+- **4 new tools**: `orchestrate_task`, `get_task_status`, `cancel_task`, `list_tasks`
+
+### Previous (v2.0)
 **Consolidated from 73+ tools to 25 tools:**
 - Better AI decision-making with fewer, clearer options
 - Parameterized tools (action/scope/type) for related functionality
@@ -285,7 +331,7 @@ filePath: string (for domains)
 - `get_insights` replaces 7 insight tools (via category param)
 - `start_session` now returns existing session if active
 
-**New Evolving System:**
+**Evolving System:**
 - `manage_prompts`: LLM prompts with versioning & A/B testing
 - `manage_patterns`: Patterns with usefulness tracking
 - `feedback`: Record outcomes for learning
@@ -296,8 +342,11 @@ filePath: string (for domains)
 
 - **Neo4j** - Graph database for relationships, dependencies, prompts, and patterns
 - **Qdrant** - Vector database for semantic search + Lightning learning
-- **Ollama** - LLM inference (mxbai-embed-large embeddings)
-- **DeepSeek Coder V2** - Code transformations
+- **Ollama** - Local LLM inference with multi-GPU support
+  - `deepseek-v2:16b` - Primary code generation (pinned on 5070 Ti)
+  - `phi4` - Code validation
+  - `mxbai-embed-large` - Embeddings
+- **Smart Model Rotation** - Uses different models on fix attempts for fresh perspectives
 
 ---
 

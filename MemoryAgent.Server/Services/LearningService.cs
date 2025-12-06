@@ -7,7 +7,7 @@ namespace MemoryAgent.Server.Services;
 /// Service for learning from user interactions and improving memory recall.
 /// Implements Agent Lightning patterns for self-improving AI assistance.
 /// </summary>
-public class LearningService : ILearningService
+public class LearningService : ILearningService, IDisposable
 {
     private readonly IDriver _driver;
     private readonly IEmbeddingService _embeddingService;
@@ -1373,6 +1373,21 @@ public class LearningService : ILearningService
             ResultCount = props.ContainsKey("resultCount") ? props["resultCount"].As<int>() : null,
             Timestamp = props.ContainsKey("timestamp") ? ConvertNeo4jDateTime(props["timestamp"]) : DateTime.UtcNow
         };
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    /// <summary>
+    /// Dispose Neo4j driver connection on shutdown.
+    /// CRITICAL: Prevents database corruption when container stops.
+    /// </summary>
+    public void Dispose()
+    {
+        _logger.LogInformation("LearningService: Disposing Neo4j driver connection...");
+        _driver?.Dispose();
+        _logger.LogInformation("LearningService: Neo4j driver disposed successfully");
     }
 
     #endregion

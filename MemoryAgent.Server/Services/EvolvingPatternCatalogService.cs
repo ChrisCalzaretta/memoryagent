@@ -7,7 +7,7 @@ namespace MemoryAgent.Server.Services;
 /// Service for managing an evolving pattern catalog that learns and improves.
 /// Stores patterns in Neo4j with full version history and learning metrics.
 /// </summary>
-public class EvolvingPatternCatalogService : IEvolvingPatternCatalogService
+public class EvolvingPatternCatalogService : IEvolvingPatternCatalogService, IDisposable
 {
     private readonly IDriver _driver;
     private readonly ILogger<EvolvingPatternCatalogService> _logger;
@@ -975,6 +975,21 @@ public class EvolvingPatternCatalogService : IEvolvingPatternCatalogService
         }
 
         return rules.Take(5).ToList();
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    /// <summary>
+    /// Dispose Neo4j driver connection on shutdown.
+    /// CRITICAL: Prevents database corruption when container stops.
+    /// </summary>
+    public void Dispose()
+    {
+        _logger.LogInformation("EvolvingPatternCatalogService: Disposing Neo4j driver connection...");
+        _driver?.Dispose();
+        _logger.LogInformation("EvolvingPatternCatalogService: Neo4j driver disposed successfully");
     }
 
     #endregion

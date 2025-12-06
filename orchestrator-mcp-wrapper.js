@@ -1,0 +1,433 @@
+#!/usr/bin/env node
+
+/**
+ * MCP STDIO Wrapper for CodingOrchestrator
+ * Bridges Cursor's STDIO transport to the CodingOrchestrator HTTP API
+ * Provides tools: orchestrate_task, get_task_status, cancel_task, list_tasks
+ */
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// Configuration
+const ORCHESTRATOR_PORT = process.env.ORCHESTRATOR_PORT || 5003;
+const LOG_FILE = process.env.LOG_FILE || 'E:\\GitHub\\MemoryAgent\\orchestrator-wrapper.log';
+
+// Detect workspace path from multiple sources
+let WORKSPACE_PATH = null;
+
+// 1. Try command-line argument (highest priority)
+if (process.argv.length > 2 && process.argv[2] !== '${workspaceFolder}') {
+  WORKSPACE_PATH = process.argv[2];
+  log(`Using workspace from command-line argument: ${WORKSPACE_PATH}`);
+}
+
+// 2. Try environment variable
+if (!WORKSPACE_PATH && process.env.WORKSPACE_PATH && process.env.WORKSPACE_PATH !== '${workspaceFolder}') {
+  WORKSPACE_PATH = process.env.WORKSPACE_PATH;
+  log(`Using workspace from environment variable: ${WORKSPACE_PATH}`);
+}
+
+// 3. Fallback
+if (!WORKSPACE_PATH) {
+  WORKSPACE_PATH = 'E:\\GitHub';
+  log('⚠️ Using default workspace path');
+}
+
+// Extract context from workspace path (last directory name)
+const CONTEXT_NAME = path.basename(WORKSPACE_PATH).toLowerCase();
+
+function log(message) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
+  try {
+    fs.appendFileSync(LOG_FILE, logMessage);
+  } catch (err) {
+    // Ignore logging errors
+  }
+}
+
+log('Orchestrator MCP Wrapper started');
+log(`  Workspace: ${WORKSPACE_PATH}`);
+log(`  Context: ${CONTEXT_NAME}`);
+log(`  Orchestrator Port: ${ORCHESTRATOR_PORT}`);
+
+// Tool definitions
+const TOOLS = [
+  {
+    name: 'orchestrate_task',
+    description: 'Start a multi-agent coding task. The coding agent generates code and the validation agent reviews it iteratively until quality standards are met (score >= 8/10).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { 
+          type: 'string', 
+          description: "The coding task to perform (e.g., 'Add caching to UserService', 'Create a REST API endpoint for user registration')" 
+        },
+        context: { 
+          type: 'string', 
+          description: 'Project context name for Lightning memory (auto-detected from workspace if not provided)' 
+        },
+        workspacePath: { 
+          type: 'string', 
+          description: 'Path to the workspace root (auto-detected if not provided)' 
+        },
+        background: { 
+          type: 'boolean', 
+          description: 'Run as background job - returns job ID immediately (default: true)', 
+          default: true 
+        },
+        maxIterations: { 
+          type: 'integer', 
+          description: 'Maximum coding/validation iterations before giving up (default: 5)', 
+          default: 5 
+        },
+        minValidationScore: { 
+          type: 'integer', 
+          description: 'Minimum score (0-10) required to pass validation (default: 8)', 
+          default: 8 
+        }
+      },
+      required: ['task']
+    }
+  },
+  {
+    name: 'get_task_status',
+    description: 'Get the status of a running or completed coding task. Shows progress, iterations, validation scores, and generated files when complete.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { 
+          type: 'string', 
+          description: 'The job ID returned by orchestrate_task' 
+        }
+      },
+      required: ['jobId']
+    }
+  },
+  {
+    name: 'cancel_task',
+    description: 'Cancel a running coding task',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { 
+          type: 'string', 
+          description: 'The job ID to cancel' 
+        }
+      },
+      required: ['jobId']
+    }
+  },
+  {
+    name: 'list_tasks',
+    description: 'List all active and recent coding tasks with their status',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  }
+];
+
+// Send HTTP request to orchestrator
+function sendToOrchestrator(endpoint, method = 'GET', body = null) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'localhost',
+      port: ORCHESTRATOR_PORT,
+      path: endpoint,
+      method: method,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+
+    if (body) {
+      const postData = JSON.stringify(body);
+      options.headers['Content-Length'] = Buffer.byteLength(postData);
+    }
+
+    const req = http.request(options, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        if (res.statusCode === 204 || data.trim() === '') {
+          resolve(null);
+          return;
+        }
+        
+        try {
+          const response = JSON.parse(data);
+          resolve(response);
+        } catch (err) {
+          resolve({ raw: data });
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    if (body) {
+      req.write(JSON.stringify(body));
+    }
+    req.end();
+  });
+}
+
+// Handle MCP tool calls
+async function handleToolCall(toolName, args) {
+  log(`Tool call: ${toolName} with args: ${JSON.stringify(args)}`);
+  
+  // Auto-inject context and workspace path
+  if (!args.context) {
+    args.context = CONTEXT_NAME;
+  }
+  if (!args.workspacePath) {
+    args.workspacePath = WORKSPACE_PATH;
+  }
+  
+  switch (toolName) {
+    case 'orchestrate_task': {
+      const body = {
+        task: args.task,
+        context: args.context,
+        workspacePath: args.workspacePath,
+        background: args.background !== false,
+        maxIterations: args.maxIterations || 5,
+        minValidationScore: args.minValidationScore || 8
+      };
+      
+      const result = await sendToOrchestrator('/api/orchestrator/task', 'POST', body);
+      
+      return `🚀 **Multi-Agent Coding Task Started**
+
+**Job ID:** \`${result.jobId}\`
+**Task:** ${args.task}
+**Context:** ${args.context}
+**Status:** ${result.status}
+
+The CodingAgent and ValidationAgent are now working on your task.
+
+**Progress:**
+- Max iterations: ${body.maxIterations}
+- Min validation score: ${body.minValidationScore}/10
+
+**To check status:** Call \`get_task_status\` with jobId: \`${result.jobId}\``;
+    }
+    
+    case 'get_task_status': {
+      const result = await sendToOrchestrator(`/api/orchestrator/task/${args.jobId}`);
+      
+      if (result.error) {
+        return `❌ Job \`${args.jobId}\` not found`;
+      }
+      
+      let output = `📊 **Task Status: ${result.status}**
+
+**Job ID:** \`${result.jobId}\`
+**Progress:** ${result.progress}%
+**Current Phase:** ${result.currentPhase || 'N/A'}
+**Iteration:** ${result.iteration}/${result.maxIterations}
+`;
+
+      if (result.timeline && result.timeline.length > 0) {
+        output += '\n**Timeline:**\n';
+        for (const phase of result.timeline) {
+          const duration = phase.durationMs ? ` (${phase.durationMs}ms)` : '';
+          const iter = phase.iteration ? ` [iter ${phase.iteration}]` : '';
+          output += `- ✅ ${phase.name}${iter}${duration}\n`;
+        }
+      }
+      
+      if (result.status === 'Complete' && result.result) {
+        output += `\n**✅ COMPLETED**
+- Validation Score: ${result.result.validationScore}/10
+- Total Iterations: ${result.result.totalIterations}
+- Duration: ${result.result.totalDurationMs}ms
+- Files Generated: ${result.result.files?.length || 0}
+`;
+        
+        if (result.result.files) {
+          for (const file of result.result.files) {
+            output += `\n**${file.path}** (${file.changeType})\n\`\`\`csharp\n${file.content}\n\`\`\`\n`;
+          }
+        }
+      } else if (result.status === 'Failed' && result.error) {
+        output += `\n**❌ FAILED**
+- Error: ${result.error.message}
+- Type: ${result.error.type}
+- Can retry: ${result.error.canRetry ? 'Yes' : 'No'}`;
+      }
+      
+      return output;
+    }
+    
+    case 'cancel_task': {
+      try {
+        await sendToOrchestrator(`/api/orchestrator/task/${args.jobId}`, 'DELETE');
+        return `✅ Job \`${args.jobId}\` has been cancelled`;
+      } catch (err) {
+        return `❌ Could not cancel job \`${args.jobId}\` - ${err.message}`;
+      }
+    }
+    
+    case 'list_tasks': {
+      const tasks = await sendToOrchestrator('/api/orchestrator/tasks');
+      
+      if (!tasks || tasks.length === 0) {
+        return 'No active tasks';
+      }
+      
+      let output = '**Active Tasks:**\n\n';
+      for (const task of tasks) {
+        const icon = {
+          'Queued': '⏳',
+          'Running': '🔄',
+          'Complete': '✅',
+          'Failed': '❌',
+          'Cancelled': '🚫',
+          'TimedOut': '⏱️'
+        }[task.status] || '❓';
+        
+        output += `${icon} \`${task.jobId}\` - ${task.status} (${task.progress}%) - ${task.currentPhase || 'N/A'}\n`;
+      }
+      
+      return output;
+    }
+    
+    default:
+      return `Unknown tool: ${toolName}`;
+  }
+}
+
+// Handle JSON-RPC requests
+async function handleRequest(request) {
+  const { method, params, id } = request;
+  
+  log(`Handling method: ${method}`);
+  
+  switch (method) {
+    case 'initialize':
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: '2024-11-05',
+          capabilities: {
+            tools: {}
+          },
+          serverInfo: {
+            name: 'coding-orchestrator',
+            version: '1.0.0'
+          }
+        }
+      };
+    
+    case 'notifications/initialized':
+      // No response needed for notifications
+      return null;
+    
+    case 'tools/list':
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          tools: TOOLS
+        }
+      };
+    
+    case 'tools/call':
+      try {
+        const result = await handleToolCall(params.name, params.arguments || {});
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: result }]
+          }
+        };
+      } catch (err) {
+        log(`Error in tool call: ${err.message}`);
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: `Error: ${err.message}` }],
+            isError: true
+          }
+        };
+      }
+    
+    default:
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: {
+          code: -32601,
+          message: `Method not found: ${method}`
+        }
+      };
+  }
+}
+
+// Read from STDIN line by line
+let buffer = '';
+
+process.stdin.on('data', async (chunk) => {
+  buffer += chunk.toString();
+  
+  let newlineIndex;
+  while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+    const line = buffer.slice(0, newlineIndex).trim();
+    buffer = buffer.slice(newlineIndex + 1);
+    
+    if (line) {
+      try {
+        const request = JSON.parse(line);
+        log(`Received: ${request.method} (id: ${request.id})`);
+        
+        const response = await handleRequest(request);
+        
+        if (response !== null) {
+          process.stdout.write(JSON.stringify(response) + '\n');
+          log(`Sent response for ${request.method}`);
+        }
+      } catch (err) {
+        log(`Error processing request: ${err.message}`);
+        const errorResponse = {
+          jsonrpc: '2.0',
+          id: null,
+          error: {
+            code: -32603,
+            message: `Internal error: ${err.message}`
+          }
+        };
+        process.stdout.write(JSON.stringify(errorResponse) + '\n');
+      }
+    }
+  }
+});
+
+process.stdin.on('end', () => {
+  log('STDIN closed, exiting');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  log('SIGINT received, exiting');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  log('SIGTERM received, exiting');
+  process.exit(0);
+});
+
+

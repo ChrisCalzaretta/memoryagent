@@ -263,4 +263,40 @@ logger.LogInformation("- Qdrant: {Qdrant}", builder.Configuration["Qdrant:Url"] 
 logger.LogInformation("- Neo4j: {Neo4j}", builder.Configuration["Neo4j:Url"] ?? "bolt://neo4j:7687");
 logger.LogInformation("- Ollama: {Ollama}", builder.Configuration["Ollama:Url"] ?? "http://ollama:11434");
 
+// GRACEFUL SHUTDOWN: Register handler to ensure proper cleanup
+// This prevents database corruption when container stops or Windows restarts
+var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+
+lifetime.ApplicationStopping.Register(() =>
+{
+    logger.LogWarning("⚠️ SHUTDOWN SIGNAL RECEIVED - Closing database connections...");
+    
+    // Dispose singleton services with Neo4j drivers
+    // These MUST be disposed before Neo4j container stops to prevent corruption
+    try
+    {
+        // Get and dispose services that hold Neo4j connections
+        var graphService = app.Services.GetService<IGraphService>() as IDisposable;
+        var learningService = app.Services.GetService<ILearningService>() as IDisposable;
+        var promptService = app.Services.GetService<IPromptService>() as IDisposable;
+        var patternCatalogService = app.Services.GetService<IEvolvingPatternCatalogService>() as IDisposable;
+        
+        graphService?.Dispose();
+        learningService?.Dispose();
+        promptService?.Dispose();
+        patternCatalogService?.Dispose();
+        
+        logger.LogInformation("✅ All Neo4j connections closed successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "❌ Error disposing database connections during shutdown");
+    }
+});
+
+lifetime.ApplicationStopped.Register(() =>
+{
+    logger.LogInformation("✅ Memory Agent shutdown complete - safe to stop databases");
+});
+
 app.Run();

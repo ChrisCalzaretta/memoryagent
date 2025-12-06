@@ -114,6 +114,61 @@ services:
       - agent-net
     restart: unless-stopped
 
+  # CodingOrchestrator - Coordinates the multi-agent workflow
+  coding-orchestrator:
+    build:
+      context: .
+      dockerfile: CodingOrchestrator.Server/Dockerfile
+    container_name: ${PROJECT_NAME:-memory}-coding-orchestrator
+    ports:
+      - "${ORCHESTRATOR_PORT:-5003}:5003"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5003
+      - MemoryAgent__BaseUrl=http://${PROJECT_NAME:-memory}-agent-server:5000
+      - CodingAgent__BaseUrl=http://${PROJECT_NAME:-memory}-coding-agent:5001
+      - ValidationAgent__BaseUrl=http://${PROJECT_NAME:-memory}-validation-agent:5002
+    depends_on:
+      - mcp-server
+      - coding-agent
+      - validation-agent
+    networks:
+      - agent-net
+    restart: unless-stopped
+
+  # CodingAgent - Generates and fixes code using LLM
+  coding-agent:
+    build:
+      context: .
+      dockerfile: CodingAgent.Server/Dockerfile
+    container_name: ${PROJECT_NAME:-memory}-coding-agent
+    ports:
+      - "${CODING_AGENT_PORT:-5001}:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5001
+    networks:
+      - agent-net
+    restart: unless-stopped
+
+  # ValidationAgent - Validates code quality
+  validation-agent:
+    build:
+      context: .
+      dockerfile: ValidationAgent.Server/Dockerfile
+    container_name: ${PROJECT_NAME:-memory}-validation-agent
+    ports:
+      - "${VALIDATION_AGENT_PORT:-5002}:5002"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5002
+      - MemoryAgent__BaseUrl=http://${PROJECT_NAME:-memory}-agent-server:5000
+    depends_on:
+      - mcp-server
+    networks:
+      - agent-net
+    restart: unless-stopped
+
 networks:
   agent-net:
     name: ${PROJECT_NAME:-memory}-net

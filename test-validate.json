@@ -1,0 +1,1 @@
+{"files":[{"path":"test.cs","content":"public class Test { public string Hello() { return \"Hello\"; } }","isNew":true}],"context":"test","rules":["best_practices"]}

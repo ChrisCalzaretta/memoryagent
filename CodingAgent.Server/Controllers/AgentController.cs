@@ -1,0 +1,87 @@
+using Microsoft.AspNetCore.Mvc;
+using AgentContracts.Requests;
+using AgentContracts.Responses;
+using CodingAgent.Server.Services;
+
+namespace CodingAgent.Server.Controllers;
+
+[ApiController]
+[Route("api/agent")]
+public class AgentController : ControllerBase
+{
+    private readonly ICodeGenerationService _codeGenerationService;
+    private readonly ILogger<AgentController> _logger;
+
+    public AgentController(
+        ICodeGenerationService codeGenerationService,
+        ILogger<AgentController> logger)
+    {
+        _codeGenerationService = codeGenerationService;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Generate code for a task
+    /// </summary>
+    [HttpPost("generate")]
+    public async Task<ActionResult<GenerateCodeResponse>> Generate(
+        [FromBody] GenerateCodeRequest request,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Received generate request: {Task}", request.Task);
+
+        try
+        {
+            var response = await _codeGenerationService.GenerateAsync(request, cancellationToken);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating code for task: {Task}", request.Task);
+            return StatusCode(500, new GenerateCodeResponse
+            {
+                Success = false,
+                Error = ex.Message
+            });
+        }
+    }
+
+    /// <summary>
+    /// Fix code based on validation feedback
+    /// </summary>
+    [HttpPost("fix")]
+    public async Task<ActionResult<GenerateCodeResponse>> Fix(
+        [FromBody] GenerateCodeRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.PreviousFeedback == null)
+        {
+            return BadRequest(new GenerateCodeResponse
+            {
+                Success = false,
+                Error = "PreviousFeedback is required for fix requests"
+            });
+        }
+
+        _logger.LogInformation("Received fix request for task: {Task}, Score: {Score}", 
+            request.Task, request.PreviousFeedback.Score);
+
+        try
+        {
+            var response = await _codeGenerationService.FixAsync(request, cancellationToken);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fixing code for task: {Task}", request.Task);
+            return StatusCode(500, new GenerateCodeResponse
+            {
+                Success = false,
+                Error = ex.Message
+            });
+        }
+    }
+}
+
+
+

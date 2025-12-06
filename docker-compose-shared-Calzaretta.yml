@@ -36,6 +36,9 @@ services:
           memory: 108G
     networks:
       - memory-net
+    # GRACEFUL SHUTDOWN: Stop MCP server FIRST before databases
+    # Gives .NET app 30s to close Neo4j/Qdrant connections cleanly
+    stop_grace_period: 30s
     restart: unless-stopped
 
   qdrant:
@@ -58,6 +61,8 @@ services:
           memory: 10G
     networks:
       - memory-net
+    # GRACEFUL SHUTDOWN: Give Qdrant 60s to flush data and close cleanly
+    stop_grace_period: 60s
     restart: unless-stopped
 
   neo4j:
@@ -91,10 +96,88 @@ services:
           memory: 10G
     networks:
       - memory-net
+    # GRACEFUL SHUTDOWN: Give Neo4j 120s to flush transactions and close cleanly
+    # Neo4j needs more time than Qdrant due to transaction log flushing
+    stop_grace_period: 120s
     restart: unless-stopped
 
-  # Ollama removed - using external Ollama at 10.0.0.20:11434
-  # Start locally with: ollama serve
+  # Ollama runs externally on dual GPUs at 10.0.0.20
+  # Start with: .\scripts\start-ollama-dual-gpu.ps1
+  # - Port 11434 (3090): PINNED - deepseek-coder-v2:16b, phi3.5:3.8b, mxbai-embed-large (~14.2GB)
+  # - Port 11435 (5070 Ti): SWAP - alternative models, auto-unload after 5 min
+
+  # CodingOrchestrator - Coordinates the multi-agent workflow
+  coding-orchestrator:
+    build:
+      context: .
+      dockerfile: CodingOrchestrator.Server/Dockerfile
+    container_name: memory-coding-orchestrator
+    ports:
+      - "5003:5003"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5003
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+      - CodingAgent__BaseUrl=http://memory-coding-agent:5001
+      - ValidationAgent__BaseUrl=http://memory-validation-agent:5002
+    depends_on:
+      - mcp-server
+      - coding-agent
+      - validation-agent
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  # CodingAgent - Generates and fixes code using LLM
+  coding-agent:
+    build:
+      context: .
+      dockerfile: CodingAgent.Server/Dockerfile
+    container_name: memory-coding-agent
+    ports:
+      - "5001:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5001
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+      - Ollama__Url=http://10.0.0.20:11434
+      # Dual GPU: 3090 (pinned) + 5070 Ti (swap)
+      - Gpu__DualGpu=true
+      - Gpu__PinnedPort=11434
+      - Gpu__SwapPort=11435
+      - Gpu__PrimaryModel=deepseek-coder-v2:16b
+      - Gpu__PinnedGpuVram=24
+      - Gpu__SwapGpuVram=16
+      - Gpu__PinnedModelsVram=15
+    depends_on:
+      - mcp-server
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  # ValidationAgent - Validates code quality with LLM
+  validation-agent:
+    build:
+      context: .
+      dockerfile: ValidationAgent.Server/Dockerfile
+    container_name: memory-validation-agent
+    ports:
+      - "5002:5002"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5002
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+      - Ollama__Url=http://10.0.0.20:11434
+      - Gpu__ValidationModel=phi3.5:3.8b
+      # Dual GPU: 3090 (pinned) + 5070 Ti (swap)
+      - Gpu__DualGpu=true
+      - Gpu__PinnedPort=11434
+      - Gpu__SwapPort=11435
+    depends_on:
+      - mcp-server
+    networks:
+      - memory-net
+    restart: unless-stopped
 
 networks:
   memory-net:

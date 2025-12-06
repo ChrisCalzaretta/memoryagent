@@ -1,12 +1,21 @@
 {
   "mcpServers": {
-    "code-memory-cbc": {
+    "code-memory": {
       "command": "node",
       "args": [
         "E:\\GitHub\\MemoryAgent\\mcp-stdio-wrapper.js"
       ],
       "env": {
-        "MCP_PORT": "5098"
+        "MCP_PORT": "5000"
+      }
+    },
+    "coding-orchestrator": {
+      "command": "node",
+      "args": [
+        "E:\\GitHub\\MemoryAgent\\orchestrator-mcp-wrapper.js"
+      ],
+      "env": {
+        "ORCHESTRATOR_PORT": "5003"
       }
     }
   }

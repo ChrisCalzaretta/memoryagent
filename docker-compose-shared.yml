@@ -37,6 +37,9 @@ services:
           memory: 108G
     networks:
       - memory-net
+    # GRACEFUL SHUTDOWN: Stop MCP server FIRST before databases
+    # Gives .NET app 30s to close Neo4j/Qdrant connections cleanly
+    stop_grace_period: 30s
     restart: unless-stopped
 
   qdrant:
@@ -59,6 +62,8 @@ services:
           memory: 10G
     networks:
       - memory-net
+    # GRACEFUL SHUTDOWN: Give Qdrant 60s to flush data and close cleanly
+    stop_grace_period: 60s
     restart: unless-stopped
 
   neo4j:
@@ -92,6 +97,9 @@ services:
           memory: 10G
     networks:
       - memory-net
+    # GRACEFUL SHUTDOWN: Give Neo4j 120s to flush transactions and close cleanly
+    # Neo4j needs more time than Qdrant due to transaction log flushing
+    stop_grace_period: 120s
     restart: unless-stopped
 
   ollama:

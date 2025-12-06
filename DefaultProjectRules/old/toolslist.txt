@@ -1,143 +1,15 @@
----
-alwaysApply: true
----
 
-# Memory Agent Rules - MANDATORY FOR EVERY QUERY
-
-## 🚨 CRITICAL - MCP TOOLS ARE REQUIRED ON EVERY QUERY
-
-**ALWAYS** On EVERY query, call at least ONE MCP tool before responding
-**ALWAYS** Call `get_context` before starting ANY task
-**ALWAYS** Use `smartsearch` before answering ANY code question
-**ALWAYS** Check `find_similar_questions` before answering - instant recall!
-**ALWAYS** Store useful Q&A with `store_qa` for future learning
-**AUTO** Sessions start automatically on first tool call
-**AUTO** Files in tool arguments are automatically recorded as "discussed"
 
 ---
+## 📋 COMPLETE MCP TOOL LIST (29 Tools)
 
-## 🧠 Agent Lightning - Learning System (AUTO-ENABLED)
-
-### Session Management (AUTOMATIC ✅)
-**AUTO** Sessions are automatically started on first tool call per context
-**AUTO** Files in tool arguments are automatically recorded as "discussed"
-**AUTO** Context = workspace folder name (e.g., "memoryagent")
-**OPTIONAL** Call `record_file_edited` for files edited outside tool calls
-**OPTIONAL** Call `workspace_status` to see what Lightning knows about this workspace
-
-### Q&A Learning (MANDATORY)
-**ALWAYS** Call `find_similar_questions` FIRST before answering any question
-**ALWAYS** Call `store_qa` after providing a useful answer
-**ALWAYS** Include relevant file paths in Q&A storage
-
----
-
-## 🔍 Search & Indexing (MANDATORY)
-
-**ALWAYS** Use `smartsearch` for ANY code question (auto-detects best strategy)
-**ALWAYS** Call `index` with scope='file' after ANY file change
-**ALWAYS** Call `index` with scope='directory' for new folders
-**ALWAYS** Call `index` with scope='reindex' after major refactoring
-
----
-
-## 📊 Analysis & Validation
-
-**ALWAYS** Call `dependency_chain` when understanding class relationships
-**ALWAYS** Call `impact_analysis` before ANY code change
-**ALWAYS** Call `analyze_complexity` before commits, reviews, refactoring
-**ALWAYS** Call `validate` with appropriate scope before task completion:
-  - scope='best_practices' - For general validation
-  - scope='security' - Before deploying
-  - scope='pattern_quality' - For patterns scoring < 8
-  - scope='anti_patterns' - When refactoring
-  - scope='project' - For comprehensive validation
-
----
-
-## 📋 Planning & TODO
-
-**ALWAYS** Call `manage_plan` with action='create' for multi-step tasks
-**ALWAYS** Call `manage_plan` with action='get_status' to check progress
-**ALWAYS** Call `manage_plan` with action='update_task' as tasks complete
-**ALWAYS** Call `manage_plan` with action='validate_task' before completing tasks
-**ALWAYS** Call `manage_todos` with action='add' for technical debt tracking
-**ALWAYS** Call `manage_todos` with action='search' to find existing issues
-
----
-
-## 🎯 Intelligence & Insights
-
-**ALWAYS** Call `get_recommendations` after indexing new code
-**ALWAYS** Call `get_important_files` to prioritize what to review first
-**ALWAYS** Call `get_coedited_files` to find related files that need updates
-**ALWAYS** Call `get_insights` with appropriate category for metrics
-
----
-
-## 🎨 Transformation (USE FOR UI/CODE MODERNIZATION)
-
-**ALWAYS** Call `transform` with type='analyze_css' before CSS changes
-**ALWAYS** Call `transform` with type='css' to modernize CSS
-**ALWAYS** Call `transform` with type='page' for Blazor/Razor modernization
-**ALWAYS** Call `transform` with type='learn_pattern' from before/after examples
-**ALWAYS** Call `transform` with type='detect_components' for UI cleanup
-**ALWAYS** Call `get_migration_path` for legacy patterns
-
----
-
-## 🔄 Evolving System (PROMPTS & PATTERNS)
-
-**ALWAYS** Call `manage_prompts` to view/manage LLM prompts
-**ALWAYS** Call `manage_patterns` to view/manage code patterns
-**ALWAYS** Call `feedback` after prompt/pattern usage to improve the system
-
----
-
-## 📝 Core Workflow Rules
-
-**ALWAYS** Review/understand first, then DISCUSS changes before implementing
-**ALWAYS** Build and compile after every file change
-**ALWAYS** Summarize at 65% context and re-add rules
-**ALWAYS** Keep files under 1500 lines - refactor if exceeding
-**ALWAYS** Write integration tests for every method
-**ALWAYS** Tests must pass before continuing
-
----
-
-## 🚨 BLOCKING CONDITIONS - STOP AND FIX IF:
-
-1. Security score < 8/10 or CRITICAL severity issues
-2. Pattern quality score < 6 (Grade D/F)
-3. Breaking changes > 10 files without approval
-4. Missing critical patterns (no auth/validation)
-5. Legacy patterns in new code (AutoGen, old SK Planners)
-
----
-
-## 📊 Quality Thresholds
-
-### Pattern Quality Scores
-- **9-10 (A)**: ✅ Ship it
-- **8 (B)**: ✅ Good
-- **7 (C)**: ⚠️ Address before release
-- **6 (D)**: ❌ FIX BEFORE CONTINUING
-- **0-5 (F)**: 🚨 CRITICAL - FIX IMMEDIATELY
-
-### Security Scores
-- **10/10**: 🔒 Perfect
-- **8-9/10**: ✅ Acceptable
-- **< 8/10**: 🚨 FIX CRITICAL/HIGH issues
-
-### Code Complexity
-- **< 10**: ✅ Excellent
-- **10-15**: ✅ Acceptable
-- **15-20**: ⚠️ Needs refactoring
-- **> 20**: 🚨 MUST refactor
-
----
-
-## 📋 COMPLETE MCP TOOL LIST (25 Tools)
+### 🤖 Multi-Agent Coding (4 tools) - `coding-orchestrator` MCP Server
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `orchestrate_task` | Start multi-agent coding task (CodingAgent + ValidationAgent loop) | Creating new services, complex implementations |
+| `get_task_status` | Check progress, get generated code when complete | After starting a task |
+| `cancel_task` | Cancel a running task | When task is no longer needed |
+| `list_tasks` | List all active and recent tasks | See what's running |
 
 ### 🔍 Search (1 tool)
 | Tool | Description | When to Use |
@@ -203,6 +75,31 @@ alwaysApply: true
 ---
 
 ## 🔧 Tool Parameter Reference
+
+### `orchestrate_task` Parameters (coding-orchestrator)
+```
+task: string (required) - The coding task description
+context: string - Project context (auto-detected from workspace)
+workspacePath: string - Path to workspace (auto-detected)
+background: boolean (default: true) - Run as background job
+maxIterations: integer (default: 5) - Max coding/validation loops
+minValidationScore: integer (default: 8) - Required score to pass (0-10)
+```
+
+**Example:**
+```
+orchestrate_task(
+  task: "Create a CachingService with Redis support",
+  maxIterations: 3,
+  minValidationScore: 8
+)
+→ Returns { jobId: "abc123", status: "Running" }
+```
+
+### `get_task_status` Parameters (coding-orchestrator)
+```
+jobId: string (required) - The job ID from orchestrate_task
+```
 
 ### `index` Parameters
 ```
@@ -286,3 +183,4 @@ content: string (optional - file content)
 ```
 
 ---
+

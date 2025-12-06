@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MemoryAgent.Server.Models;
 using Neo4j.Driver;
 using Polly;
@@ -293,7 +294,28 @@ public class GraphService : IGraphService, IDisposable
                             CodeMemoryType.Interface => CreateInterfaceNodeQuery(memory),
                             CodeMemoryType.File => CreateFileNodeQuery(memory),
                             CodeMemoryType.Pattern => CreatePatternNodeQuery(memory),
-                            _ => throw new ArgumentException($"Unknown type: {memory.Type}")
+                            
+                            // Map additional types to appropriate node queries
+                            CodeMemoryType.Test => CreateClassNodeQuery(memory),       // Tests are class-like
+                            CodeMemoryType.Enum => CreateClassNodeQuery(memory),       // Enums go with classes
+                            CodeMemoryType.Record => CreateClassNodeQuery(memory),     // Records are class-like
+                            CodeMemoryType.Struct => CreateClassNodeQuery(memory),     // Structs are class-like
+                            CodeMemoryType.Delegate => CreateClassNodeQuery(memory),   // Delegates go with classes
+                            CodeMemoryType.Event => CreateMethodNodeQuery(memory),     // Events go with methods
+                            CodeMemoryType.Constant => CreateMethodNodeQuery(memory),  // Constants go with methods
+                            CodeMemoryType.Repository => CreateClassNodeQuery(memory), // Architecture patterns
+                            CodeMemoryType.Service => CreateClassNodeQuery(memory),
+                            CodeMemoryType.Controller => CreateClassNodeQuery(memory),
+                            CodeMemoryType.Middleware => CreateClassNodeQuery(memory),
+                            CodeMemoryType.Filter => CreateClassNodeQuery(memory),
+                            CodeMemoryType.DbContext => CreateClassNodeQuery(memory),
+                            CodeMemoryType.Entity => CreateClassNodeQuery(memory),
+                            CodeMemoryType.Migration => CreateClassNodeQuery(memory),
+                            CodeMemoryType.Component => CreateClassNodeQuery(memory),  // Frontend components
+                            CodeMemoryType.Hook => CreateMethodNodeQuery(memory),      // React hooks are function-like
+                            CodeMemoryType.Endpoint => CreateMethodNodeQuery(memory),  // API endpoints are method-like
+                            
+                            _ => CreateClassNodeQuery(memory) // Default fallback to classes
                         };
 
                         await tx.RunAsync(query.cypher, query.parameters);
@@ -664,6 +686,116 @@ public class GraphService : IGraphService, IDisposable
         return escaped;
     }
 
+    /// <summary>
+    /// Gets a metadata value, converting JsonElement to primitive types for Neo4j compatibility
+    /// </summary>
+    private static T GetMetadataValue<T>(Dictionary<string, object> metadata, string key, T defaultValue)
+    {
+        if (!metadata.TryGetValue(key, out var value) || value == null)
+            return defaultValue;
+
+        // Handle JsonElement conversion
+        if (value is JsonElement je)
+        {
+            return ConvertJsonElement<T>(je, defaultValue);
+        }
+
+        // Try direct conversion
+        try
+        {
+            if (value is T typedValue)
+                return typedValue;
+
+            return (T)Convert.ChangeType(value, typeof(T));
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    /// <summary>
+    /// Converts a JsonElement to the specified type
+    /// </summary>
+    private static T ConvertJsonElement<T>(JsonElement je, T defaultValue)
+    {
+        try
+        {
+            var targetType = typeof(T);
+            
+            if (targetType == typeof(string))
+            {
+                return (T)(object)(je.ValueKind == JsonValueKind.String ? je.GetString() ?? "" : je.ToString());
+            }
+            if (targetType == typeof(int))
+            {
+                return je.ValueKind switch
+                {
+                    JsonValueKind.Number => (T)(object)je.GetInt32(),
+                    JsonValueKind.String when int.TryParse(je.GetString(), out var i) => (T)(object)i,
+                    _ => defaultValue
+                };
+            }
+            if (targetType == typeof(double))
+            {
+                return je.ValueKind switch
+                {
+                    JsonValueKind.Number => (T)(object)je.GetDouble(),
+                    JsonValueKind.String when double.TryParse(je.GetString(), out var d) => (T)(object)d,
+                    _ => defaultValue
+                };
+            }
+            if (targetType == typeof(bool))
+            {
+                return je.ValueKind switch
+                {
+                    JsonValueKind.True => (T)(object)true,
+                    JsonValueKind.False => (T)(object)false,
+                    JsonValueKind.String when bool.TryParse(je.GetString(), out var b) => (T)(object)b,
+                    _ => defaultValue
+                };
+            }
+            if (targetType == typeof(DateTime))
+            {
+                return je.ValueKind switch
+                {
+                    JsonValueKind.String when DateTime.TryParse(je.GetString(), out var dt) => (T)(object)dt,
+                    _ => defaultValue
+                };
+            }
+
+            return defaultValue;
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    /// <summary>
+    /// Converts a value to a Neo4j-compatible type
+    /// </summary>
+    private static object ConvertForNeo4j(object? value)
+    {
+        if (value == null) return "";
+        
+        if (value is JsonElement je)
+        {
+            return je.ValueKind switch
+            {
+                JsonValueKind.String => je.GetString() ?? "",
+                JsonValueKind.Number when je.TryGetInt64(out var l) => l,
+                JsonValueKind.Number when je.TryGetDouble(out var d) => d,
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => "",
+                _ => je.ToString()
+            };
+        }
+        
+        return value;
+    }
+
     public void Dispose()
     {
         _driver?.Dispose();
@@ -687,13 +819,13 @@ public class GraphService : IGraphService, IDisposable
         var parameters = new
         {
             name = memory.Name,
-            @namespace = memory.Metadata.GetValueOrDefault("namespace", ""),
+            @namespace = GetMetadataValue(memory.Metadata, "namespace", ""),
             context = memory.Context,
             filePath = memory.FilePath,
-            isAbstract = memory.Metadata.GetValueOrDefault("is_abstract", false),
-            isStatic = memory.Metadata.GetValueOrDefault("is_static", false),
-            isSealed = memory.Metadata.GetValueOrDefault("is_sealed", false),
-            accessModifier = memory.Metadata.GetValueOrDefault("access_modifier", ""),
+            isAbstract = GetMetadataValue(memory.Metadata, "is_abstract", false),
+            isStatic = GetMetadataValue(memory.Metadata, "is_static", false),
+            isSealed = GetMetadataValue(memory.Metadata, "is_sealed", false),
+            accessModifier = GetMetadataValue(memory.Metadata, "access_modifier", ""),
             lineNumber = memory.LineNumber
         };
 
@@ -731,25 +863,25 @@ public class GraphService : IGraphService, IDisposable
         {
             name = memory.Name,
             signature = memory.Content,
-            returnType = memory.Metadata.GetValueOrDefault("return_type", ""),
-            isAsync = memory.Metadata.GetValueOrDefault("is_async", false),
-            isStatic = memory.Metadata.GetValueOrDefault("is_static", false),
-            accessModifier = memory.Metadata.GetValueOrDefault("access_modifier", ""),
+            returnType = GetMetadataValue(memory.Metadata, "return_type", ""),
+            isAsync = GetMetadataValue(memory.Metadata, "is_async", false),
+            isStatic = GetMetadataValue(memory.Metadata, "is_static", false),
+            accessModifier = GetMetadataValue(memory.Metadata, "access_modifier", ""),
             lineNumber = memory.LineNumber,
-            className = memory.Metadata.GetValueOrDefault("class_name", ""),
+            className = GetMetadataValue(memory.Metadata, "class_name", ""),
             filePath = memory.FilePath,
             context = memory.Context,
-            cyclomaticComplexity = memory.Metadata.GetValueOrDefault("cyclomatic_complexity", 0),
-            cognitiveComplexity = memory.Metadata.GetValueOrDefault("cognitive_complexity", 0),
-            linesOfCode = memory.Metadata.GetValueOrDefault("lines_of_code", 0),
-            codeSmellCount = memory.Metadata.GetValueOrDefault("code_smell_count", 0),
-            databaseCalls = memory.Metadata.GetValueOrDefault("database_calls", 0),
-            hasDatabaseAccess = memory.Metadata.GetValueOrDefault("has_database_access", false),
-            hasHttpCalls = memory.Metadata.GetValueOrDefault("has_http_calls", false),
-            hasLogging = memory.Metadata.GetValueOrDefault("has_logging", false),
-            isPublicApi = memory.Metadata.GetValueOrDefault("is_public_api", false),
-            throwsExceptions = memory.Metadata.GetValueOrDefault("throws_exceptions", false),
-            isTest = memory.Metadata.GetValueOrDefault("is_test", false)
+            cyclomaticComplexity = GetMetadataValue(memory.Metadata, "cyclomatic_complexity", 0),
+            cognitiveComplexity = GetMetadataValue(memory.Metadata, "cognitive_complexity", 0),
+            linesOfCode = GetMetadataValue(memory.Metadata, "lines_of_code", 0),
+            codeSmellCount = GetMetadataValue(memory.Metadata, "code_smell_count", 0),
+            databaseCalls = GetMetadataValue(memory.Metadata, "database_calls", 0),
+            hasDatabaseAccess = GetMetadataValue(memory.Metadata, "has_database_access", false),
+            hasHttpCalls = GetMetadataValue(memory.Metadata, "has_http_calls", false),
+            hasLogging = GetMetadataValue(memory.Metadata, "has_logging", false),
+            isPublicApi = GetMetadataValue(memory.Metadata, "is_public_api", false),
+            throwsExceptions = GetMetadataValue(memory.Metadata, "throws_exceptions", false),
+            isTest = GetMetadataValue(memory.Metadata, "is_test", false)
         };
 
         return (cypher, parameters);
@@ -773,12 +905,12 @@ public class GraphService : IGraphService, IDisposable
         var parameters = new
         {
             name = memory.Name,
-            type = memory.Metadata.GetValueOrDefault("type", ""),
-            hasGetter = memory.Metadata.GetValueOrDefault("has_getter", false),
-            hasSetter = memory.Metadata.GetValueOrDefault("has_setter", false),
-            accessModifier = memory.Metadata.GetValueOrDefault("access_modifier", ""),
+            type = GetMetadataValue(memory.Metadata, "type", ""),
+            hasGetter = GetMetadataValue(memory.Metadata, "has_getter", false),
+            hasSetter = GetMetadataValue(memory.Metadata, "has_setter", false),
+            accessModifier = GetMetadataValue(memory.Metadata, "access_modifier", ""),
             lineNumber = memory.LineNumber,
-            className = memory.Metadata.GetValueOrDefault("class_name", ""),
+            className = GetMetadataValue(memory.Metadata, "class_name", ""),
             filePath = memory.FilePath,
             context = memory.Context
         };
@@ -798,7 +930,7 @@ public class GraphService : IGraphService, IDisposable
         var parameters = new
         {
             name = memory.Name,
-            @namespace = memory.Metadata.GetValueOrDefault("namespace", ""),
+            @namespace = GetMetadataValue(memory.Metadata, "namespace", ""),
             context = memory.Context,
             filePath = memory.FilePath,
             lineNumber = memory.LineNumber
@@ -823,10 +955,10 @@ public class GraphService : IGraphService, IDisposable
             path = memory.FilePath,
             name = memory.Name,
             context = memory.Context,
-            size = memory.Metadata.GetValueOrDefault("size", 0),
-            language = memory.Metadata.GetValueOrDefault("language", ""),
-            lastModified = memory.Metadata.GetValueOrDefault("last_modified", DateTime.UtcNow.ToString("O")),
-            lineCount = memory.Metadata.GetValueOrDefault("line_count", 0)
+            size = GetMetadataValue(memory.Metadata, "size", 0),
+            language = GetMetadataValue(memory.Metadata, "language", ""),
+            lastModified = GetMetadataValue(memory.Metadata, "last_modified", DateTime.UtcNow.ToString("O")),
+            lineCount = GetMetadataValue(memory.Metadata, "line_count", 0)
         };
 
         return (cypher, parameters);
@@ -855,12 +987,12 @@ public class GraphService : IGraphService, IDisposable
             id = patternId,
             name = memory.Name,
             description = memory.Content,
-            category = memory.Metadata.GetValueOrDefault("category", ""),
+            category = GetMetadataValue(memory.Metadata, "category", ""),
             context = memory.Context,
             filePath = memory.FilePath,
             lineNumber = memory.LineNumber,
-            confidence = memory.Metadata.GetValueOrDefault("confidence", 0.0),
-            usageCount = memory.Metadata.GetValueOrDefault("usage_count", 0),
+            confidence = GetMetadataValue(memory.Metadata, "confidence", 0.0),
+            usageCount = GetMetadataValue(memory.Metadata, "usage_count", 0),
             detectedAt = DateTime.UtcNow.ToString("O"),
             lastSeen = DateTime.UtcNow.ToString("O")
         };
@@ -911,11 +1043,11 @@ public class GraphService : IGraphService, IDisposable
             ["context"] = relationship.Context ?? "default" // Ensure context is always set
         };
 
-        // Add property values
+        // Add property values (converting JsonElement to primitive types)
         int propIndex = 0;
         foreach (var prop in relationship.Properties)
         {
-            parameters[$"prop{propIndex++}"] = prop.Value;
+            parameters[$"prop{propIndex++}"] = ConvertForNeo4j(prop.Value);
         }
 
         return (cypher, parameters);
