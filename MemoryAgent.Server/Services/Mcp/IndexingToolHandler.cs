@@ -112,7 +112,7 @@ public class IndexingToolHandler : IMcpToolHandler
     private async Task<McpToolResult> IndexFileToolAsync(Dictionary<string, object>? args, CancellationToken ct)
     {
         var path = args?.GetValueOrDefault("path")?.ToString();
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
 
         if (string.IsNullOrWhiteSpace(path))
             return ErrorResult("Path is required");
@@ -136,7 +136,7 @@ public class IndexingToolHandler : IMcpToolHandler
     private async Task<McpToolResult> IndexDirectoryToolAsync(Dictionary<string, object>? args, CancellationToken ct)
     {
         var path = args?.GetValueOrDefault("path")?.ToString();
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var recursive = args?.GetValueOrDefault("recursive") as bool? ?? true;
 
         if (string.IsNullOrWhiteSpace(path))
@@ -161,7 +161,7 @@ public class IndexingToolHandler : IMcpToolHandler
     private async Task<McpToolResult> QueryToolAsync(Dictionary<string, object>? args, CancellationToken ct)
     {
         var query = args?.GetValueOrDefault("query")?.ToString();
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var limit = args?.GetValueOrDefault("limit") as int? ?? 5;
         var minimumScore = args?.GetValueOrDefault("minimumScore") as float? ?? 0.7f;
 
@@ -186,7 +186,7 @@ public class IndexingToolHandler : IMcpToolHandler
     private async Task<McpToolResult> ReindexToolAsync(Dictionary<string, object>? args, CancellationToken ct)
     {
         var path = args?.GetValueOrDefault("path")?.ToString();
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var removeStale = args?.GetValueOrDefault("removeStale") as bool? ?? true;
 
         if (string.IsNullOrWhiteSpace(path))

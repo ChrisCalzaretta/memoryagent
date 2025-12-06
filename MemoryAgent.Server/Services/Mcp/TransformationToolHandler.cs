@@ -265,7 +265,7 @@ public class TransformationToolHandler : IMcpToolHandler
         Dictionary<string, object>? args,
         CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
 
         var transformationTools = _serviceProvider.GetRequiredService<TransformationTools>();
         var result = await transformationTools.ListTransformationPatterns(context);

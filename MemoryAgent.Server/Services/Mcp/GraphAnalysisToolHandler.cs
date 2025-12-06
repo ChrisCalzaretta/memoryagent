@@ -131,7 +131,7 @@ public class GraphAnalysisToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> CircularDependenciesToolAsync(Dictionary<string, object>? args, CancellationToken ct)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
 
         var cycles = await _graphService.FindCircularDependenciesAsync(context, ct);
         

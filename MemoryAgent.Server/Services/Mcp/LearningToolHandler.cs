@@ -268,7 +268,7 @@ public class LearningToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> StartSessionAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(context))
             return ErrorResult("context is required");
 
@@ -304,7 +304,7 @@ public class LearningToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> GetActiveSessionAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(context))
             return ErrorResult("context is required");
 
@@ -376,7 +376,7 @@ public class LearningToolHandler : IMcpToolHandler
     {
         var question = args?.GetValueOrDefault("question")?.ToString();
         var answer = args?.GetValueOrDefault("answer")?.ToString();
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var relevantFilesObj = args?.GetValueOrDefault("relevantFiles");
         
         if (string.IsNullOrWhiteSpace(question) || string.IsNullOrWhiteSpace(answer) || string.IsNullOrWhiteSpace(context))
@@ -398,7 +398,7 @@ public class LearningToolHandler : IMcpToolHandler
     private async Task<McpToolResult> FindSimilarQuestionsAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
         var question = args?.GetValueOrDefault("question")?.ToString();
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var limit = GetIntArg(args, "limit", 5);
         
         if (string.IsNullOrWhiteSpace(question) || string.IsNullOrWhiteSpace(context))
@@ -440,7 +440,7 @@ public class LearningToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> GetImportantFilesAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var limit = GetIntArg(args, "limit", 20);
         
         if (string.IsNullOrWhiteSpace(context))
@@ -487,7 +487,7 @@ public class LearningToolHandler : IMcpToolHandler
     private async Task<McpToolResult> GetCoEditedFilesAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
         var filePath = args?.GetValueOrDefault("filePath")?.ToString();
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var limit = GetIntArg(args, "limit", 10);
         
         if (string.IsNullOrWhiteSpace(filePath) || string.IsNullOrWhiteSpace(context))
@@ -531,7 +531,7 @@ public class LearningToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> GetFileClustersAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         
         if (string.IsNullOrWhiteSpace(context))
             return ErrorResult("context is required");
@@ -573,7 +573,7 @@ public class LearningToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> GetRecentSessionsAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var limit = GetIntArg(args, "limit", 10);
         
         if (string.IsNullOrWhiteSpace(context))
@@ -660,7 +660,7 @@ public class LearningToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> RecalculateImportanceAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         
         if (string.IsNullOrWhiteSpace(context))
             return ErrorResult("context is required");

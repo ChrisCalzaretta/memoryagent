@@ -76,7 +76,7 @@ public class WorkspaceToolHandler : IMcpToolHandler
         CancellationToken cancellationToken)
     {
         var workspacePath = args?.GetValueOrDefault("workspacePath")?.ToString();
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
 
         if (string.IsNullOrWhiteSpace(workspacePath) || string.IsNullOrWhiteSpace(context))
             return ErrorResult("workspacePath and context are required");
