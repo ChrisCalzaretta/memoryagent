@@ -7,12 +7,12 @@ alwaysApply: true
 ## 🚨 CRITICAL - MCP TOOLS ARE REQUIRED ON EVERY QUERY
 
 **ALWAYS** On EVERY query, call at least ONE MCP tool before responding
-**ALWAYS** Start sessions with `start_session` at conversation start
+**ALWAYS** Call `get_context` before starting ANY task
 **ALWAYS** Use `smartsearch` before answering ANY code question
-**ALWAYS** Record files discussed with `record_file_discussed`
-**ALWAYS** Record files edited with `record_file_edited`
 **ALWAYS** Check `find_similar_questions` before answering - instant recall!
 **ALWAYS** Store useful Q&A with `store_qa` for future learning
+**AUTO** Sessions start automatically on first tool call
+**AUTO** Files in tool arguments are automatically recorded as "discussed"
 
 ---
 
