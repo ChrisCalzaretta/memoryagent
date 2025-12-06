@@ -8,7 +8,7 @@ alwaysApply: true
 
 **ALWAYS** On EVERY query, call at least ONE MCP tool before responding
 **ALWAYS** Start sessions with `start_session` at conversation start
-**ALWAYS** Use `smartsearch` or `query` before answering ANY code question
+**ALWAYS** Use `smartsearch` before answering ANY code question
 **ALWAYS** Record files discussed with `record_file_discussed`
 **ALWAYS** Record files edited with `record_file_edited`
 **ALWAYS** Check `find_similar_questions` before answering - instant recall!
@@ -21,91 +21,75 @@ alwaysApply: true
 ### Session Management (MANDATORY)
 **ALWAYS** Call `start_session` at the beginning of any conversation
 **ALWAYS** Call `end_session` with summary when work is complete
-**ALWAYS** Call `get_active_session` to check if session exists before starting new one
-**ALWAYS** Call `get_recent_sessions` to understand previous work context
-
-### File Tracking (MANDATORY)
 **ALWAYS** Call `record_file_discussed` when ANY file is mentioned or viewed
 **ALWAYS** Call `record_file_edited` AFTER every file edit
-**ALWAYS** Call `get_important_files` to prioritize what to review first
-**ALWAYS** Call `get_coedited_files` to find related files that need updates
-**ALWAYS** Call `get_file_clusters` to understand module boundaries
 
 ### Q&A Learning (MANDATORY)
 **ALWAYS** Call `find_similar_questions` FIRST before answering any question
 **ALWAYS** Call `store_qa` after providing a useful answer
 **ALWAYS** Include relevant file paths in Q&A storage
-**ALWAYS** Call `detect_domains` to tag files by business domain
-
-### Importance Tracking
-**ALWAYS** Call `recalculate_importance` weekly or after major changes
 
 ---
 
-## 🔍 Search & Query (MANDATORY)
+## 🔍 Search & Indexing (MANDATORY)
 
-**ALWAYS** Use `smartsearch` FIRST for any question - try different terms if no results
-**ALWAYS** Use `query` for semantic code search
-**ALWAYS** Use `search_patterns` to find existing implementations before writing new code
-**ALWAYS** Call `index_file` after ANY file change
-**ALWAYS** Call `index_directory` for new folders
-**ALWAYS** Call `reindex` after major refactoring
+**ALWAYS** Use `smartsearch` for ANY code question (auto-detects best strategy)
+**ALWAYS** Call `index` with scope='file' after ANY file change
+**ALWAYS** Call `index` with scope='directory' for new folders
+**ALWAYS** Call `index` with scope='reindex' after major refactoring
 
 ---
 
-## 📊 Analysis Tools (USE WHEN ANALYZING)
+## 📊 Analysis & Validation
 
 **ALWAYS** Call `dependency_chain` when understanding class relationships
 **ALWAYS** Call `impact_analysis` before ANY code change
-**ALWAYS** Call `find_circular_dependencies` when analyzing architecture
-**ALWAYS** Call `analyze_code_complexity` before commits, reviews, refactoring
+**ALWAYS** Call `analyze_complexity` before commits, reviews, refactoring
+**ALWAYS** Call `validate` with appropriate scope before task completion:
+  - scope='best_practices' - For general validation
+  - scope='security' - Before deploying
+  - scope='pattern_quality' - For patterns scoring < 8
+  - scope='anti_patterns' - When refactoring
+  - scope='project' - For comprehensive validation
 
 ---
 
-## ✅ Validation Tools (USE BEFORE COMPLETING TASKS)
-
-**ALWAYS** Call `validate_best_practices` before task completion
-**ALWAYS** Call `validate_security` before deploying
-**ALWAYS** Call `validate_pattern_quality` for patterns scoring < 8
-**ALWAYS** Call `validate_project` for major features
-**ALWAYS** Call `validate_task` before marking plan tasks complete
-**ALWAYS** Call `find_anti_patterns` when refactoring
-**ALWAYS** Call `get_recommendations` after indexing new code
-**ALWAYS** Call `get_migration_path` for legacy patterns
-**ALWAYS** Call `get_available_best_practices` to see all validation options
-
----
-
-## 📋 Planning & TODO Tools
+## 📋 Planning & TODO
 
 **ALWAYS** Call `create_plan` for multi-step tasks
-**ALWAYS** Call `get_plan_status` to check progress
-**ALWAYS** Call `update_task_status` as tasks complete
-**ALWAYS** Call `complete_plan` when all tasks done
-**ALWAYS** Call `search_plans` to find existing plans
+**ALWAYS** Call `manage_plan` with action='get_status' to check progress
+**ALWAYS** Call `manage_plan` with action='update_task' as tasks complete
+**ALWAYS** Call `manage_plan` with action='validate_task' before completing tasks
 **ALWAYS** Call `add_todo` for technical debt tracking
-**ALWAYS** Call `search_todos` to find existing issues
-**ALWAYS** Call `update_todo_status` when addressing TODOs
+**ALWAYS** Call `manage_todos` with action='search' to find existing issues
 
 ---
 
-## 🎨 Transformation Tools (USE FOR UI/CODE MODERNIZATION)
+## 🎯 Intelligence & Insights
 
-**ALWAYS** Call `analyze_css` before CSS changes
-**ALWAYS** Call `transform_css` to modernize CSS
-**ALWAYS** Call `transform_page` for Blazor/Razor modernization
-**ALWAYS** Call `learn_transformation` from before/after examples
-**ALWAYS** Call `apply_transformation` to reuse patterns
-**ALWAYS** Call `list_transformation_patterns` to see available patterns
-**ALWAYS** Call `detect_reusable_components` for UI cleanup
-**ALWAYS** Call `extract_component` to create shared components
+**ALWAYS** Call `get_recommendations` after indexing new code
+**ALWAYS** Call `get_important_files` to prioritize what to review first
+**ALWAYS** Call `get_coedited_files` to find related files that need updates
+**ALWAYS** Call `get_insights` with appropriate category for metrics
 
 ---
 
-## 🔧 Workspace Tools
+## 🎨 Transformation (USE FOR UI/CODE MODERNIZATION)
 
-**ALWAYS** `register_workspace` is called automatically on startup
-**ALWAYS** `unregister_workspace` is called automatically on shutdown
+**ALWAYS** Call `transform` with type='analyze_css' before CSS changes
+**ALWAYS** Call `transform` with type='css' to modernize CSS
+**ALWAYS** Call `transform` with type='page' for Blazor/Razor modernization
+**ALWAYS** Call `transform` with type='learn_pattern' from before/after examples
+**ALWAYS** Call `transform` with type='detect_components' for UI cleanup
+**ALWAYS** Call `get_migration_path` for legacy patterns
+
+---
+
+## 🔄 Evolving System (PROMPTS & PATTERNS)
+
+**ALWAYS** Call `manage_prompts` to view/manage LLM prompts
+**ALWAYS** Call `manage_patterns` to view/manage code patterns
+**ALWAYS** Call `feedback` after prompt/pattern usage to improve the system
 
 ---
 
@@ -117,31 +101,6 @@ alwaysApply: true
 **ALWAYS** Keep files under 1500 lines - refactor if exceeding
 **ALWAYS** Write integration tests for every method
 **ALWAYS** Tests must pass before continuing
-
----
-
-## 🗄️ Database & Export Rules
-
-**ALWAYS** Generate export scripts DYNAMICALLY from `INFORMATION_SCHEMA`
-**ALWAYS** Handle missing tables/columns gracefully
-**ALWAYS** Ensure table queries work 100% of the time
-
----
-
-## 🔌 Plugin Architecture Rules
-
-**ALWAYS** Check `ProjectPluginActivations` - plugins must be ACTIVATED before use
-**ALWAYS** Use `PluginManager.GetActivePluginAsync(projectId, pluginId)`
-**ALWAYS** On plugin config changes: Save → `InvalidatePluginCacheAsync` → `RefreshPluginAsync` → Verify
-**ALWAYS** Store config in `Configuration` JSON: connection strings, API keys, endpoints
-
----
-
-## 📄 Prompt Template Rules
-
-**ALWAYS** Use `IPromptTemplateService.RenderPromptAsync(promptKey, variables, companyId)`
-**ALWAYS** Prompt key format: `"category.purpose"`
-**ALWAYS** 3-tier hierarchy: Project Override > Company Override > System Default
 
 ---
 
@@ -179,85 +138,107 @@ alwaysApply: true
 
 ---
 
-## 📋 COMPLETE MCP TOOL LIST (49 Tools)
+## 📋 COMPLETE MCP TOOL LIST (25 Tools)
 
-### Agent Lightning - Learning (13 tools) 🧠
-| Tool | Use When |
-|------|----------|
-| `start_session` | Beginning of conversation |
-| `end_session` | End of conversation |
-| `get_active_session` | Check if session exists |
-| `get_recent_sessions` | Review past work |
-| `record_file_discussed` | Any file is mentioned |
-| `record_file_edited` | After file edits |
-| `get_important_files` | Prioritize review |
-| `get_coedited_files` | Find related files |
-| `get_file_clusters` | Understand modules |
-| `find_similar_questions` | BEFORE answering questions |
-| `store_qa` | After useful answers |
-| `detect_domains` | Tag file business domains |
-| `recalculate_importance` | Weekly maintenance |
+### 🔍 Search (1 tool)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `smartsearch` | Unified smart search (auto-detects semantic/graph/pattern strategy) | ANY code question |
 
-### Search & Index (6 tools) 🔍
-| Tool | Use When |
-|------|----------|
-| `smartsearch` | ANY code question |
-| `query` | Semantic code search |
-| `index_file` | After file changes |
-| `index_directory` | New folders |
-| `reindex` | Major refactoring |
-| `search_patterns` | Find implementations |
+### 📥 Indexing (1 tool)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `index` | Index code (scope: file, directory, reindex) | After file changes, new folders, refactoring |
 
-### Analysis (4 tools) 📊
-| Tool | Use When |
-|------|----------|
-| `dependency_chain` | Class relationships |
-| `impact_analysis` | Before changes |
-| `find_circular_dependencies` | Architecture review |
-| `analyze_code_complexity` | Before commits |
+### 🧠 Session & Learning (6 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `start_session` | Start learning session | Beginning of conversation |
+| `end_session` | End session with summary | End of conversation |
+| `record_file_discussed` | Record file was discussed | Any file is mentioned |
+| `record_file_edited` | Record file was edited | After file edits |
+| `store_qa` | Store Q&A for recall | After useful answers |
+| `find_similar_questions` | Find similar past questions | BEFORE answering questions |
 
-### Validation (9 tools) ✅
-| Tool | Use When |
-|------|----------|
-| `validate_best_practices` | Task completion |
-| `validate_security` | Before deploy |
-| `validate_pattern_quality` | Pattern review |
-| `validate_project` | Major features |
-| `validate_task` | Plan tasks |
-| `find_anti_patterns` | Refactoring |
-| `get_recommendations` | After indexing |
-| `get_migration_path` | Legacy patterns |
-| `get_available_best_practices` | See options |
+### 📊 Analysis (4 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `impact_analysis` | What code is impacted by changes | Before changes |
+| `dependency_chain` | Class dependencies + circular detection | Understanding relationships |
+| `analyze_complexity` | Code complexity metrics | Before commits |
+| `validate` | Unified validation (scope: best_practices, security, pattern_quality, anti_patterns, project, all) | Before task completion |
 
-### Planning & TODO (8 tools) 📋
-| Tool | Use When |
-|------|----------|
-| `create_plan` | Multi-step tasks |
-| `get_plan_status` | Check progress |
-| `update_task_status` | Task updates |
-| `complete_plan` | All done |
-| `search_plans` | Find plans |
-| `add_todo` | Track debt |
-| `search_todos` | Find issues |
-| `update_todo_status` | Fix TODOs |
+### 🎯 Intelligence (4 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `get_recommendations` | Architecture recommendations | After indexing |
+| `get_important_files` | Most important files by usage | Prioritize review |
+| `get_coedited_files` | Files edited together + clusters | Find related files |
+| `get_insights` | System insights (category: patterns, prompts, tools, sessions, all) | View metrics |
 
-### Transformation (8 tools) 🎨
-| Tool | Use When |
-|------|----------|
-| `analyze_css` | Before CSS changes |
-| `transform_css` | Modernize CSS |
-| `transform_page` | Blazor/Razor pages |
-| `learn_transformation` | From examples |
-| `apply_transformation` | Reuse patterns |
-| `list_transformation_patterns` | See patterns |
-| `detect_reusable_components` | UI cleanup |
-| `extract_component` | Create shared |
+### 📋 Planning (4 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `create_plan` | Create dev plan with tasks | Multi-step tasks |
+| `manage_plan` | Manage plans (action: get_status, update_task, complete, search, validate_task) | Plan operations |
+| `add_todo` | Add TODO item | Track debt |
+| `manage_todos` | Manage TODOs (action: search, update_status) | TODO operations |
 
-### Workspace (2 tools) 🔧
-| Tool | Use When |
-|------|----------|
-| `register_workspace` | Auto on startup |
-| `unregister_workspace` | Auto on shutdown |
+### 🎨 Transformation (2 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `transform` | Transform code (type: page, css, analyze_css, learn_pattern, apply_pattern, detect_components, extract_component) | UI/Code modernization |
+| `get_migration_path` | Migration path for legacy patterns | Upgrading legacy code |
+
+### 🔄 Evolving System (3 tools)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `manage_prompts` | Manage LLM prompts (action: list, get_history, create_version, start_ab_test, etc.) | Prompt management |
+| `manage_patterns` | Manage patterns (action: list, get_metrics, suggest_new, evolve, deprecate, etc.) | Pattern management |
+| `feedback` | Record prompt/pattern feedback (type: prompt, pattern) | After using prompts/patterns |
 
 ---
 
+## 🔧 Tool Parameter Reference
+
+### `index` Parameters
+```
+scope: "file" | "directory" | "reindex"
+path: string (required)
+context: string (required)
+recursive: boolean (for directory, default: true)
+removeStale: boolean (for reindex, default: true)
+```
+
+### `validate` Parameters
+```
+context: string (required)
+scope: "best_practices" | "security" | "pattern_quality" | "anti_patterns" | "project" | "all"
+patternId: string (required for pattern_quality)
+minSeverity: "low" | "medium" | "high" | "critical"
+```
+
+### `transform` Parameters
+```
+type: "page" | "css" | "analyze_css" | "learn_pattern" | "apply_pattern" | "detect_components" | "extract_component"
+sourcePath: string
+outputPath: string (optional)
+# Type-specific options available
+```
+
+### `manage_plan` Parameters
+```
+action: "get_status" | "update_task" | "complete" | "search" | "validate_task"
+planId: string (required for most actions)
+taskId: string (for update_task, validate_task)
+status: string (for update_task)
+```
+
+### `get_insights` Parameters
+```
+category: "patterns" | "prompts" | "tools" | "sessions" | "all"
+context: string (optional)
+limit: number (default: 10)
+```
+
+---

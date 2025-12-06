@@ -276,9 +276,10 @@ public class McpService : IMcpService
     {
         try
         {
-            // Parse tool call params from request
+            // Parse tool call params from request (case-insensitive for JSON property names)
             var paramsJson = JsonSerializer.Serialize(request.Params);
-            var callParams = JsonSerializer.Deserialize<ToolCallParams>(paramsJson);
+            var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var callParams = JsonSerializer.Deserialize<ToolCallParams>(paramsJson, jsonOptions);
 
             if (callParams == null || string.IsNullOrWhiteSpace(callParams.Name))
             {

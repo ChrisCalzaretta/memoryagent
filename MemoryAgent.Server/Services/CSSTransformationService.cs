@@ -1,22 +1,27 @@
 using System.Text.RegularExpressions;
 using System.Text.Json;
+using System.Diagnostics;
 using MemoryAgent.Server.Models;
 
 namespace MemoryAgent.Server.Services;
 
 /// <summary>
 /// Transforms and modernizes CSS
+/// Now with evolving prompts via PromptService
 /// </summary>
 public class CSSTransformationService : ICSSTransformationService
 {
     private readonly ILLMService _llmService;
+    private readonly IPromptService _promptService;
     private readonly ILogger<CSSTransformationService> _logger;
     
     public CSSTransformationService(
         ILLMService llmService,
+        IPromptService promptService,
         ILogger<CSSTransformationService> logger)
     {
         _llmService = llmService;
+        _promptService = promptService;
         _logger = logger;
     }
     
@@ -184,13 +189,69 @@ public class CSSTransformationService : ICSSTransformationService
         CSSTransformationOptions options,
         CancellationToken cancellationToken = default)
     {
-        var prompt = BuildCSSTransformationPrompt(inlineStyles, analysis, options);
+        var stopwatch = Stopwatch.StartNew();
+        string prompt;
+        string? promptId = null;
+        
+        try
+        {
+            // Try to use versioned prompt
+            var promptTemplate = await _promptService.GetPromptAsync("css_transformation", allowTestVariant: true, cancellationToken);
+            promptId = promptTemplate.Id;
+            
+            var inlineStylesDesc = inlineStyles.Any()
+                ? string.Join("\n", inlineStyles.Take(10).Select(s => 
+                    $"- {s.Element}: {string.Join("; ", s.Styles.Select(kv => $"{kv.Key}: {kv.Value}"))}"))
+                : "No inline styles";
+            
+            var goals = new List<string>();
+            if (options.ExtractInlineStyles) goals.Add("✅ Extract ALL inline styles to external CSS");
+            if (options.GenerateVariables) goals.Add("✅ Generate CSS variables for colors, spacing, fonts");
+            if (options.ModernizeLayout) goals.Add("✅ Use modern layout (Grid/Flexbox instead of floats)");
+            if (options.AddResponsive) goals.Add("✅ Add responsive design (mobile-first)");
+            if (options.AddAccessibility) goals.Add("✅ Add accessibility (focus states, high contrast)");
+            
+            var variables = new Dictionary<string, string>
+            {
+                ["inlineStyleCount"] = inlineStyles.Count.ToString(),
+                ["inlineStyles"] = inlineStylesDesc + (inlineStyles.Count > 10 ? $"\n...and {inlineStyles.Count - 10} more" : ""),
+                ["issues"] = string.Join("\n", analysis.Issues.Select(i => $"- {i}")),
+                ["recommendations"] = string.Join("\n", analysis.Recommendations.Select(r => $"- {r}")),
+                ["qualityScore"] = analysis.QualityScore.ToString("F1"),
+                ["goals"] = string.Join("\n", goals)
+            };
+            
+            prompt = await _promptService.RenderPromptAsync("css_transformation", variables, cancellationToken);
+        }
+        catch
+        {
+            // Fallback to hardcoded prompt
+            prompt = BuildCSSTransformationPrompt(inlineStyles, analysis, options);
+        }
         
         // Call LLM (DeepSeek Coder)
         var response = await _llmService.GenerateAsync(prompt, cancellationToken);
+        stopwatch.Stop();
         
         // Parse response
         var result = ParseModernCSSResult(response);
+        
+        // Record execution for learning
+        if (promptId != null)
+        {
+            try
+            {
+                await _promptService.RecordExecutionAsync(
+                    promptId,
+                    prompt.Substring(0, Math.Min(2000, prompt.Length)),
+                    new Dictionary<string, string> { ["inlineStyleCount"] = inlineStyles.Count.ToString() },
+                    response.Substring(0, Math.Min(2000, response.Length)),
+                    stopwatch.ElapsedMilliseconds,
+                    parseSuccess: result.CSS != null,
+                    cancellationToken: cancellationToken);
+            }
+            catch { }
+        }
         
         return result;
     }

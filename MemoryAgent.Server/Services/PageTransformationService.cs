@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Text.Json;
+using System.Diagnostics;
 using MemoryAgent.Server.CodeAnalysis;
 using MemoryAgent.Server.Models;
 
@@ -7,10 +8,12 @@ namespace MemoryAgent.Server.Services;
 
 /// <summary>
 /// Transforms Blazor/Razor pages to modern architecture
+/// Now with evolving prompts via PromptService
 /// </summary>
 public class PageTransformationService : IPageTransformationService
 {
     private readonly ILLMService _llmService;
+    private readonly IPromptService _promptService;
     private readonly RazorParser _razorParser;
     private readonly ICSSTransformationService _cssService;
     private readonly IComponentExtractionService _componentService;
@@ -21,12 +24,14 @@ public class PageTransformationService : IPageTransformationService
     
     public PageTransformationService(
         ILLMService llmService,
+        IPromptService promptService,
         RazorParser razorParser,
         ICSSTransformationService cssService,
         IComponentExtractionService componentService,
         ILogger<PageTransformationService> logger)
     {
         _llmService = llmService;
+        _promptService = promptService;
         _razorParser = razorParser;
         _cssService = cssService;
         _componentService = componentService;
@@ -289,13 +294,64 @@ public class PageTransformationService : IPageTransformationService
         TransformationOptions options,
         CancellationToken cancellationToken)
     {
-        var prompt = BuildTransformationPrompt(parsed, sourceCode, analysis, options);
+        var stopwatch = Stopwatch.StartNew();
+        var fileName = parsed.CodeElements.FirstOrDefault()?.FilePath ?? "Unknown";
+        string prompt;
+        string? promptId = null;
+        
+        try
+        {
+            // Try to use versioned prompt
+            var promptTemplate = await _promptService.GetPromptAsync("page_transformation", allowTestVariant: true, cancellationToken);
+            promptId = promptTemplate.Id;
+            
+            var goals = new List<string>();
+            if (options.ExtractComponents) goals.Add("✅ Extract reusable components from repeated patterns");
+            if (options.ModernizeCSS) goals.Add("✅ Modernize CSS (extract inline styles, use CSS variables)");
+            if (options.AddErrorHandling) goals.Add("✅ Add comprehensive error handling");
+            if (options.AddLoadingStates) goals.Add("✅ Add loading states and indicators");
+            if (options.AddAccessibility) goals.Add("✅ Add accessibility (ARIA labels, keyboard nav)");
+            
+            var variables = new Dictionary<string, string>
+            {
+                ["fileName"] = fileName,
+                ["sourceCode"] = sourceCode,
+                ["issues"] = string.Join("\n", analysis.Issues.Select(i => $"- {i}")),
+                ["goals"] = string.Join("\n", goals)
+            };
+            
+            prompt = await _promptService.RenderPromptAsync("page_transformation", variables, cancellationToken);
+        }
+        catch
+        {
+            // Fallback to hardcoded prompt
+            prompt = BuildTransformationPrompt(parsed, sourceCode, analysis, options);
+        }
         
         // Call LLM (DeepSeek Coder)
         var response = await _llmService.GenerateAsync(prompt, cancellationToken);
+        stopwatch.Stop();
         
         // Parse response
         var plan = ParseTransformationPlan(response);
+        
+        // Record execution for learning
+        if (promptId != null)
+        {
+            try
+            {
+                await _promptService.RecordExecutionAsync(
+                    promptId,
+                    prompt.Substring(0, Math.Min(2000, prompt.Length)),
+                    new Dictionary<string, string> { ["fileName"] = fileName },
+                    response.Substring(0, Math.Min(2000, response.Length)),
+                    stopwatch.ElapsedMilliseconds,
+                    confidence: plan.Confidence,
+                    parseSuccess: !string.IsNullOrEmpty(plan.MainComponentCode),
+                    cancellationToken: cancellationToken);
+            }
+            catch { }
+        }
         
         return plan;
     }

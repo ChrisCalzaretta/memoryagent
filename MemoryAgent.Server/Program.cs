@@ -2,6 +2,7 @@ using MemoryAgent.Server.CodeAnalysis;
 using MemoryAgent.Server.Services;
 using MemoryAgent.Server.Services.PatternValidation;
 using MemoryAgent.Server.Services.Mcp;
+using MemoryAgent.Server.Services.Mcp.Consolidated;
 using MemoryAgent.Server.FileWatcher;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -55,17 +56,22 @@ builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddSingleton<ISemgrepService, SemgrepService>();
 builder.Services.AddScoped<IReindexService, ReindexService>();
 
-// MCP Service (refactored) - Orchestrator + 8 Category Handlers
+// MCP Service - Orchestrator + 8 CONSOLIDATED Tool Handlers (25 tools total)
+// Consolidated from 73 tools to 25 for better AI decision-making
 builder.Services.AddScoped<IMcpService, McpService>();
-builder.Services.AddScoped<IMcpToolHandler, IndexingToolHandler>();
-builder.Services.AddScoped<IMcpToolHandler, GraphAnalysisToolHandler>();
-builder.Services.AddScoped<IMcpToolHandler, TodoToolHandler>();
-builder.Services.AddScoped<IMcpToolHandler, PlanToolHandler>();
-builder.Services.AddScoped<IMcpToolHandler, PatternValidationToolHandler>();
-builder.Services.AddScoped<IMcpToolHandler, CodeAnalysisToolHandler>();
+
+// CONSOLIDATED TOOL HANDLERS (25 tools)
+builder.Services.AddScoped<IMcpToolHandler, SearchToolHandler>();       // 1: smartsearch
+builder.Services.AddScoped<IMcpToolHandler, IndexToolHandler>();        // 2: index
+builder.Services.AddScoped<IMcpToolHandler, SessionToolHandler>();      // 3-8: session & learning tools
+builder.Services.AddScoped<IMcpToolHandler, AnalysisToolHandler>();     // 9-12: analysis & validation
+builder.Services.AddScoped<IMcpToolHandler, IntelligenceToolHandler>(); // 13-16: recommendations & insights
+builder.Services.AddScoped<IMcpToolHandler, PlanningToolHandler>();     // 17-20: plans & todos
+builder.Services.AddScoped<IMcpToolHandler, TransformToolHandler>();    // 21-22: transform & migration
+builder.Services.AddScoped<IMcpToolHandler, EvolvingToolHandler>();     // 23-25: prompts, patterns, feedback
+
+// Workspace handler (kept separate - auto-called by wrapper)
 builder.Services.AddScoped<IMcpToolHandler, WorkspaceToolHandler>();
-builder.Services.AddScoped<IMcpToolHandler, TransformationToolHandler>();
-builder.Services.AddScoped<IMcpToolHandler, LearningToolHandler>();  // Agent Lightning learning tools
 
 builder.Services.AddScoped<ISmartSearchService, SmartSearchService>();
 builder.Services.AddScoped<IPatternIndexingService, PatternIndexingService>();
@@ -104,6 +110,11 @@ builder.Services.AddScoped<IPatternValidationService, PatternValidationService>(
 builder.Services.AddScoped<ITodoService, TodoService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<ITaskValidationService, TaskValidationService>();
+
+// Evolving Prompt & Pattern System (Self-Improving)
+// Note: Initialization happens automatically on startup (see auto-init section below)
+builder.Services.AddSingleton<IPromptService, PromptService>();
+builder.Services.AddSingleton<IEvolvingPatternCatalogService, EvolvingPatternCatalogService>();
 
 // Intent Classification (LLM-powered)
 builder.Services.AddScoped<IIntentClassificationService, IntentClassificationService>();
@@ -210,6 +221,35 @@ using (var scope = app.Services.CreateScope())
         }
 
         logger.LogInformation("Databases initialized successfully");
+        
+        // AUTO-INIT: Initialize evolving prompts and pattern catalog
+        // This ensures prompts and patterns are ready without requiring explicit tool calls
+        try
+        {
+            logger.LogInformation("Auto-initializing evolving systems...");
+            
+            // Initialize default prompts (idempotent - checks if exists first)
+            var promptService = scope.ServiceProvider.GetRequiredService<IPromptService>();
+            await promptService.InitializeDefaultPromptsAsync();
+            logger.LogInformation("✅ Default prompts initialized");
+            
+            // Initialize evolving pattern catalog from static best practices (idempotent)
+            var catalogService = scope.ServiceProvider.GetRequiredService<IEvolvingPatternCatalogService>();
+            var isInitialized = await catalogService.IsInitializedAsync();
+            if (!isInitialized)
+            {
+                await catalogService.InitializeFromStaticCatalogAsync();
+                logger.LogInformation("✅ Evolving pattern catalog initialized from static patterns");
+            }
+            else
+            {
+                logger.LogInformation("✅ Evolving pattern catalog already initialized");
+            }
+        }
+        catch (Exception initEx)
+        {
+            logger.LogWarning(initEx, "Failed to auto-initialize evolving systems. They will initialize on first use.");
+        }
     }
     catch (Exception ex)
     {

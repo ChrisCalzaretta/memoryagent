@@ -1,22 +1,27 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
 using MemoryAgent.Server.Models;
 
 namespace MemoryAgent.Server.Services;
 
 /// <summary>
 /// Detects and extracts reusable component patterns
+/// Now with evolving prompts via PromptService
 /// </summary>
 public class ComponentExtractionService : IComponentExtractionService
 {
     private readonly ILLMService _llmService;
+    private readonly IPromptService _promptService;
     private readonly ILogger<ComponentExtractionService> _logger;
     
     public ComponentExtractionService(
         ILLMService llmService,
+        IPromptService promptService,
         ILogger<ComponentExtractionService> logger)
     {
         _llmService = llmService;
+        _promptService = promptService;
         _logger = logger;
     }
     
@@ -73,11 +78,64 @@ public class ComponentExtractionService : IComponentExtractionService
     {
         _logger.LogInformation("Extracting component: {Name}", candidate.Name);
         
-        // Use LLM to generate the component
-        var prompt = BuildComponentExtractionPrompt(candidate);
+        var stopwatch = Stopwatch.StartNew();
+        string prompt;
+        string? promptId = null;
+        
+        try
+        {
+            // Try to use versioned prompt
+            var promptTemplate = await _promptService.GetPromptAsync("component_extraction", allowTestVariant: true, cancellationToken);
+            promptId = promptTemplate.Id;
+            
+            var example = candidate.Locations.First();
+            var parametersDesc = string.Join("\n", candidate.ProposedInterface.Parameters.Select(p => 
+                $"- {p.Name} ({p.Type}){(p.Required ? " [Required]" : "")} - {p.Description}"));
+            var eventsDesc = string.Join("\n", candidate.ProposedInterface.Events.Select(e => 
+                $"- {e.Name} ({e.Type}) - {e.Description}"));
+            
+            var variables = new Dictionary<string, string>
+            {
+                ["componentName"] = candidate.Name,
+                ["description"] = candidate.Description,
+                ["occurrences"] = candidate.Occurrences.ToString(),
+                ["exampleCode"] = example.Code,
+                ["parameters"] = parametersDesc,
+                ["events"] = eventsDesc,
+                ["filePath"] = example.FilePath,
+                ["lineStart"] = example.LineStart.ToString(),
+                ["lineEnd"] = example.LineEnd.ToString()
+            };
+            
+            prompt = await _promptService.RenderPromptAsync("component_extraction", variables, cancellationToken);
+        }
+        catch
+        {
+            // Fallback to hardcoded prompt
+            prompt = BuildComponentExtractionPrompt(candidate);
+        }
         
         var response = await _llmService.GenerateAsync(prompt, cancellationToken);
+        stopwatch.Stop();
+        
         var component = ParseExtractedComponent(response, candidate.Name, outputPath);
+        
+        // Record execution for learning
+        if (promptId != null)
+        {
+            try
+            {
+                await _promptService.RecordExecutionAsync(
+                    promptId,
+                    prompt.Substring(0, Math.Min(2000, prompt.Length)),
+                    new Dictionary<string, string> { ["componentName"] = candidate.Name },
+                    response.Substring(0, Math.Min(2000, response.Length)),
+                    stopwatch.ElapsedMilliseconds,
+                    parseSuccess: component.Code != null,
+                    cancellationToken: cancellationToken);
+            }
+            catch { }
+        }
         
         _logger.LogInformation("Generated component {Name} with {ParamCount} parameters",
             component.Name, component.Interface.Parameters.Count);

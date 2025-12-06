@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Diagnostics;
 using MemoryAgent.Server.Models;
 
 namespace MemoryAgent.Server.Services;
@@ -6,17 +7,21 @@ namespace MemoryAgent.Server.Services;
 /// <summary>
 /// LLM-powered service for classifying user intent from natural language
 /// Uses DeepSeek Coder via Ollama for intelligent classification
+/// Now with evolving prompts via PromptService
 /// </summary>
 public class IntentClassificationService : IIntentClassificationService
 {
     private readonly ILLMService _llmService;
+    private readonly IPromptService _promptService;
     private readonly ILogger<IntentClassificationService> _logger;
 
     public IntentClassificationService(
         ILLMService llmService,
+        IPromptService promptService,
         ILogger<IntentClassificationService> logger)
     {
         _llmService = llmService;
+        _promptService = promptService;
         _logger = logger;
     }
 
@@ -25,17 +30,63 @@ public class IntentClassificationService : IIntentClassificationService
         string? context = null,
         CancellationToken cancellationToken = default)
     {
+        var stopwatch = Stopwatch.StartNew();
+        PromptExecution? execution = null;
+        string? promptId = null;
+        
         try
         {
             _logger.LogInformation("🧠 Classifying user intent: '{Request}'", userRequest);
 
-            var prompt = BuildIntentClassificationPrompt(userRequest, context);
+            // Get versioned prompt (may be A/B tested)
+            string prompt;
+            try
+            {
+                var promptTemplate = await _promptService.GetPromptAsync("intent_classification", allowTestVariant: true, cancellationToken);
+                promptId = promptTemplate.Id;
+                
+                var variables = new Dictionary<string, string>
+                {
+                    ["userRequest"] = userRequest,
+                    ["context"] = context != null ? $"PROJECT CONTEXT: {context}" : ""
+                };
+                
+                prompt = await _promptService.RenderPromptAsync("intent_classification", variables, cancellationToken);
+            }
+            catch
+            {
+                // Fallback to hardcoded prompt if PromptService not initialized
+                prompt = BuildIntentClassificationPrompt(userRequest, context);
+            }
+
             var llmResponse = await _llmService.GenerateAsync(prompt, cancellationToken);
+            stopwatch.Stop();
 
             _logger.LogDebug("LLM Response: {Response}", llmResponse);
 
             // Parse JSON response
             var intent = ParseIntentResponse(llmResponse, userRequest);
+            
+            // Record execution for learning (if we used versioned prompt)
+            if (promptId != null)
+            {
+                try
+                {
+                    execution = await _promptService.RecordExecutionAsync(
+                        promptId,
+                        prompt,
+                        new Dictionary<string, string> { ["userRequest"] = userRequest, ["context"] = context ?? "" },
+                        llmResponse,
+                        stopwatch.ElapsedMilliseconds,
+                        confidence: intent.Confidence,
+                        parseSuccess: true,
+                        cancellationToken: cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to record prompt execution");
+                }
+            }
 
             _logger.LogInformation("✅ Intent classified: {ProjectType} / {Goal} / Confidence: {Confidence:P0}", 
                 intent.ProjectType, intent.PrimaryGoal, intent.Confidence);
@@ -44,7 +95,26 @@ public class IntentClassificationService : IIntentClassificationService
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
             _logger.LogError(ex, "Error classifying intent for: {Request}", userRequest);
+            
+            // Record failed execution
+            if (promptId != null)
+            {
+                try
+                {
+                    await _promptService.RecordExecutionAsync(
+                        promptId,
+                        "N/A",
+                        new Dictionary<string, string> { ["userRequest"] = userRequest },
+                        ex.Message,
+                        stopwatch.ElapsedMilliseconds,
+                        parseSuccess: false,
+                        parseError: ex.Message,
+                        cancellationToken: cancellationToken);
+                }
+                catch { }
+            }
             
             // Fallback to simple keyword-based classification
             return FallbackClassification(userRequest, context);
