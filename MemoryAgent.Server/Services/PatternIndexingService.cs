@@ -114,6 +114,8 @@ public class PatternIndexingService : IPatternIndexingService
 
     public async Task<int> GetPatternCountAsync(string? context = null, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant();
+        
         try
         {
             // Simplified: Use search to estimate count
@@ -122,7 +124,7 @@ public class PatternIndexingService : IPatternIndexingService
             var results = await _vectorService.SearchSimilarCodeAsync(
                 dummyEmbedding,
                 type: CodeMemoryType.Pattern,
-                context: context,
+                context: normalizedContext,
                 limit: 1000,
                 minimumScore: 0.0f,
                 cancellationToken: cancellationToken);
@@ -131,7 +133,7 @@ public class PatternIndexingService : IPatternIndexingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pattern count for context: {Context}", context);
+            _logger.LogError(ex, "Error getting pattern count for context: {Context}", normalizedContext);
             return 0;
         }
     }
@@ -142,10 +144,12 @@ public class PatternIndexingService : IPatternIndexingService
         int limit = 100, 
         CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant();
+        
         try
         {
             // Simplified: Use GraphService which has pattern retrieval
-            return await _graphService.GetPatternsByTypeAsync(type, context, cancellationToken);
+            return await _graphService.GetPatternsByTypeAsync(type, normalizedContext, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -160,6 +164,8 @@ public class PatternIndexingService : IPatternIndexingService
         int limit = 20, 
         CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant();
+        
         try
         {
             // Generate embedding for the search query
@@ -168,7 +174,7 @@ public class PatternIndexingService : IPatternIndexingService
             // Search Qdrant for similar patterns
             var results = await _vectorService.SearchSimilarCodeAsync(
                 queryEmbedding,
-                context: context,
+                context: normalizedContext,
                 limit: limit,
                 minimumScore: 0.5f,
                 cancellationToken: cancellationToken);
@@ -191,7 +197,7 @@ public class PatternIndexingService : IPatternIndexingService
                 AzureBestPracticeUrl = r.Metadata.GetValueOrDefault("azure_url")?.ToString() ?? "",
                 Confidence = ParseFloatFromMetadata(r.Metadata, "confidence", 1.0f),
                 IsPositivePattern = ParseBoolFromMetadata(r.Metadata, "is_positive_pattern", true),
-                Context = context ?? ""
+                Context = normalizedContext ?? ""
             }).ToList();
         }
         catch (Exception ex)

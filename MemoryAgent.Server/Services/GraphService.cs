@@ -413,15 +413,16 @@ public class GraphService : IGraphService, IDisposable
 
     public async Task<List<List<string>>> FindCircularDependenciesAsync(string? context = null, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant();
         await using var session = _driver.AsyncSession();
 
         try
         {
             // IMPORTANT: Context filtering is CRITICAL for workspace isolation
             // If no context provided, we still need to ensure we don't mix workspaces
-            var contextFilter = string.IsNullOrWhiteSpace(context) 
-                ? "WHERE c1.context IS NOT NULL AND c1.context = c2.context" // Same workspace, any workspace
-                : "WHERE c1.context = $context AND c2.context = $context";    // Specific workspace
+            var contextFilter = string.IsNullOrWhiteSpace(normalizedContext) 
+                ? "WHERE c1.context IS NOT NULL AND toLower(c1.context) = toLower(c2.context)" // Same workspace, any workspace
+                : "WHERE toLower(c1.context) = $context AND toLower(c2.context) = $context";    // Specific workspace
 
             var result = await session.ExecuteReadAsync(async tx =>
             {
@@ -431,7 +432,7 @@ public class GraphService : IGraphService, IDisposable
                     AND c1 <> c2
                     RETURN [node in nodes(path) | node.name] AS cycle
                     LIMIT 50",
-                    new { context = context ?? "" });
+                    new { context = normalizedContext ?? "" });
 
                 var records = await cursor.ToListAsync();
                 return records.Select(r => r["cycle"].As<List<string>>()).ToList();
@@ -1013,6 +1014,7 @@ public class GraphService : IGraphService, IDisposable
 
     public async Task<List<TodoItem>> GetTodosAsync(string? context = null, TodoStatus? status = null, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant();
         await using var session = _driver.AsyncSession();
         
         return await session.ExecuteReadAsync(async tx =>
@@ -1020,10 +1022,10 @@ public class GraphService : IGraphService, IDisposable
             var conditions = new List<string>();
             var parameters = new Dictionary<string, object>();
 
-            if (!string.IsNullOrWhiteSpace(context))
+            if (!string.IsNullOrWhiteSpace(normalizedContext))
             {
-                conditions.Add("t.context = $context");
-                parameters["context"] = context;
+                conditions.Add("toLower(t.context) = $context");
+                parameters["context"] = normalizedContext;
             }
 
             if (status.HasValue)
@@ -1224,6 +1226,7 @@ public class GraphService : IGraphService, IDisposable
 
     public async Task<List<DevelopmentPlan>> GetPlansAsync(string? context = null, PlanStatus? status = null, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant();
         await using var session = _driver.AsyncSession();
         
         return await session.ExecuteReadAsync(async tx =>
@@ -1231,10 +1234,10 @@ public class GraphService : IGraphService, IDisposable
             var conditions = new List<string>();
             var parameters = new Dictionary<string, object>();
 
-            if (!string.IsNullOrWhiteSpace(context))
+            if (!string.IsNullOrWhiteSpace(normalizedContext))
             {
-                conditions.Add("p.context = $context");
-                parameters["context"] = context;
+                conditions.Add("toLower(p.context) = $context");
+                parameters["context"] = normalizedContext;
             }
 
             if (status.HasValue)
@@ -1415,6 +1418,7 @@ public class GraphService : IGraphService, IDisposable
 
     public async Task<List<CodePattern>> GetPatternsByTypeAsync(PatternType type, string? context = null, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant();
         await using var session = _driver.AsyncSession();
         
         return await session.ExecuteReadAsync(async tx =>
@@ -1422,10 +1426,10 @@ public class GraphService : IGraphService, IDisposable
             var conditions = new List<string> { "p.type = $type" };
             var parameters = new Dictionary<string, object> { ["type"] = type.ToString() };
 
-            if (!string.IsNullOrWhiteSpace(context))
+            if (!string.IsNullOrWhiteSpace(normalizedContext))
             {
-                conditions.Add("p.context = $context");
-                parameters["context"] = context;
+                conditions.Add("toLower(p.context) = $context");
+                parameters["context"] = normalizedContext;
             }
 
             var whereClause = "WHERE " + string.Join(" AND ", conditions);

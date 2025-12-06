@@ -18,7 +18,7 @@ public class TodoService : ITodoService
     {
         var todo = new TodoItem
         {
-            Context = request.Context,
+            Context = request.Context?.ToLowerInvariant() ?? "default",
             Title = request.Title,
             Description = request.Description,
             Priority = request.Priority,

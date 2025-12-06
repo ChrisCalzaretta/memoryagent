@@ -23,7 +23,7 @@ public class PlanService : IPlanService
     {
         var plan = new DevelopmentPlan
         {
-            Context = request.Context,
+            Context = request.Context?.ToLowerInvariant() ?? "default",
             Name = request.Name,
             Description = request.Description,
             Status = PlanStatus.Active,

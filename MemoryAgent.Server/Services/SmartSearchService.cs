@@ -70,6 +70,12 @@ public class SmartSearchService : ISmartSearchService
     {
         var stopwatch = Stopwatch.StartNew();
         
+        // Normalize context for consistent search across Qdrant and Neo4j
+        if (!string.IsNullOrWhiteSpace(request.Context))
+        {
+            request.Context = request.Context.ToLowerInvariant();
+        }
+        
         try
         {
             // Classify the query

@@ -148,7 +148,7 @@ public class PlanToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> CreatePlanToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString() ?? "default";
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant() ?? "default";
         var name = args?.GetValueOrDefault("name")?.ToString() ?? "";
         var description = args?.GetValueOrDefault("description")?.ToString() ?? "";
         var includeRecommendations = args?.TryGetValue("include_recommendations", out var incRec) == true && SafeParseBool(incRec, false);
@@ -357,7 +357,7 @@ public class PlanToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> SearchPlansToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.TryGetValue("context", out var ctx) == true ? ctx?.ToString() : null;
+        var context = args?.TryGetValue("context", out var ctx) == true ? ctx?.ToString()?.ToLowerInvariant() : null;
         var statusStr = args?.TryGetValue("status", out var stat) == true ? stat?.ToString() : null;
         PlanStatus? status = statusStr != null ? Enum.Parse<PlanStatus>(statusStr) : null;
 

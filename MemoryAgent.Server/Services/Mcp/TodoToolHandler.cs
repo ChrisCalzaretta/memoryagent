@@ -93,7 +93,7 @@ public class TodoToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> AddTodoToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString() ?? "default";
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant() ?? "default";
         var title = args?.GetValueOrDefault("title")?.ToString() ?? "";
         var description = args?.GetValueOrDefault("description")?.ToString() ?? "";
         var priority = Enum.TryParse<TodoPriority>(args?.GetValueOrDefault("priority")?.ToString(), out var parsedPriority) ? parsedPriority : TodoPriority.Medium;
@@ -134,7 +134,7 @@ public class TodoToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> SearchTodosToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.TryGetValue("context", out var ctx) == true ? ctx?.ToString() : null;
+        var context = args?.TryGetValue("context", out var ctx) == true ? ctx?.ToString()?.ToLowerInvariant() : null;
         var statusStr = args?.TryGetValue("status", out var stat) == true ? stat?.ToString() : null;
         var priorityStr = args?.TryGetValue("priority", out var prio) == true ? prio?.ToString() : null;
         var assignedTo = args?.TryGetValue("assignedTo", out var assigned) == true ? assigned?.ToString() : null;

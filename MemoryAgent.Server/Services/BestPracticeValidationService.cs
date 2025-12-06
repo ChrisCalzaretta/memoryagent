@@ -26,11 +26,12 @@ public class BestPracticeValidationService : IBestPracticeValidationService
         BestPracticeValidationRequest request,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Validating best practices for context: {Context}", request.Context);
+        var normalizedContext = request.Context?.ToLowerInvariant() ?? "default";
+        _logger.LogInformation("Validating best practices for context: {Context}", normalizedContext);
 
         var response = new BestPracticeValidationResponse
         {
-            Context = request.Context
+            Context = normalizedContext
         };
 
         // Determine which practices to check
@@ -72,7 +73,7 @@ public class BestPracticeValidationService : IBestPracticeValidationService
 
         _logger.LogInformation(
             "Validation complete for {Context}: {Score:P0} ({Implemented}/{Total} practices implemented)",
-            request.Context, response.OverallScore, response.PracticesImplemented, response.TotalPracticesChecked);
+            normalizedContext, response.OverallScore, response.PracticesImplemented, response.TotalPracticesChecked);
 
         return response;
     }

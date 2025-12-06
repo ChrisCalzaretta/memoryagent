@@ -86,14 +86,15 @@ public class PatternValidationService : IPatternValidationService
         bool includeLegacy = true,
         CancellationToken cancellationToken = default)
     {
-        var response = new FindAntiPatternsResponse { Summary = $"Anti-pattern analysis for {context}" };
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
+        var response = new FindAntiPatternsResponse { Summary = $"Anti-pattern analysis for {normalizedContext}" };
 
         // Get all patterns for context
         var allPatterns = new List<CodePattern>();
         
         foreach (PatternType type in Enum.GetValues(typeof(PatternType)))
         {
-            var patterns = await _patternIndexingService.GetPatternsByTypeAsync(type, context, 1000, cancellationToken);
+            var patterns = await _patternIndexingService.GetPatternsByTypeAsync(type, normalizedContext, 1000, cancellationToken);
             if (patterns.Any())
                 allPatterns.AddRange(patterns);
         }
@@ -104,7 +105,7 @@ public class PatternValidationService : IPatternValidationService
             if (!includeLegacy && pattern.IsPositivePattern)
                 continue;
 
-            var validation = await ValidatePatternQualityAsync(pattern.Id, context, false, cancellationToken);
+            var validation = await ValidatePatternQualityAsync(pattern.Id, normalizedContext, false, cancellationToken);
 
             if (validation.Pattern.Name == "Not Found" && validation.Score == 0)
                 continue;
@@ -133,6 +134,7 @@ public class PatternValidationService : IPatternValidationService
         List<PatternType>? patternTypes = null,
         CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         var response = new ValidateSecurityResponse();
 
         patternTypes ??= new List<PatternType>
@@ -147,11 +149,11 @@ public class PatternValidationService : IPatternValidationService
 
         foreach (var type in patternTypes)
         {
-            var patterns = await _patternIndexingService.GetPatternsByTypeAsync(type, context, 1000, cancellationToken);
+            var patterns = await _patternIndexingService.GetPatternsByTypeAsync(type, normalizedContext, 1000, cancellationToken);
 
             foreach (var pattern in patterns)
             {
-                var validation = await ValidatePatternQualityAsync(pattern.Id, context, false, cancellationToken);
+                var validation = await ValidatePatternQualityAsync(pattern.Id, normalizedContext, false, cancellationToken);
 
                 foreach (var issue in validation.Issues.Where(i => i.Category == IssueCategory.Security))
                 {
@@ -208,12 +210,13 @@ public class PatternValidationService : IPatternValidationService
         string context,
         CancellationToken cancellationToken = default)
     {
-        var report = new ProjectValidationReport { Context = context };
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
+        var report = new ProjectValidationReport { Context = normalizedContext };
 
         var allPatterns = new List<CodePattern>();
         foreach (PatternType type in Enum.GetValues(typeof(PatternType)))
         {
-            var patterns = await _patternIndexingService.GetPatternsByTypeAsync(type, context, 1000, cancellationToken);
+            var patterns = await _patternIndexingService.GetPatternsByTypeAsync(type, normalizedContext, 1000, cancellationToken);
             allPatterns.AddRange(patterns);
         }
 
@@ -222,7 +225,7 @@ public class PatternValidationService : IPatternValidationService
         var detailedResults = new List<PatternQualityResult>();
         foreach (var pattern in allPatterns)
         {
-            var validation = await ValidatePatternQualityAsync(pattern.Id, context, false, cancellationToken);
+            var validation = await ValidatePatternQualityAsync(pattern.Id, normalizedContext, false, cancellationToken);
             detailedResults.Add(validation);
 
             var grade = validation.Grade;

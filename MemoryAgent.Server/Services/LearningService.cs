@@ -53,10 +53,13 @@ public class LearningService : ILearningService
 
     public async Task<Session> StartSessionAsync(string context, CancellationToken cancellationToken = default)
     {
+        // Normalize context to lowercase for consistent storage
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
+        
         var session = new Session
         {
             Id = Guid.NewGuid().ToString(),
-            Context = context,
+            Context = normalizedContext,
             StartedAt = DateTime.UtcNow
         };
 
@@ -81,7 +84,7 @@ public class LearningService : ILearningService
             });
         });
 
-        _logger.LogInformation("🆕 Started new session {SessionId} for context {Context}", session.Id, context);
+        _logger.LogInformation("🆕 Started new session {SessionId} for context {Context}", session.Id, normalizedContext);
         return session;
     }
 
@@ -110,6 +113,7 @@ public class LearningService : ILearningService
 
     public async Task<Session?> GetActiveSessionAsync(string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         return await neo4jSession.ExecuteReadAsync(async tx =>
@@ -120,7 +124,7 @@ public class LearningService : ILearningService
                 ORDER BY s.startedAt DESC
                 LIMIT 1";
 
-            var cursor = await tx.RunAsync(cypher, new { context });
+            var cursor = await tx.RunAsync(cypher, new { context = normalizedContext });
             
             if (await cursor.FetchAsync())
             {
@@ -207,6 +211,7 @@ public class LearningService : ILearningService
 
     public async Task<List<Session>> GetRecentSessionsAsync(string context, int limit = 10, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         return await neo4jSession.ExecuteReadAsync(async tx =>
@@ -219,7 +224,7 @@ public class LearningService : ILearningService
                 ORDER BY s.startedAt DESC
                 LIMIT $limit";
 
-            var cursor = await tx.RunAsync(cypher, new { context, limit });
+            var cursor = await tx.RunAsync(cypher, new { context = normalizedContext, limit });
             
             await foreach (var record in cursor)
             {
@@ -242,6 +247,8 @@ public class LearningService : ILearningService
         string context,
         CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
+        
         // Generate embedding for the question
         var questionEmbedding = await _embeddingService.GenerateEmbeddingAsync(question, cancellationToken);
         var qaId = Guid.NewGuid().ToString();
@@ -253,7 +260,7 @@ public class LearningService : ILearningService
             questionEmbedding,
             answer,
             relevantFiles,
-            context,
+            normalizedContext,
             cancellationToken);
         
         // Also store in Neo4j for graph relationships
@@ -279,7 +286,7 @@ public class LearningService : ILearningService
                 question,
                 answer,
                 relevantFiles,
-                context,
+                context = normalizedContext,
                 askedAt = DateTime.UtcNow.ToString("O")
             });
 
@@ -296,7 +303,7 @@ public class LearningService : ILearningService
         });
 
         _logger.LogInformation("⚡ Stored Q&A in lightning collection ({Context}): {Question}", 
-            context, question.Length > 50 ? question[..50] + "..." : question);
+            normalizedContext, question.Length > 50 ? question[..50] + "..." : question);
     }
 
     public async Task<List<QuestionMapping>> FindSimilarQuestionsAsync(
@@ -305,6 +312,7 @@ public class LearningService : ILearningService
         int limit = 5,
         CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         var mappings = new List<QuestionMapping>();
         
         try
@@ -315,7 +323,7 @@ public class LearningService : ILearningService
             // Search Qdrant lightning collection using vector similarity
             var qdrantResults = await _vectorService.SearchSimilarQuestionsAsync(
                 questionEmbedding,
-                context,
+                normalizedContext,
                 limit,
                 0.6f, // Lower threshold for Q&A similarity
                 cancellationToken);
@@ -329,7 +337,7 @@ public class LearningService : ILearningService
                     Question = result.Question,
                     Answer = result.Answer,
                     RelevantFiles = result.RelevantFiles,
-                    Context = context,
+                    Context = normalizedContext,
                     LastAskedAt = result.StoredAt,
                     FirstAskedAt = result.StoredAt
                 });
@@ -357,7 +365,7 @@ public class LearningService : ILearningService
                     LIMIT $limit";
 
                 var searchTerm = ExtractSearchTerm(question);
-                var cursor = await tx.RunAsync(cypher, new { context, searchTerm, limit });
+                var cursor = await tx.RunAsync(cypher, new { context = normalizedContext, searchTerm, limit });
                 
                 await foreach (var record in cursor)
                 {
@@ -393,6 +401,7 @@ public class LearningService : ILearningService
 
     public async Task RecordAccessAsync(string filePath, string? elementName, CodeMemoryType type, string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         await neo4jSession.ExecuteWriteAsync(async tx =>
@@ -424,7 +433,7 @@ public class LearningService : ILearningService
             await tx.RunAsync(cypher, new 
             { 
                 filePath, 
-                context, 
+                context = normalizedContext, 
                 elementName = elementName ?? "", 
                 elementType = type.ToString() 
             });
@@ -433,6 +442,7 @@ public class LearningService : ILearningService
 
     public async Task RecordEditAsync(string filePath, string? elementName, string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         await neo4jSession.ExecuteWriteAsync(async tx =>
@@ -464,12 +474,13 @@ public class LearningService : ILearningService
                         ELSE 0.95
                     END";
 
-            await tx.RunAsync(cypher, new { filePath, context, elementName = elementName ?? "" });
+            await tx.RunAsync(cypher, new { filePath, context = normalizedContext, elementName = elementName ?? "" });
         });
     }
 
     public async Task RecordSearchResultAsync(string filePath, string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         await neo4jSession.ExecuteWriteAsync(async tx =>
@@ -489,12 +500,13 @@ public class LearningService : ILearningService
                 ON MATCH SET 
                     i.searchResultCount = i.searchResultCount + 1";
 
-            await tx.RunAsync(cypher, new { filePath, context });
+            await tx.RunAsync(cypher, new { filePath, context = normalizedContext });
         });
     }
 
     public async Task RecordSelectionAsync(string filePath, string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         await neo4jSession.ExecuteWriteAsync(async tx =>
@@ -521,12 +533,13 @@ public class LearningService : ILearningService
                         ELSE 0.95
                     END";
 
-            await tx.RunAsync(cypher, new { filePath, context });
+            await tx.RunAsync(cypher, new { filePath, context = normalizedContext });
         });
     }
 
     public async Task<ImportanceMetric?> GetImportanceAsync(string filePath, string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         return await neo4jSession.ExecuteReadAsync(async tx =>
@@ -535,7 +548,7 @@ public class LearningService : ILearningService
                 MATCH (i:ImportanceMetric {filePath: $filePath, context: $context})
                 RETURN i";
 
-            var cursor = await tx.RunAsync(cypher, new { filePath, context });
+            var cursor = await tx.RunAsync(cypher, new { filePath, context = normalizedContext });
             
             if (await cursor.FetchAsync())
             {
@@ -549,6 +562,7 @@ public class LearningService : ILearningService
 
     public async Task<List<ImportanceMetric>> GetMostImportantFilesAsync(string context, int limit = 20, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         return await neo4jSession.ExecuteReadAsync(async tx =>
@@ -561,7 +575,7 @@ public class LearningService : ILearningService
                 ORDER BY i.importanceScore DESC, i.accessCount DESC
                 LIMIT $limit";
 
-            var cursor = await tx.RunAsync(cypher, new { context, limit });
+            var cursor = await tx.RunAsync(cypher, new { context = normalizedContext, limit });
             
             await foreach (var record in cursor)
             {
@@ -575,6 +589,7 @@ public class LearningService : ILearningService
 
     public async Task RecalculateImportanceScoresAsync(string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         await neo4jSession.ExecuteWriteAsync(async tx =>
@@ -600,10 +615,10 @@ public class LearningService : ILearningService
                     (i.recencyScore * 0.2)
                 ) / (i.accessCount + i.editCount + i.selectedCount + i.discussionCount + 1)";
 
-            await tx.RunAsync(cypher, new { context });
+            await tx.RunAsync(cypher, new { context = normalizedContext });
         });
 
-        _logger.LogInformation("📊 Recalculated importance scores for context: {Context}", context);
+        _logger.LogInformation("📊 Recalculated importance scores for context: {Context}", normalizedContext);
     }
 
     #endregion
@@ -615,6 +630,7 @@ public class LearningService : ILearningService
         if (filePaths.Count < 2)
             return;
 
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         // Create CO_EDITED_WITH relationships for all pairs
@@ -642,7 +658,7 @@ public class LearningService : ILearningService
                             ELSE r.sessions
                         END";
 
-                await tx.RunAsync(cypher, new { file1, file2, sessionId, context });
+                await tx.RunAsync(cypher, new { file1, file2, sessionId, context = normalizedContext });
             }
         });
 
@@ -651,6 +667,7 @@ public class LearningService : ILearningService
 
     public async Task<List<CoEditMetric>> GetCoEditedFilesAsync(string filePath, string context, int limit = 10, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         return await neo4jSession.ExecuteReadAsync(async tx =>
@@ -666,7 +683,7 @@ public class LearningService : ILearningService
                 ORDER BY r.count DESC
                 LIMIT $limit";
 
-            var cursor = await tx.RunAsync(cypher, new { filePath, context, limit });
+            var cursor = await tx.RunAsync(cypher, new { filePath, context = normalizedContext, limit });
             
             await foreach (var record in cursor)
             {
@@ -674,7 +691,7 @@ public class LearningService : ILearningService
                 {
                     FilePath1 = filePath,
                     FilePath2 = record["otherFile"].As<string>(),
-                    Context = context,
+                    Context = normalizedContext,
                     CoEditCount = record["count"].As<int>(),
                     SessionIds = record["sessions"].As<List<string>>() ?? new List<string>(),
                     CoEditStrength = CalculateCoEditStrength(record["count"].As<int>())
@@ -687,6 +704,7 @@ public class LearningService : ILearningService
 
     public async Task<List<List<string>>> GetFileClusterssAsync(string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         return await neo4jSession.ExecuteReadAsync(async tx =>
@@ -702,7 +720,7 @@ public class LearningService : ILearningService
                 ORDER BY size(cluster) DESC
                 LIMIT 20";
 
-            var cursor = await tx.RunAsync(cypher, new { context });
+            var cursor = await tx.RunAsync(cypher, new { context = normalizedContext });
             
             await foreach (var record in cursor)
             {
@@ -829,6 +847,7 @@ public class LearningService : ILearningService
 
     public async Task<List<string>> GetDomainsAsync(string context, CancellationToken cancellationToken = default)
     {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
         await using var neo4jSession = _driver.AsyncSession();
         
         return await neo4jSession.ExecuteReadAsync(async tx =>
@@ -840,7 +859,7 @@ public class LearningService : ILearningService
                 WHERE exists((d)<-[:BELONGS_TO_DOMAIN]-(:File {context: $context}))
                 RETURN DISTINCT d.name AS domain";
 
-            var cursor = await tx.RunAsync(cypher, new { context });
+            var cursor = await tx.RunAsync(cypher, new { context = normalizedContext });
             
             await foreach (var record in cursor)
             {

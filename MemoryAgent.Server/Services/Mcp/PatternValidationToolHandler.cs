@@ -204,7 +204,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
     private async Task<McpToolResult> SearchPatternsToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
         var query = args?.GetValueOrDefault("query")?.ToString() ?? "";
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var limit = SafeParseInt(args?.GetValueOrDefault("limit"), 20);
 
         if (string.IsNullOrWhiteSpace(query))
@@ -263,7 +263,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> ValidateBestPracticesToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(context))
             return ErrorResult("Context is required");
 
@@ -338,7 +338,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> GetRecommendationsToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(context))
             return ErrorResult("Context is required");
 
@@ -436,7 +436,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
     private async Task<McpToolResult> ValidatePatternQualityToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
         var patternId = args?.GetValueOrDefault("pattern_id")?.ToString() ?? "";
-        var context = args?.GetValueOrDefault("context")?.ToString();
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
         var includeAutoFix = SafeParseBool(args?.GetValueOrDefault("include_auto_fix"), true);
         var minSeverityStr = args?.GetValueOrDefault("min_severity")?.ToString() ?? "low";
         
@@ -498,7 +498,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> FindAntiPatternsToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString() ?? "";
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant() ?? "";
         var minSeverityStr = args?.GetValueOrDefault("min_severity")?.ToString() ?? "medium";
         var includeLegacy = SafeParseBool(args?.GetValueOrDefault("include_legacy"), true);
 
@@ -549,7 +549,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> ValidateSecurityToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString() ?? "";
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant() ?? "";
 
         var result = await _patternValidationService.ValidateSecurityAsync(context, null, cancellationToken);
 
@@ -665,7 +665,7 @@ public class PatternValidationToolHandler : IMcpToolHandler
 
     private async Task<McpToolResult> ValidateProjectToolAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
     {
-        var context = args?.GetValueOrDefault("context")?.ToString() ?? "";
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant() ?? "";
 
         var result = await _patternValidationService.ValidateProjectAsync(context, cancellationToken);
 

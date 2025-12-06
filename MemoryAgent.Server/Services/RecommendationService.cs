@@ -120,11 +120,12 @@ public async Task<User> GetUserById(int id)
         RecommendationRequest request,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Analyzing project for recommendations: {Context}", request.Context);
+        var normalizedContext = request.Context?.ToLowerInvariant() ?? "default";
+        _logger.LogInformation("Analyzing project for recommendations: {Context}", normalizedContext);
 
         var response = new RecommendationResponse
         {
-            Context = request.Context
+            Context = normalizedContext
         };
 
         try
@@ -135,7 +136,7 @@ public async Task<User> GetUserById(int id)
             {
                 if (patternType == PatternType.Unknown) continue;
 
-                var patterns = await _graphService.GetPatternsByTypeAsync(patternType, request.Context, cancellationToken);
+                var patterns = await _graphService.GetPatternsByTypeAsync(patternType, normalizedContext, cancellationToken);
                 allPatterns.AddRange(patterns);
             }
 
@@ -201,7 +202,7 @@ public async Task<User> GetUserById(int id)
             }
 
             // Detect anti-patterns or weak implementations
-            await DetectAntiPatternsAsync(allPatterns, response, request, cancellationToken);
+            await DetectAntiPatternsAsync(allPatterns, response, normalizedContext, cancellationToken);
 
             // Sort by priority and limit results
             response.Recommendations = response.Recommendations
@@ -212,11 +213,11 @@ public async Task<User> GetUserById(int id)
 
             _logger.LogInformation(
                 "Analysis complete for {Context}: {Health:P0} health, {Recommendations} recommendations",
-                request.Context, response.OverallHealth, response.Recommendations.Count);
+                normalizedContext, response.OverallHealth, response.Recommendations.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error analyzing project for recommendations: {Context}", request.Context);
+            _logger.LogError(ex, "Error analyzing project for recommendations: {Context}", normalizedContext);
             throw;
         }
 
@@ -226,11 +227,11 @@ public async Task<User> GetUserById(int id)
     private async Task DetectAntiPatternsAsync(
         List<CodePattern> allPatterns,
         RecommendationResponse response,
-        RecommendationRequest request,
+        string normalizedContext,
         CancellationToken cancellationToken)
     {
         // Check for database calls without caching
-        var hasDbCalls = await CheckForDatabaseCallsAsync(request.Context, cancellationToken);
+        var hasDbCalls = await CheckForDatabaseCallsAsync(normalizedContext, cancellationToken);
         var hasCaching = allPatterns.Any(p => p.Type == PatternType.Caching);
 
         if (hasDbCalls && !hasCaching)
@@ -249,7 +250,7 @@ public async Task<User> GetUserById(int id)
         }
 
         // Check for API endpoints without rate limiting
-        var hasApiEndpoints = await CheckForApiEndpointsAsync(request.Context, cancellationToken);
+        var hasApiEndpoints = await CheckForApiEndpointsAsync(normalizedContext, cancellationToken);
         var hasRateLimiting = allPatterns.Any(p => p.Name.Contains("RateLimit", StringComparison.OrdinalIgnoreCase));
 
         if (hasApiEndpoints && !hasRateLimiting)
