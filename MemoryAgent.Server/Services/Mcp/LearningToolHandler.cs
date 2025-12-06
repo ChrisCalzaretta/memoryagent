@@ -223,6 +223,67 @@ public class LearningToolHandler : IMcpToolHandler
                     },
                     required = new[] { "context" }
                 }
+            },
+            
+            // Tool Usage Analytics
+            new McpTool
+            {
+                Name = "get_tool_usage",
+                Description = "Get usage statistics for all MCP tools. Shows call counts, success rates, and average duration.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context name (optional, omit for all)" }
+                    },
+                    required = Array.Empty<string>()
+                }
+            },
+            new McpTool
+            {
+                Name = "get_popular_tools",
+                Description = "Get the most frequently used MCP tools, ranked by call count.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context name (optional)" },
+                        limit = new { type = "number", description = "Maximum number of tools to return", @default = 10 }
+                    },
+                    required = Array.Empty<string>()
+                }
+            },
+            new McpTool
+            {
+                Name = "get_recent_tool_invocations",
+                Description = "Get recent tool invocations for analysis. Shows what tools were called, with what arguments, and results.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context name (optional)" },
+                        toolName = new { type = "string", description = "Filter by specific tool name (optional)" },
+                        limit = new { type = "number", description = "Maximum number of invocations to return", @default = 20 }
+                    },
+                    required = Array.Empty<string>()
+                }
+            },
+            new McpTool
+            {
+                Name = "get_tool_patterns",
+                Description = "Discover tool usage patterns - which tools are commonly used together in workflows.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        context = new { type = "string", description = "Project context name (optional)" }
+                    },
+                    required = Array.Empty<string>()
+                }
             }
         };
     }
@@ -235,7 +296,8 @@ public class LearningToolHandler : IMcpToolHandler
             "record_file_discussed" or "record_file_edited" or
             "store_qa" or "find_similar_questions" or
             "get_important_files" or "get_coedited_files" or "get_file_clusters" or
-            "get_recent_sessions" or "detect_domains" or "recalculate_importance" => true,
+            "get_recent_sessions" or "detect_domains" or "recalculate_importance" or
+            "get_tool_usage" or "get_popular_tools" or "get_recent_tool_invocations" or "get_tool_patterns" => true,
             _ => false
         };
     }
@@ -260,6 +322,10 @@ public class LearningToolHandler : IMcpToolHandler
             "get_recent_sessions" => await GetRecentSessionsAsync(args, cancellationToken),
             "detect_domains" => await DetectDomainsAsync(args, cancellationToken),
             "recalculate_importance" => await RecalculateImportanceAsync(args, cancellationToken),
+            "get_tool_usage" => await GetToolUsageAsync(args, cancellationToken),
+            "get_popular_tools" => await GetPopularToolsAsync(args, cancellationToken),
+            "get_recent_tool_invocations" => await GetRecentToolInvocationsAsync(args, cancellationToken),
+            "get_tool_patterns" => await GetToolPatternsAsync(args, cancellationToken),
             _ => ErrorResult($"Unknown tool: {toolName}")
         };
     }
@@ -672,6 +738,193 @@ public class LearningToolHandler : IMcpToolHandler
             Content = new List<McpContent>
             {
                 new() { Type = "text", Text = $"📊 Importance scores recalculated for context: {context}\n\nRecency scores have been decayed based on time since last access." }
+            }
+        };
+    }
+
+    #endregion
+
+    #region Tool Usage Analytics
+
+    private async Task<McpToolResult> GetToolUsageAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
+        
+        var metrics = await _learningService.GetToolUsageMetricsAsync(context, cancellationToken);
+        
+        if (!metrics.Any())
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new() { Type = "text", Text = $"📊 No tool usage data found{(context != null ? $" for context: {context}" : "")}.\n\nTool usage tracking is automatic - start using tools to see analytics!" }
+                }
+            };
+        }
+        
+        var output = $"📊 Tool Usage Statistics{(context != null ? $" ({context})" : " (all contexts)")}\n\n";
+        output += $"Total Tools Used: {metrics.Count}\n";
+        output += $"Total Calls: {metrics.Sum(m => m.CallCount):N0}\n";
+        output += $"Overall Success Rate: {(metrics.Sum(m => m.SuccessCount) * 100.0 / Math.Max(1, metrics.Sum(m => m.CallCount))):F1}%\n\n";
+        output += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+        
+        foreach (var metric in metrics.Take(20))
+        {
+            var successRate = metric.CallCount > 0 
+                ? (metric.SuccessCount * 100.0 / metric.CallCount) : 100;
+            
+            output += $"🔧 {metric.ToolName}\n";
+            output += $"   Calls: {metric.CallCount:N0} | Success: {successRate:F0}% | Avg: {metric.AvgDurationMs:F0}ms\n";
+            output += $"   Last used: {metric.LastCalledAt:yyyy-MM-dd HH:mm}\n";
+            if (!string.IsNullOrEmpty(metric.LastQuery))
+                output += $"   Last query: {(metric.LastQuery.Length > 50 ? metric.LastQuery[..50] + "..." : metric.LastQuery)}\n";
+            output += "\n";
+        }
+        
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new() { Type = "text", Text = output }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> GetPopularToolsAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
+        var limit = GetIntArg(args, "limit", 10);
+        
+        var metrics = await _learningService.GetPopularToolsAsync(context, limit, cancellationToken);
+        
+        if (!metrics.Any())
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new() { Type = "text", Text = "📊 No tool usage data found. Start using tools to see popularity rankings!" }
+                }
+            };
+        }
+        
+        var output = $"🏆 Top {metrics.Count} Most Popular Tools{(context != null ? $" ({context})" : "")}\n\n";
+        
+        var rank = 1;
+        foreach (var metric in metrics)
+        {
+            var medal = rank switch
+            {
+                1 => "🥇",
+                2 => "🥈",
+                3 => "🥉",
+                _ => $"#{rank}"
+            };
+            
+            output += $"{medal} {metric.ToolName}\n";
+            output += $"   📞 {metric.CallCount:N0} calls | ✅ {(metric.SuccessCount * 100.0 / Math.Max(1, metric.CallCount)):F0}% success | ⏱️ {metric.AvgDurationMs:F0}ms avg\n";
+            
+            if (metric.CommonQueries?.Any() == true)
+            {
+                output += $"   🔍 Common: {string.Join(", ", metric.CommonQueries.Take(3).Select(q => q.Length > 20 ? q[..20] + "..." : q))}\n";
+            }
+            output += "\n";
+            rank++;
+        }
+        
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new() { Type = "text", Text = output }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> GetRecentToolInvocationsAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
+        var toolName = args?.GetValueOrDefault("toolName")?.ToString();
+        var limit = GetIntArg(args, "limit", 20);
+        
+        var invocations = await _learningService.GetRecentToolInvocationsAsync(context, toolName, limit, cancellationToken);
+        
+        if (!invocations.Any())
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new() { Type = "text", Text = $"📜 No recent tool invocations found{(toolName != null ? $" for tool: {toolName}" : "")}." }
+                }
+            };
+        }
+        
+        var output = $"📜 Recent Tool Invocations{(toolName != null ? $" ({toolName})" : "")}\n";
+        output += $"Showing {invocations.Count} most recent calls\n\n";
+        
+        foreach (var inv in invocations)
+        {
+            var statusIcon = inv.Success ? "✅" : "❌";
+            
+            output += $"{statusIcon} {inv.ToolName} @ {inv.Timestamp:HH:mm:ss}\n";
+            output += $"   ⏱️ {inv.DurationMs}ms | Context: {inv.Context}\n";
+            
+            if (!string.IsNullOrEmpty(inv.Query))
+                output += $"   🔍 Query: {(inv.Query.Length > 60 ? inv.Query[..60] + "..." : inv.Query)}\n";
+            
+            if (!inv.Success && !string.IsNullOrEmpty(inv.ErrorMessage))
+                output += $"   ⚠️ Error: {inv.ErrorMessage}\n";
+            
+            if (inv.ResultCount.HasValue)
+                output += $"   📊 Results: {inv.ResultCount}\n";
+            
+            output += "\n";
+        }
+        
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new() { Type = "text", Text = output }
+            }
+        };
+    }
+
+    private async Task<McpToolResult> GetToolPatternsAsync(Dictionary<string, object>? args, CancellationToken cancellationToken)
+    {
+        var context = args?.GetValueOrDefault("context")?.ToString()?.ToLowerInvariant();
+        
+        var patterns = await _learningService.GetToolUsagePatternsAsync(context, cancellationToken);
+        
+        if (!patterns.Any())
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new() { Type = "text", Text = "🔄 No tool usage patterns detected yet.\n\nPatterns emerge when tools are consistently used together in sessions (3+ times).\nKeep using tools in your workflows to discover patterns!" }
+                }
+            };
+        }
+        
+        var output = $"🔄 Tool Usage Patterns{(context != null ? $" ({context})" : "")}\n\n";
+        output += "These tools are commonly used together in workflows:\n\n";
+        
+        foreach (var (tool, following) in patterns)
+        {
+            output += $"🔧 {tool}\n";
+            output += $"   → Often followed by: {string.Join(", ", following)}\n\n";
+        }
+        
+        output += "💡 Tip: These patterns can help optimize your workflow and predict next actions!";
+        
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new() { Type = "text", Text = output }
             }
         };
     }

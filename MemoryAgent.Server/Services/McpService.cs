@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using MemoryAgent.Server.Models;
 using MemoryAgent.Server.Services.Mcp;
@@ -7,18 +8,31 @@ namespace MemoryAgent.Server.Services;
 /// <summary>
 /// Orchestrator for all MCP tools - delegates to specialized handlers
 /// Refactored from 2979 lines to ~150 lines using Strategy Pattern
+/// Now includes Agent Lightning tool usage tracking
 /// </summary>
 public class McpService : IMcpService
 {
     private readonly IEnumerable<IMcpToolHandler> _handlers;
+    private readonly ILearningService _learningService;
     private readonly ILogger<McpService> _logger;
     private readonly Dictionary<string, IMcpToolHandler> _toolHandlerMap;
+    
+    // Tools that should NOT be tracked to avoid infinite loops
+    private static readonly HashSet<string> _excludedFromTracking = new()
+    {
+        "get_tool_usage",
+        "get_popular_tools", 
+        "get_recent_tool_invocations",
+        "get_tool_patterns"
+    };
 
     public McpService(
         IEnumerable<IMcpToolHandler> handlers,
+        ILearningService learningService,
         ILogger<McpService> logger)
     {
         _handlers = handlers;
+        _learningService = learningService;
         _logger = logger;
 
         // Build tool→handler mapping for O(1) lookup
@@ -31,13 +45,14 @@ public class McpService : IMcpService
             }
         }
 
-        _logger.LogInformation("🎯 MCP Service initialized with {HandlerCount} handlers and {ToolCount} tools",
+        _logger.LogInformation("🎯 MCP Service initialized with {HandlerCount} handlers and {ToolCount} tools (with Agent Lightning tracking)",
             handlers.Count(), _toolHandlerMap.Count);
     }
 
     public async Task<McpToolResult> CallToolAsync(McpToolCall toolCall, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🔧 MCP Tool Call: {ToolName}", toolCall.Name);
+        var stopwatch = Stopwatch.StartNew();
 
         if (!_toolHandlerMap.TryGetValue(toolCall.Name, out var handler))
         {
@@ -60,13 +75,31 @@ public class McpService : IMcpService
         try
         {
             var result = await handler.HandleToolAsync(toolCall.Name, toolCall.Arguments, cancellationToken);
-            _logger.LogInformation("✅ MCP Tool '{ToolName}' completed {Status}",
-                toolCall.Name, result.IsError ? "with errors" : "successfully");
+            stopwatch.Stop();
+            
+            _logger.LogInformation("✅ MCP Tool '{ToolName}' completed {Status} in {Duration}ms",
+                toolCall.Name, result.IsError ? "with errors" : "successfully", stopwatch.ElapsedMilliseconds);
+            
+            // Track tool usage with Agent Lightning (except for tracking tools themselves)
+            if (!_excludedFromTracking.Contains(toolCall.Name))
+            {
+                await TrackToolInvocationAsync(toolCall, result, stopwatch.ElapsedMilliseconds, cancellationToken);
+            }
+            
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ MCP Tool '{ToolName}' failed with exception", toolCall.Name);
+            stopwatch.Stop();
+            _logger.LogError(ex, "❌ MCP Tool '{ToolName}' failed with exception in {Duration}ms", 
+                toolCall.Name, stopwatch.ElapsedMilliseconds);
+            
+            // Track failed invocation
+            if (!_excludedFromTracking.Contains(toolCall.Name))
+            {
+                await TrackToolInvocationAsync(toolCall, null, stopwatch.ElapsedMilliseconds, cancellationToken, ex.Message);
+            }
+            
             return new McpToolResult
             {
                 IsError = true,
@@ -80,6 +113,83 @@ public class McpService : IMcpService
                 }
             };
         }
+    }
+    
+    private async Task TrackToolInvocationAsync(
+        McpToolCall toolCall, 
+        McpToolResult? result, 
+        long durationMs, 
+        CancellationToken cancellationToken,
+        string? errorMessage = null)
+    {
+        try
+        {
+            // Extract context and query from arguments
+            var context = toolCall.Arguments?.GetValueOrDefault("context")?.ToString();
+            var query = ExtractQueryFromArguments(toolCall.Name, toolCall.Arguments);
+            var sessionId = toolCall.Arguments?.GetValueOrDefault("sessionId")?.ToString();
+            
+            // Extract result summary and count
+            string? resultSummary = null;
+            int? resultCount = null;
+            
+            if (result != null && !result.IsError && result.Content?.Any() == true)
+            {
+                var textContent = result.Content.FirstOrDefault(c => c.Type == "text")?.Text;
+                if (textContent != null)
+                {
+                    resultSummary = textContent.Length > 200 ? textContent[..200] + "..." : textContent;
+                    
+                    // Try to extract result count from common patterns
+                    if (textContent.Contains(" results") || textContent.Contains(" found"))
+                    {
+                        var match = System.Text.RegularExpressions.Regex.Match(textContent, @"(\d+)\s+(results?|found|items?|files?|patterns?)");
+                        if (match.Success && int.TryParse(match.Groups[1].Value, out var count))
+                        {
+                            resultCount = count;
+                        }
+                    }
+                }
+            }
+            
+            await _learningService.RecordToolInvocationAsync(
+                toolCall.Name,
+                context,
+                sessionId,
+                query,
+                toolCall.Arguments,
+                errorMessage == null && (result?.IsError != true),
+                errorMessage ?? (result?.IsError == true ? "Tool returned error" : null),
+                durationMs,
+                resultSummary,
+                resultCount,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Don't let tracking failures break the tool call
+            _logger.LogWarning(ex, "Failed to track tool invocation for {ToolName}", toolCall.Name);
+        }
+    }
+    
+    private static string? ExtractQueryFromArguments(string toolName, Dictionary<string, object>? args)
+    {
+        if (args == null) return null;
+        
+        // Different tools use different parameter names for the query/question
+        var queryKeys = new[] { "query", "question", "search", "filePath", "path", "className", "pattern_id" };
+        
+        foreach (var key in queryKeys)
+        {
+            if (args.TryGetValue(key, out var value) && value != null)
+            {
+                var strValue = value.ToString();
+                if (!string.IsNullOrWhiteSpace(strValue))
+                    return strValue;
+            }
+        }
+        
+        return null;
     }
 
     public async Task<List<McpTool>> GetToolsAsync(CancellationToken cancellationToken = default)

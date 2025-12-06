@@ -1044,5 +1044,337 @@ public class LearningService : ILearningService
     }
 
     #endregion
+
+    #region Tool Usage Tracking
+
+    public async Task RecordToolInvocationAsync(
+        string toolName,
+        string? context,
+        string? sessionId,
+        string? query,
+        Dictionary<string, object>? arguments,
+        bool success,
+        string? errorMessage,
+        long durationMs,
+        string? resultSummary,
+        int? resultCount,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedContext = context?.ToLowerInvariant() ?? "default";
+        var invocationId = Guid.NewGuid().ToString();
+        
+        // Serialize arguments to JSON (truncate if too long)
+        var argsJson = arguments != null 
+            ? System.Text.Json.JsonSerializer.Serialize(arguments)
+            : null;
+        if (argsJson?.Length > 2000)
+            argsJson = argsJson[..2000] + "...";
+        
+        // Truncate result summary if too long
+        if (resultSummary?.Length > 500)
+            resultSummary = resultSummary[..500] + "...";
+
+        await using var neo4jSession = _driver.AsyncSession();
+        
+        await neo4jSession.ExecuteWriteAsync(async tx =>
+        {
+            // 1. Store individual invocation
+            var invocationCypher = @"
+                CREATE (i:ToolInvocation {
+                    id: $id,
+                    toolName: $toolName,
+                    context: $context,
+                    sessionId: $sessionId,
+                    query: $query,
+                    argumentsJson: $argumentsJson,
+                    success: $success,
+                    errorMessage: $errorMessage,
+                    durationMs: $durationMs,
+                    resultSummary: $resultSummary,
+                    resultCount: $resultCount,
+                    timestamp: datetime()
+                })";
+            
+            await tx.RunAsync(invocationCypher, new
+            {
+                id = invocationId,
+                toolName,
+                context = normalizedContext,
+                sessionId = sessionId ?? "",
+                query = query ?? "",
+                argumentsJson = argsJson ?? "",
+                success,
+                errorMessage = errorMessage ?? "",
+                durationMs,
+                resultSummary = resultSummary ?? "",
+                resultCount = resultCount ?? 0
+            });
+            
+            // 2. Update aggregated metrics
+            var metricsCypher = @"
+                MERGE (m:ToolUsageMetric {toolName: $toolName, context: $context})
+                ON CREATE SET 
+                    m.callCount = 1,
+                    m.successCount = CASE WHEN $success THEN 1 ELSE 0 END,
+                    m.errorCount = CASE WHEN $success THEN 0 ELSE 1 END,
+                    m.totalDurationMs = $durationMs,
+                    m.avgDurationMs = $durationMs,
+                    m.firstCalledAt = datetime(),
+                    m.lastCalledAt = datetime(),
+                    m.lastQuery = $query,
+                    m.commonQueries = CASE WHEN $query <> '' THEN [$query] ELSE [] END
+                ON MATCH SET 
+                    m.callCount = m.callCount + 1,
+                    m.successCount = CASE WHEN $success THEN m.successCount + 1 ELSE m.successCount END,
+                    m.errorCount = CASE WHEN $success THEN m.errorCount ELSE m.errorCount + 1 END,
+                    m.totalDurationMs = m.totalDurationMs + $durationMs,
+                    m.avgDurationMs = (m.totalDurationMs + $durationMs) / (m.callCount + 1),
+                    m.lastCalledAt = datetime(),
+                    m.lastQuery = CASE WHEN $query <> '' THEN $query ELSE m.lastQuery END,
+                    m.commonQueries = CASE 
+                        WHEN $query <> '' AND NOT $query IN m.commonQueries 
+                        THEN m.commonQueries + $query 
+                        ELSE m.commonQueries 
+                    END";
+            
+            await tx.RunAsync(metricsCypher, new
+            {
+                toolName,
+                context = normalizedContext,
+                success,
+                durationMs,
+                query = query ?? ""
+            });
+            
+            // 3. Link invocation to session if available
+            if (!string.IsNullOrWhiteSpace(sessionId))
+            {
+                var linkCypher = @"
+                    MATCH (i:ToolInvocation {id: $invocationId})
+                    MATCH (s:Session {id: $sessionId})
+                    MERGE (s)-[:USED_TOOL]->(i)";
+                
+                await tx.RunAsync(linkCypher, new { invocationId, sessionId });
+            }
+        });
+
+        _logger.LogDebug("📊 Recorded tool invocation: {ToolName} in {Context} ({Duration}ms, success={Success})",
+            toolName, normalizedContext, durationMs, success);
+    }
+
+    public async Task<List<ToolUsageMetric>> GetToolUsageMetricsAsync(
+        string? context = null,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedContext = context?.ToLowerInvariant();
+        await using var neo4jSession = _driver.AsyncSession();
+        
+        return await neo4jSession.ExecuteReadAsync(async tx =>
+        {
+            var metrics = new List<ToolUsageMetric>();
+            
+            var contextFilter = string.IsNullOrWhiteSpace(normalizedContext)
+                ? ""
+                : "WHERE m.context = $context";
+            
+            var cypher = $@"
+                MATCH (m:ToolUsageMetric)
+                {contextFilter}
+                RETURN m
+                ORDER BY m.callCount DESC";
+            
+            var parameters = string.IsNullOrWhiteSpace(normalizedContext)
+                ? new Dictionary<string, object>()
+                : new Dictionary<string, object> { ["context"] = normalizedContext };
+            
+            var cursor = await tx.RunAsync(cypher, parameters);
+            
+            await foreach (var record in cursor)
+            {
+                var node = record["m"].As<INode>();
+                metrics.Add(MapToolUsageMetricFromNode(node));
+            }
+            
+            return metrics;
+        });
+    }
+
+    public async Task<List<ToolUsageMetric>> GetPopularToolsAsync(
+        string? context = null,
+        int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedContext = context?.ToLowerInvariant();
+        await using var neo4jSession = _driver.AsyncSession();
+        
+        return await neo4jSession.ExecuteReadAsync(async tx =>
+        {
+            var metrics = new List<ToolUsageMetric>();
+            
+            var contextFilter = string.IsNullOrWhiteSpace(normalizedContext)
+                ? ""
+                : "WHERE m.context = $context";
+            
+            var cypher = $@"
+                MATCH (m:ToolUsageMetric)
+                {contextFilter}
+                RETURN m
+                ORDER BY m.callCount DESC
+                LIMIT $limit";
+            
+            var parameters = new Dictionary<string, object> { ["limit"] = limit };
+            if (!string.IsNullOrWhiteSpace(normalizedContext))
+                parameters["context"] = normalizedContext;
+            
+            var cursor = await tx.RunAsync(cypher, parameters);
+            
+            await foreach (var record in cursor)
+            {
+                var node = record["m"].As<INode>();
+                metrics.Add(MapToolUsageMetricFromNode(node));
+            }
+            
+            return metrics;
+        });
+    }
+
+    public async Task<List<ToolInvocation>> GetRecentToolInvocationsAsync(
+        string? context = null,
+        string? toolName = null,
+        int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedContext = context?.ToLowerInvariant();
+        await using var neo4jSession = _driver.AsyncSession();
+        
+        return await neo4jSession.ExecuteReadAsync(async tx =>
+        {
+            var invocations = new List<ToolInvocation>();
+            
+            var conditions = new List<string>();
+            var parameters = new Dictionary<string, object> { ["limit"] = limit };
+            
+            if (!string.IsNullOrWhiteSpace(normalizedContext))
+            {
+                conditions.Add("i.context = $context");
+                parameters["context"] = normalizedContext;
+            }
+            
+            if (!string.IsNullOrWhiteSpace(toolName))
+            {
+                conditions.Add("i.toolName = $toolName");
+                parameters["toolName"] = toolName;
+            }
+            
+            var whereClause = conditions.Any() ? "WHERE " + string.Join(" AND ", conditions) : "";
+            
+            var cypher = $@"
+                MATCH (i:ToolInvocation)
+                {whereClause}
+                RETURN i
+                ORDER BY i.timestamp DESC
+                LIMIT $limit";
+            
+            var cursor = await tx.RunAsync(cypher, parameters);
+            
+            await foreach (var record in cursor)
+            {
+                var node = record["i"].As<INode>();
+                invocations.Add(MapToolInvocationFromNode(node));
+            }
+            
+            return invocations;
+        });
+    }
+
+    public async Task<Dictionary<string, List<string>>> GetToolUsagePatternsAsync(
+        string? context = null,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedContext = context?.ToLowerInvariant();
+        await using var neo4jSession = _driver.AsyncSession();
+        
+        return await neo4jSession.ExecuteReadAsync(async tx =>
+        {
+            var patterns = new Dictionary<string, List<string>>();
+            
+            // Find tools that are commonly used together in the same session
+            var contextFilter = string.IsNullOrWhiteSpace(normalizedContext)
+                ? ""
+                : "WHERE i1.context = $context AND i2.context = $context";
+            
+            var cypher = $@"
+                MATCH (s:Session)-[:USED_TOOL]->(i1:ToolInvocation)
+                MATCH (s)-[:USED_TOOL]->(i2:ToolInvocation)
+                {contextFilter}
+                WHERE i1.toolName <> i2.toolName
+                  AND i1.timestamp < i2.timestamp
+                WITH i1.toolName AS tool1, i2.toolName AS tool2, count(*) AS coCount
+                WHERE coCount >= 3
+                RETURN tool1, collect(DISTINCT tool2) AS followingTools
+                ORDER BY tool1";
+            
+            var parameters = string.IsNullOrWhiteSpace(normalizedContext)
+                ? new Dictionary<string, object>()
+                : new Dictionary<string, object> { ["context"] = normalizedContext };
+            
+            var cursor = await tx.RunAsync(cypher, parameters);
+            
+            await foreach (var record in cursor)
+            {
+                var tool = record["tool1"].As<string>();
+                var followingTools = record["followingTools"].As<List<string>>();
+                patterns[tool] = followingTools;
+            }
+            
+            return patterns;
+        });
+    }
+
+    private ToolUsageMetric MapToolUsageMetricFromNode(INode node)
+    {
+        var props = node.Properties;
+        return new ToolUsageMetric
+        {
+            ToolName = props["toolName"].As<string>(),
+            Context = props.ContainsKey("context") ? props["context"].As<string>() : "",
+            CallCount = props.ContainsKey("callCount") ? props["callCount"].As<int>() : 0,
+            SuccessCount = props.ContainsKey("successCount") ? props["successCount"].As<int>() : 0,
+            ErrorCount = props.ContainsKey("errorCount") ? props["errorCount"].As<int>() : 0,
+            AvgDurationMs = props.ContainsKey("avgDurationMs") ? props["avgDurationMs"].As<double>() : 0,
+            TotalDurationMs = props.ContainsKey("totalDurationMs") ? props["totalDurationMs"].As<long>() : 0,
+            FirstCalledAt = props.ContainsKey("firstCalledAt") ? ConvertNeo4jDateTime(props["firstCalledAt"]) : DateTime.UtcNow,
+            LastCalledAt = props.ContainsKey("lastCalledAt") ? ConvertNeo4jDateTime(props["lastCalledAt"]) : DateTime.UtcNow,
+            LastQuery = props.ContainsKey("lastQuery") ? props["lastQuery"].As<string>() : null,
+            CommonQueries = props.ContainsKey("commonQueries") ? props["commonQueries"].As<List<string>>() : new List<string>()
+        };
+    }
+
+    private ToolInvocation MapToolInvocationFromNode(INode node)
+    {
+        var props = node.Properties;
+        return new ToolInvocation
+        {
+            Id = props["id"].As<string>(),
+            ToolName = props["toolName"].As<string>(),
+            Context = props.ContainsKey("context") ? props["context"].As<string>() : "",
+            SessionId = props.ContainsKey("sessionId") && props["sessionId"].As<string>() != "" 
+                ? props["sessionId"].As<string>() : null,
+            Query = props.ContainsKey("query") && props["query"].As<string>() != "" 
+                ? props["query"].As<string>() : null,
+            ArgumentsJson = props.ContainsKey("argumentsJson") && props["argumentsJson"].As<string>() != "" 
+                ? props["argumentsJson"].As<string>() : null,
+            Success = props.ContainsKey("success") ? props["success"].As<bool>() : true,
+            ErrorMessage = props.ContainsKey("errorMessage") && props["errorMessage"].As<string>() != "" 
+                ? props["errorMessage"].As<string>() : null,
+            DurationMs = props.ContainsKey("durationMs") ? props["durationMs"].As<long>() : 0,
+            ResultSummary = props.ContainsKey("resultSummary") && props["resultSummary"].As<string>() != "" 
+                ? props["resultSummary"].As<string>() : null,
+            ResultCount = props.ContainsKey("resultCount") ? props["resultCount"].As<int>() : null,
+            Timestamp = props.ContainsKey("timestamp") ? ConvertNeo4jDateTime(props["timestamp"]) : DateTime.UtcNow
+        };
+    }
+
+    #endregion
 }
 

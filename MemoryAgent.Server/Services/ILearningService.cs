@@ -178,5 +178,56 @@ public interface ILearningService
         CancellationToken cancellationToken = default);
     
     #endregion
+    
+    #region Tool Usage Tracking
+    
+    /// <summary>
+    /// Record a tool invocation for learning and analytics
+    /// </summary>
+    Task RecordToolInvocationAsync(
+        string toolName,
+        string? context,
+        string? sessionId,
+        string? query,
+        Dictionary<string, object>? arguments,
+        bool success,
+        string? errorMessage,
+        long durationMs,
+        string? resultSummary,
+        int? resultCount,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get aggregated usage metrics for all tools
+    /// </summary>
+    Task<List<ToolUsageMetric>> GetToolUsageMetricsAsync(
+        string? context = null,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get most popular tools by call count
+    /// </summary>
+    Task<List<ToolUsageMetric>> GetPopularToolsAsync(
+        string? context = null,
+        int limit = 10,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get recent tool invocations for analysis
+    /// </summary>
+    Task<List<ToolInvocation>> GetRecentToolInvocationsAsync(
+        string? context = null,
+        string? toolName = null,
+        int limit = 50,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get tool usage patterns (which tools are used together)
+    /// </summary>
+    Task<Dictionary<string, List<string>>> GetToolUsagePatternsAsync(
+        string? context = null,
+        CancellationToken cancellationToken = default);
+    
+    #endregion
 }
 

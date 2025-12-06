@@ -364,3 +364,132 @@ public enum RewardType
     Discussed = 6
 }
 
+/// <summary>
+/// Aggregated metrics for MCP tool usage.
+/// Tracks how tools are being used for optimization and learning.
+/// </summary>
+public class ToolUsageMetric
+{
+    /// <summary>
+    /// Name of the MCP tool (e.g., "query", "index_file", "start_session")
+    /// </summary>
+    public string ToolName { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Workspace context
+    /// </summary>
+    public string Context { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Total number of times this tool was called
+    /// </summary>
+    public int CallCount { get; set; } = 0;
+    
+    /// <summary>
+    /// Number of successful calls
+    /// </summary>
+    public int SuccessCount { get; set; } = 0;
+    
+    /// <summary>
+    /// Number of failed calls
+    /// </summary>
+    public int ErrorCount { get; set; } = 0;
+    
+    /// <summary>
+    /// Average execution time in milliseconds
+    /// </summary>
+    public double AvgDurationMs { get; set; } = 0;
+    
+    /// <summary>
+    /// Total execution time in milliseconds (for calculating average)
+    /// </summary>
+    public long TotalDurationMs { get; set; } = 0;
+    
+    /// <summary>
+    /// When this tool was first called
+    /// </summary>
+    public DateTime FirstCalledAt { get; set; } = DateTime.UtcNow;
+    
+    /// <summary>
+    /// When this tool was last called
+    /// </summary>
+    public DateTime LastCalledAt { get; set; } = DateTime.UtcNow;
+    
+    /// <summary>
+    /// Last query/question used with this tool
+    /// </summary>
+    public string? LastQuery { get; set; }
+    
+    /// <summary>
+    /// Most common queries used with this tool (top 5)
+    /// </summary>
+    public List<string> CommonQueries { get; set; } = new();
+}
+
+/// <summary>
+/// Detailed log of individual tool invocations.
+/// Enables learning from tool usage patterns.
+/// </summary>
+public class ToolInvocation
+{
+    /// <summary>
+    /// Unique invocation identifier
+    /// </summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    
+    /// <summary>
+    /// Name of the MCP tool
+    /// </summary>
+    public string ToolName { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Workspace context
+    /// </summary>
+    public string Context { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Session ID this invocation occurred in
+    /// </summary>
+    public string? SessionId { get; set; }
+    
+    /// <summary>
+    /// Query or question extracted from arguments
+    /// </summary>
+    public string? Query { get; set; }
+    
+    /// <summary>
+    /// Serialized tool arguments (JSON)
+    /// </summary>
+    public string? ArgumentsJson { get; set; }
+    
+    /// <summary>
+    /// Whether the call succeeded
+    /// </summary>
+    public bool Success { get; set; } = true;
+    
+    /// <summary>
+    /// Error message if the call failed
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+    
+    /// <summary>
+    /// Execution time in milliseconds
+    /// </summary>
+    public long DurationMs { get; set; } = 0;
+    
+    /// <summary>
+    /// Summary of the result (truncated)
+    /// </summary>
+    public string? ResultSummary { get; set; }
+    
+    /// <summary>
+    /// Number of results returned (if applicable)
+    /// </summary>
+    public int? ResultCount { get; set; }
+    
+    /// <summary>
+    /// When this invocation occurred
+    /// </summary>
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+
