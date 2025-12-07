@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using AgentContracts.Models;
 using AgentContracts.Requests;
@@ -209,6 +210,9 @@ RULES:
             // Parse the LLM response to extract code files
             var fileChanges = ParseCodeBlocks(response.Response);
             var explanation = ExtractExplanation(response.Response);
+            
+            // 🐳 Parse execution instructions from LLM response
+            var executionInstructions = ParseExecutionInstructions(response.Response, fileChanges);
 
             if (!fileChanges.Any())
             {
@@ -251,7 +255,8 @@ RULES:
                 FileChanges = fileChanges,
                 Explanation = explanation,
                 TokensUsed = response.PromptTokens + response.ResponseTokens,
-                ModelUsed = model
+                ModelUsed = model,
+                Execution = executionInstructions
             };
         }
         catch (Exception ex)
@@ -410,5 +415,98 @@ RULES:
         
         // If no code blocks, take first 500 chars
         return response.Length > 500 ? response[..500] + "..." : response;
+    }
+    
+    /// <summary>
+    /// 🐳 Parse execution instructions from LLM response
+    /// Looks for ```execution JSON block with language, mainFile, runCommand, etc.
+    /// Falls back to inferring from file types if not provided
+    /// </summary>
+    private ExecutionInstructions? ParseExecutionInstructions(string response, List<FileChange> files)
+    {
+        // Try to find ```execution JSON block
+        var executionPattern = new Regex(
+            @"```execution\s*\n?\s*(\{[^`]*\})\s*\n?```",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        var match = executionPattern.Match(response);
+        
+        if (match.Success)
+        {
+            try
+            {
+                var json = match.Groups[1].Value.Trim();
+                var instructions = JsonSerializer.Deserialize<ExecutionInstructions>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+                
+                if (instructions != null)
+                {
+                    _logger.LogInformation("🐳 Parsed execution instructions from LLM: {Language}, {MainFile}", 
+                        instructions.Language, instructions.MainFile);
+                    return instructions;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse execution JSON from LLM response");
+            }
+        }
+        
+        // Fallback: Infer from generated files
+        return InferExecutionInstructions(files);
+    }
+    
+    /// <summary>
+    /// Infer execution instructions from file types when LLM doesn't provide them
+    /// </summary>
+    private ExecutionInstructions? InferExecutionInstructions(List<FileChange> files)
+    {
+        if (!files.Any())
+            return null;
+        
+        // Find primary executable file
+        var primaryFile = files.FirstOrDefault(f => 
+            f.Path.EndsWith(".py") ||
+            f.Path.EndsWith(".js") ||
+            f.Path.EndsWith(".ts") ||
+            f.Path.EndsWith(".cs") ||
+            f.Path.EndsWith(".go") ||
+            f.Path.EndsWith(".rs") ||
+            f.Path.EndsWith(".rb") ||
+            f.Path.EndsWith(".php") ||
+            f.Path.EndsWith(".sh"));
+        
+        if (primaryFile == null)
+            return null;
+        
+        var ext = Path.GetExtension(primaryFile.Path).ToLowerInvariant();
+        var (language, buildCmd, runCmd) = ext switch
+        {
+            ".py" => ("python", $"python -c \"import ast; ast.parse(open('{primaryFile.Path}').read())\"", $"python {primaryFile.Path}"),
+            ".js" => ("javascript", $"node --check {primaryFile.Path}", $"node {primaryFile.Path}"),
+            ".ts" => ("typescript", $"npx tsc --noEmit {primaryFile.Path}", $"npx tsx {primaryFile.Path}"),
+            ".cs" => ("csharp", "dotnet build", "dotnet run"),
+            ".go" => ("go", $"go build -o /tmp/app {primaryFile.Path}", "/tmp/app"),
+            ".rs" => ("rust", $"rustc {primaryFile.Path} -o /tmp/app", "/tmp/app"),
+            ".rb" => ("ruby", $"ruby -c {primaryFile.Path}", $"ruby {primaryFile.Path}"),
+            ".php" => ("php", $"php -l {primaryFile.Path}", $"php {primaryFile.Path}"),
+            ".sh" => ("shell", $"bash -n {primaryFile.Path}", $"bash {primaryFile.Path}"),
+            _ => (null, null, null)
+        };
+        
+        if (language == null)
+            return null;
+        
+        _logger.LogInformation("🐳 Inferred execution instructions: {Language}, {MainFile}", language, primaryFile.Path);
+        
+        return new ExecutionInstructions
+        {
+            Language = language,
+            MainFile = primaryFile.Path,
+            BuildCommand = buildCmd,
+            RunCommand = runCmd!
+        };
     }
 }

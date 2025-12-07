@@ -21,17 +21,34 @@ public class ExecutionService : IExecutionService
         string language,
         List<ExecutionFile> files,
         string workspacePath,
+        AgentContracts.Models.ExecutionInstructions? instructions,
         CancellationToken cancellationToken)
     {
         var result = new ExecutionResult();
         var startTime = DateTime.UtcNow;
         
-        // Get language config
-        var config = DockerLanguageConfig.GetConfig(language);
+        // 🧠 USE LLM INSTRUCTIONS if provided, otherwise detect from files
+        string detectedLanguage;
+        if (instructions != null && !string.IsNullOrEmpty(instructions.Language))
+        {
+            detectedLanguage = instructions.Language;
+            _logger.LogInformation("🧠 Using LLM-provided language: {Language}, MainFile: {MainFile}", 
+                instructions.Language, instructions.MainFile);
+        }
+        else
+        {
+            // Fallback: detect from files
+            detectedLanguage = DetectLanguageFromFiles(files) ?? language ?? "python";
+            _logger.LogInformation("📁 Detected language from files: {Detected} (request: {Request})", 
+                detectedLanguage, language ?? "not specified");
+        }
+        
+        // Get language config based on actual generated files
+        var config = DockerLanguageConfig.GetConfig(detectedLanguage);
         result.DockerImage = config.DockerImage;
         
-        _logger.LogInformation("🐳 Executing {Language} code in Docker ({Image})", 
-            language, config.DockerImage);
+        _logger.LogInformation("🐳 Executing {Language} code in Docker ({Image}) [request was: {RequestLang}]", 
+            detectedLanguage, config.DockerImage, language ?? "auto");
 
         // Skip execution for languages that need special environments
         if (config.SkipExecution)
@@ -156,6 +173,72 @@ public class ExecutionService : IExecutionService
         }
         
         return result;
+    }
+
+    /// <summary>
+    /// Detect language from the actual generated files (not the request)
+    /// This ensures we use the right Docker image for what was actually generated
+    /// </summary>
+    private string? DetectLanguageFromFiles(List<ExecutionFile> files)
+    {
+        var extensionCounts = new Dictionary<string, int>();
+        
+        foreach (var file in files)
+        {
+            var ext = Path.GetExtension(file.Path)?.ToLowerInvariant();
+            var lang = ext switch
+            {
+                ".py" => "python",
+                ".cs" => "csharp",
+                ".ts" or ".tsx" => "typescript",
+                ".js" or ".jsx" => "javascript",
+                ".go" => "go",
+                ".rs" => "rust",
+                ".java" => "java",
+                ".rb" => "ruby",
+                ".php" => "php",
+                ".swift" => "swift",
+                ".kt" or ".kts" => "kotlin",
+                ".dart" => "dart",
+                ".sql" => "sql",
+                ".sh" or ".bash" => "shell",
+                ".html" or ".htm" => "html",
+                ".css" => "css",
+                _ => null
+            };
+            
+            if (lang != null)
+            {
+                extensionCounts[lang] = extensionCounts.GetValueOrDefault(lang, 0) + 1;
+                _logger.LogDebug("File {Path} detected as {Language}", file.Path, lang);
+            }
+        }
+        
+        if (!extensionCounts.Any())
+        {
+            _logger.LogWarning("Could not detect language from any files");
+            return null;
+        }
+        
+        // Priority: executable languages over markup
+        // If we have both C# and HTML, prefer C#
+        // If we have both JS and HTML, prefer JS
+        var executableLanguages = new[] { "csharp", "python", "typescript", "javascript", "go", "rust", "java", "ruby", "php", "swift", "kotlin", "dart", "shell" };
+        
+        foreach (var lang in executableLanguages)
+        {
+            if (extensionCounts.ContainsKey(lang))
+            {
+                _logger.LogInformation("🎯 Primary language detected: {Language} (from {Count} files)", 
+                    lang, extensionCounts[lang]);
+                return lang;
+            }
+        }
+        
+        // Fallback to most common
+        var detected = extensionCounts.OrderByDescending(kv => kv.Value).First().Key;
+        _logger.LogInformation("🎯 Language detected by count: {Language}", detected);
+        return detected;
     }
 
     private string CreateTempDirectory(string workspacePath)

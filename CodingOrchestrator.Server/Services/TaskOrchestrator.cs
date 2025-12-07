@@ -139,10 +139,12 @@ public class TaskOrchestrator : ITaskOrchestrator
                     Reason = f.Reason
                 }).ToList();
                 
+                // 🧠 Pass LLM's execution instructions (if provided)
                 var executionResult = await _executionService.ExecuteAsync(
                     request.Language ?? "python",
                     executionFiles,
                     request.WorkspacePath,
+                    lastGeneratedCode.Execution,  // LLM tells us how to run it!
                     cancellationToken);
                 
                 executionPhase.Details = new Dictionary<string, object>

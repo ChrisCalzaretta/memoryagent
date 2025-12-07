@@ -1,4 +1,5 @@
 using System.Text;
+using AgentContracts.Models;
 using AgentContracts.Requests;
 using CodingAgent.Server.Clients;
 
@@ -392,8 +393,27 @@ REQUIREMENTS:
             sb.AppendLine();
         }
 
+        // 🐳 EXECUTION CAPABILITIES - Tell LLM what we can execute
+        var capabilities = ExecutionCapabilities.CreateDefault();
+        sb.AppendLine(capabilities.ToPromptString());
+        sb.AppendLine();
+        
         sb.AppendLine("=== INSTRUCTIONS ===");
-        sb.AppendLine("Generate the code to complete this task. Return ONLY the code files needed.");
+        sb.AppendLine("Generate the code to complete this task.");
+        sb.AppendLine();
+        sb.AppendLine("🐳 YOUR CODE WILL BE EXECUTED! You MUST include execution instructions:");
+        sb.AppendLine("After your code, include a JSON block like this:");
+        sb.AppendLine("```execution");
+        sb.AppendLine("{");
+        sb.AppendLine("  \"language\": \"python\",");
+        sb.AppendLine("  \"mainFile\": \"main.py\",");
+        sb.AppendLine("  \"buildCommand\": \"python -c \\\"import ast; ast.parse(open('main.py').read())\\\"\",");
+        sb.AppendLine("  \"runCommand\": \"python main.py\",");
+        sb.AppendLine("  \"expectedOutput\": \"Hello, World!\"");
+        sb.AppendLine("}");
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("Pick ONE executable language from the capabilities above. Your code MUST run successfully!");
 
         return sb.ToString();
     }
@@ -451,9 +471,19 @@ REQUIREMENTS:
             }
         }
 
+        // 🐳 EXECUTION CAPABILITIES - Remind LLM what we can execute
+        var capabilities = ExecutionCapabilities.CreateDefault();
+        sb.AppendLine();
+        sb.AppendLine(capabilities.ToPromptString());
+        
         sb.AppendLine();
         sb.AppendLine("=== INSTRUCTIONS ===");
         sb.AppendLine("Fix ALL the issues listed above. Return the corrected code files.");
+        sb.AppendLine();
+        sb.AppendLine("🐳 YOUR CODE WILL BE EXECUTED! Include execution instructions:");
+        sb.AppendLine("```execution");
+        sb.AppendLine("{\"language\": \"...\", \"mainFile\": \"...\", \"runCommand\": \"...\"}");
+        sb.AppendLine("```");
 
         return sb.ToString();
     }

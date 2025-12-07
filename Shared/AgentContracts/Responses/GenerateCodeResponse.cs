@@ -1,3 +1,5 @@
+using AgentContracts.Models;
+
 namespace AgentContracts.Responses;
 
 /// <summary>
@@ -34,6 +36,12 @@ public class GenerateCodeResponse
     /// Which model was used for this generation (for tracking/rotation)
     /// </summary>
     public string? ModelUsed { get; set; }
+    
+    /// <summary>
+    /// 🐳 Execution instructions from the LLM
+    /// Tells ExecutionService exactly how to run this code
+    /// </summary>
+    public ExecutionInstructions? Execution { get; set; }
 }
 
 /// <summary>

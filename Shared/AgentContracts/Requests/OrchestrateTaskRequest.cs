@@ -33,9 +33,9 @@ public class OrchestrateTaskRequest
     public bool Background { get; set; } = true;
 
     /// <summary>
-    /// Maximum iterations before giving up
+    /// Maximum iterations before giving up (default: 10 for robust retry)
     /// </summary>
-    public int MaxIterations { get; set; } = 5;
+    public int MaxIterations { get; set; } = 10;
 
     /// <summary>
     /// Minimum validation score to pass (0-10)

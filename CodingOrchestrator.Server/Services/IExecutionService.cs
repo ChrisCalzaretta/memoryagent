@@ -9,15 +9,17 @@ public interface IExecutionService
     /// <summary>
     /// Build and run generated code in a Docker container
     /// </summary>
-    /// <param name="language">Target programming language</param>
+    /// <param name="language">Target programming language (fallback if not in instructions)</param>
     /// <param name="files">Generated files to execute</param>
     /// <param name="workspacePath">Base workspace path</param>
+    /// <param name="instructions">Execution instructions from LLM (optional - will infer if null)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Execution result with success/failure and output</returns>
     Task<ExecutionResult> ExecuteAsync(
         string language,
         List<ExecutionFile> files,
         string workspacePath,
+        AgentContracts.Models.ExecutionInstructions? instructions,
         CancellationToken cancellationToken);
 }
 
