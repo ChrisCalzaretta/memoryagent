@@ -23,8 +23,10 @@ builder.Services.AddHttpClient("Ollama", client =>
 {
     var ollamaUrl = builder.Configuration["Ollama:Url"] ?? "http://localhost:11434";
     client.BaseAddress = new Uri(ollamaUrl);
-    client.Timeout = TimeSpan.FromHours(2); // Indexing large projects can take a long time
 });
+
+// DesignAgent is now a separate MCP server (port 5004)
+// Configure Cursor to connect to design-mcp-wrapper.js
 
 builder.Services.AddHttpClient<IVectorService, VectorService>(client =>
 {
@@ -72,6 +74,7 @@ builder.Services.AddScoped<IMcpToolHandler, PlanningToolHandler>();         // 1
 builder.Services.AddScoped<IMcpToolHandler, TransformToolHandler>();        // 20-21: transform & migration
 builder.Services.AddScoped<IMcpToolHandler, EvolvingToolHandler>();         // 22-24: prompts, patterns, feedback
 builder.Services.AddScoped<IMcpToolHandler, CodeUnderstandingToolHandler>();// 25: get_context, explain_code, find_examples
+// Design tools are now in separate DesignAgent.Server MCP server (port 5004)
 
 // Workspace handler (kept separate - auto-called by wrapper, not visible to AI)
 builder.Services.AddScoped<IMcpToolHandler, WorkspaceToolHandler>();

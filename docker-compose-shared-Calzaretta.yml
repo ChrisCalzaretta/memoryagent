@@ -129,11 +129,13 @@ services:
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       - CodingAgent__BaseUrl=http://memory-coding-agent:5001
       - ValidationAgent__BaseUrl=http://memory-validation-agent:5002
+      - DesignAgent__BaseUrl=http://memory-design-agent:5004
       - JobPersistence__Path=/data/memory/orchestrator/jobs
     depends_on:
       - mcp-server
       - coding-agent
       - validation-agent
+      - design-agent
     networks:
       - memory-net
     # Need elevated permissions for Docker socket access
@@ -188,6 +190,24 @@ services:
       - Gpu__DualGpu=true
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
+    depends_on:
+      - mcp-server
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  # DesignAgent - UX Design system, brand guidelines, validation
+  design-agent:
+    build:
+      context: .
+      dockerfile: DesignAgent.Server/Dockerfile
+    container_name: memory-design-agent
+    ports:
+      - "5004:5004"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5004
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
     depends_on:
       - mcp-server
     networks:

@@ -91,6 +91,13 @@ builder.Services.AddHttpClient<IValidationAgentClient, ValidationAgentClient>(cl
     client.Timeout = TimeSpan.FromSeconds(120); // Increased for validation
 }).AddPolicyHandler(combinedPolicy);
 
+// 🎨 Design Agent - Brand guidelines and design validation
+builder.Services.AddHttpClient<IDesignAgentClient, DesignAgentClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["DesignAgent:BaseUrl"] ?? "http://localhost:5004");
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).AddPolicyHandler(combinedPolicy);
+
 // 🐳 Configure Docker Execution settings
 builder.Services.Configure<DockerExecutionConfig>(
     builder.Configuration.GetSection("DockerExecution"));
@@ -136,7 +143,11 @@ builder.Services.AddHealthChecks()
     .AddUrlGroup(
         new Uri(builder.Configuration["ValidationAgent:BaseUrl"] + "/health" ?? "http://localhost:5002/health"),
         name: "validation-agent",
-        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy);
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy)
+    .AddUrlGroup(
+        new Uri(builder.Configuration["DesignAgent:BaseUrl"] + "/health" ?? "http://localhost:5004/health"),
+        name: "design-agent",
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded);
 
 var app = builder.Build();
 

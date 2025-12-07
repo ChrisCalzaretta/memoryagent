@@ -150,6 +150,85 @@ const TOOLS = [
       },
       required: ['jobId', 'basePath']
     }
+  },
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🎨 DESIGN TOOLS - Brand guidelines and validation
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    name: 'design_questionnaire',
+    description: 'Get the brand builder questionnaire. Returns questions to answer for creating a complete brand system with colors, typography, components, and guidelines.',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'design_create_brand',
+    description: 'Create a complete brand system from questionnaire answers. Returns design tokens, components, themes, voice guidelines, and accessibility requirements.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        brand_name: { type: 'string', description: 'Name of the brand/product' },
+        tagline: { type: 'string', description: 'Optional tagline' },
+        description: { type: 'string', description: '1-2 sentence product description' },
+        target_audience: { type: 'string', description: 'Who is the target audience?' },
+        industry: { type: 'string', description: 'Industry: SaaS, E-commerce, Finance, Health, Education, Entertainment, Enterprise, Consumer, Other' },
+        personality_traits: { type: 'array', items: { type: 'string' }, description: '3-5 traits: Professional, Playful, Trustworthy, Bold, Minimal, etc.' },
+        brand_voice: { type: 'string', description: 'Voice: Encouraging coach, Trusted advisor, Friendly helper, Expert authority, Playful friend, Calm guide' },
+        theme_preference: { type: 'string', description: 'Theme: Dark mode, Light mode, Both' },
+        visual_style: { type: 'string', description: 'Style: Minimal, Rich, Bold, Soft, Technical' },
+        platforms: { type: 'array', items: { type: 'string' }, description: 'Platforms: Web, iOS, Android, Desktop' },
+        frameworks: { type: 'array', items: { type: 'string' }, description: 'Frameworks: Blazor, React, Vue, SwiftUI, Flutter, etc.' }
+      },
+      required: ['brand_name', 'description', 'industry', 'personality_traits', 'brand_voice', 'visual_style', 'platforms', 'frameworks']
+    }
+  },
+  {
+    name: 'design_get_brand',
+    description: 'Get an existing brand definition by context name. Returns full brand with tokens, components, themes, voice, and accessibility.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        context: { type: 'string', description: 'Brand context name (e.g., "fittrack-pro")' }
+      },
+      required: ['context']
+    }
+  },
+  {
+    name: 'design_list_brands',
+    description: 'List all available brand definitions',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'design_validate',
+    description: 'Validate code against brand guidelines. Checks colors, typography, spacing, components, and accessibility. Returns score, grade, and issues with fixes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        context: { type: 'string', description: 'Brand context name' },
+        code: { type: 'string', description: 'Code to validate (HTML, CSS, Blazor, React, etc.)' }
+      },
+      required: ['context', 'code']
+    }
+  },
+  {
+    name: 'design_update_brand',
+    description: 'Update an existing brand settings (colors, fonts, etc.)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        context: { type: 'string', description: 'Brand context name to update' },
+        primary_color: { type: 'string', description: 'New primary color (hex)' },
+        font_family: { type: 'string', description: 'New font family' },
+        theme_preference: { type: 'string', description: 'Theme: Dark mode, Light mode, Both' }
+      },
+      required: ['context']
+    }
   }
 ];
 
@@ -445,6 +524,40 @@ The CodingAgent and ValidationAgent are now working on your task.
       output += `## ✅ After writing all files, confirm to user that code has been applied.\n`;
       
       return output;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // 🎨 DESIGN TOOL HANDLERS
+    // ═══════════════════════════════════════════════════════════
+    
+    case 'design_questionnaire': {
+      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_questionnaire', arguments: {} });
+      return result.content?.[0]?.text || 'Error getting questionnaire';
+    }
+    
+    case 'design_create_brand': {
+      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_create_brand', arguments: args });
+      return result.content?.[0]?.text || 'Error creating brand';
+    }
+    
+    case 'design_get_brand': {
+      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_get_brand', arguments: args });
+      return result.content?.[0]?.text || 'Error getting brand';
+    }
+    
+    case 'design_list_brands': {
+      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_list_brands', arguments: {} });
+      return result.content?.[0]?.text || 'Error listing brands';
+    }
+    
+    case 'design_validate': {
+      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_validate', arguments: args });
+      return result.content?.[0]?.text || 'Error validating';
+    }
+    
+    case 'design_update_brand': {
+      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_update_brand', arguments: args });
+      return result.content?.[0]?.text || 'Error updating brand';
     }
     
     default:

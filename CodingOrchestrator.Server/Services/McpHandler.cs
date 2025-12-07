@@ -1,14 +1,17 @@
 using System.Text.Json;
 using AgentContracts.Requests;
+using CodingOrchestrator.Server.Clients;
 
 namespace CodingOrchestrator.Server.Services;
 
 /// <summary>
 /// Handles MCP tool calls for the orchestrator
+/// Exposes: orchestration tools + design tools (external facing)
 /// </summary>
 public class McpHandler : IMcpHandler
 {
     private readonly IJobManager _jobManager;
+    private readonly IDesignAgentClient _designAgent;
     private readonly ILogger<McpHandler> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new() 
     { 
@@ -16,9 +19,10 @@ public class McpHandler : IMcpHandler
         WriteIndented = true
     };
 
-    public McpHandler(IJobManager jobManager, ILogger<McpHandler> logger)
+    public McpHandler(IJobManager jobManager, IDesignAgentClient designAgent, ILogger<McpHandler> logger)
     {
         _jobManager = jobManager;
+        _designAgent = designAgent;
         _logger = logger;
     }
 
@@ -89,6 +93,109 @@ public class McpHandler : IMcpHandler
                     ["type"] = "object",
                     ["properties"] = new Dictionary<string, object>()
                 }
+            },
+            
+            // ═══════════════════════════════════════════════════════════
+            // 🎨 DESIGN TOOLS - Brand guidelines and validation
+            // ═══════════════════════════════════════════════════════════
+            
+            new Dictionary<string, object>
+            {
+                ["name"] = "design_questionnaire",
+                ["description"] = "Get the brand builder questionnaire. Returns questions to answer for creating a complete brand system with colors, typography, components, and guidelines.",
+                ["inputSchema"] = new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["properties"] = new Dictionary<string, object>()
+                }
+            },
+            new Dictionary<string, object>
+            {
+                ["name"] = "design_create_brand",
+                ["description"] = "Create a complete brand system from questionnaire answers. Returns design tokens, components, themes, voice guidelines, and accessibility requirements.",
+                ["inputSchema"] = new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["properties"] = new Dictionary<string, object>
+                    {
+                        ["brand_name"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Name of the brand/product" },
+                        ["tagline"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Optional tagline" },
+                        ["description"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "1-2 sentence product description" },
+                        ["target_audience"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Who is the target audience?" },
+                        ["industry"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Industry: SaaS, E-commerce, Finance, Health, Education, Entertainment, Enterprise, Consumer, Other" },
+                        ["personality_traits"] = new Dictionary<string, object> { ["type"] = "array", ["items"] = new Dictionary<string, object> { ["type"] = "string" }, ["description"] = "3-5 traits: Professional, Playful, Trustworthy, Bold, Minimal, Luxurious, Friendly, Technical, Energetic, Calm, Innovative, Traditional, Warm, Cool, Serious, Fun" },
+                        ["brand_voice"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Voice: Encouraging coach, Trusted advisor, Friendly helper, Expert authority, Playful friend, Calm guide" },
+                        ["theme_preference"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Theme: Dark mode, Light mode, Both" },
+                        ["color_preferences"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Colors you love (optional)" },
+                        ["color_avoid"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Colors to avoid (optional)" },
+                        ["visual_style"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Style: Minimal, Rich, Bold, Soft, Technical" },
+                        ["corner_style"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Corners: Sharp, Slightly rounded, Rounded, Very rounded, Pill" },
+                        ["font_preference"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Font: Sans-serif, Serif, Geometric, Humanist, Monospace accent" },
+                        ["platforms"] = new Dictionary<string, object> { ["type"] = "array", ["items"] = new Dictionary<string, object> { ["type"] = "string" }, ["description"] = "Platforms: Web, iOS, Android, Desktop" },
+                        ["frameworks"] = new Dictionary<string, object> { ["type"] = "array", ["items"] = new Dictionary<string, object> { ["type"] = "string" }, ["description"] = "Frameworks: Blazor, React, Vue, Angular, SwiftUI, Kotlin/Compose, Flutter, React Native, .NET MAUI, Plain HTML/CSS" },
+                        ["css_framework"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "CSS: Tailwind CSS, Plain CSS, SCSS/Sass, CSS-in-JS" },
+                        ["component_types"] = new Dictionary<string, object> { ["type"] = "array", ["items"] = new Dictionary<string, object> { ["type"] = "string" }, ["description"] = "UI types: Dashboards, Forms, Lists, Cards, Navigation, Modals, Authentication, Settings, Landing pages, E-commerce, Chat, Data Visualization" },
+                        ["motion_preference"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Animation: Minimal, Moderate, Rich, None" },
+                        ["accessibility_level"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "WCAG level: AA (standard), AAA (strictest), Basic" }
+                    },
+                    ["required"] = new[] { "brand_name", "description", "industry", "personality_traits", "brand_voice", "visual_style", "platforms", "frameworks" }
+                }
+            },
+            new Dictionary<string, object>
+            {
+                ["name"] = "design_get_brand",
+                ["description"] = "Get an existing brand definition by context name. Returns full brand with tokens, components, themes, voice, and accessibility.",
+                ["inputSchema"] = new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["properties"] = new Dictionary<string, object>
+                    {
+                        ["context"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Brand context name (e.g., 'fittrack-pro')" }
+                    },
+                    ["required"] = new[] { "context" }
+                }
+            },
+            new Dictionary<string, object>
+            {
+                ["name"] = "design_list_brands",
+                ["description"] = "List all available brand definitions",
+                ["inputSchema"] = new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["properties"] = new Dictionary<string, object>()
+                }
+            },
+            new Dictionary<string, object>
+            {
+                ["name"] = "design_validate",
+                ["description"] = "Validate code against brand guidelines. Checks colors, typography, spacing, components, and accessibility. Returns score, grade, and issues with fixes.",
+                ["inputSchema"] = new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["properties"] = new Dictionary<string, object>
+                    {
+                        ["context"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Brand context name" },
+                        ["code"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Code to validate (HTML, CSS, Blazor, React, etc.)" }
+                    },
+                    ["required"] = new[] { "context", "code" }
+                }
+            },
+            new Dictionary<string, object>
+            {
+                ["name"] = "design_update_brand",
+                ["description"] = "Update an existing brand's settings (colors, fonts, etc.)",
+                ["inputSchema"] = new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["properties"] = new Dictionary<string, object>
+                    {
+                        ["context"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Brand context name to update" },
+                        ["primary_color"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "New primary color (hex)" },
+                        ["font_family"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "New font family" },
+                        ["theme_preference"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Theme: Dark mode, Light mode, Both" }
+                    },
+                    ["required"] = new[] { "context" }
+                }
             }
         };
         return tools;
@@ -100,10 +207,20 @@ public class McpHandler : IMcpHandler
 
         return toolName switch
         {
+            // Orchestration tools
             "orchestrate_task" => await HandleOrchestrateTaskAsync(arguments, cancellationToken),
             "get_task_status" => HandleGetTaskStatus(arguments),
             "cancel_task" => HandleCancelTask(arguments),
             "list_tasks" => HandleListTasks(),
+            
+            // Design tools
+            "design_questionnaire" => await HandleDesignQuestionnaireAsync(cancellationToken),
+            "design_create_brand" => await HandleDesignCreateBrandAsync(arguments, cancellationToken),
+            "design_get_brand" => await HandleDesignGetBrandAsync(arguments, cancellationToken),
+            "design_list_brands" => await HandleDesignListBrandsAsync(cancellationToken),
+            "design_validate" => await HandleDesignValidateAsync(arguments, cancellationToken),
+            "design_update_brand" => await HandleDesignUpdateBrandAsync(arguments, cancellationToken),
+            
             _ => $"Unknown tool: {toolName}"
         };
     }
@@ -452,6 +569,179 @@ public class McpHandler : IMcpHandler
             }
         }
         return defaultValue;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 🎨 DESIGN TOOL HANDLERS
+    // ═══════════════════════════════════════════════════════════
+
+    private async Task<string> HandleDesignQuestionnaireAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var markdown = await _designAgent.GetQuestionnaireMarkdownAsync(cancellationToken);
+            return markdown;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting questionnaire");
+            return $"❌ Error: {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleDesignCreateBrandAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var brand = await _designAgent.CreateBrandAsync(arguments, cancellationToken);
+
+            return $@"✅ **Brand Created: {brand.Name}**
+
+**Context:** `{brand.Context}`
+**Primary Color:** {brand.GetPrimaryColor()}
+**Font:** {brand.GetFontFamily()}
+
+**Next steps:**
+- Use `design_get_brand context=""{brand.Context}""` to see full brand
+- Use `design_validate context=""{brand.Context}"" code=""..."" ` to validate your code
+- The orchestrator will automatically use this brand when generating UI code!";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating brand");
+            return $"❌ Error creating brand: {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleDesignGetBrandAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken)
+    {
+        var context = GetStringArg(arguments, "context");
+        if (string.IsNullOrEmpty(context))
+        {
+            return "❌ Error: context is required";
+        }
+
+        try
+        {
+            var brand = await _designAgent.GetBrandAsync(context, cancellationToken);
+            if (brand == null)
+            {
+                return $"❌ Brand '{context}' not found. Use `design_list_brands` to see available brands.";
+            }
+
+            return JsonSerializer.Serialize(brand, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting brand {Context}", context);
+            return $"❌ Error: {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleDesignListBrandsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var brands = await _designAgent.ListBrandsAsync(cancellationToken);
+
+            if (brands.Count == 0)
+            {
+                return "No brands found. Use `design_questionnaire` then `design_create_brand` to create one.";
+            }
+
+            var result = new System.Text.StringBuilder();
+            result.AppendLine("📋 **Available Brands:**");
+            result.AppendLine();
+            foreach (var brand in brands)
+            {
+                result.AppendLine($"• **{brand.Name}** (context: `{brand.Context}`)");
+            }
+            return result.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing brands");
+            return $"❌ Error: {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleDesignValidateAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken)
+    {
+        var context = GetStringArg(arguments, "context");
+        var code = GetStringArg(arguments, "code");
+
+        if (string.IsNullOrEmpty(context))
+        {
+            return "❌ Error: context is required";
+        }
+        if (string.IsNullOrEmpty(code))
+        {
+            return "❌ Error: code is required";
+        }
+
+        try
+        {
+            var result = await _designAgent.ValidateAsync(context, code, cancellationToken);
+
+            var output = new System.Text.StringBuilder();
+            output.AppendLine($"🎨 **Design Validation:** {(result.IsCompliant ? "✅ PASS" : "❌ FAIL")}");
+            output.AppendLine($"**Score:** {result.Score}/10 (Grade {result.Grade})");
+            output.AppendLine();
+
+            if (result.Issues.Count > 0)
+            {
+                output.AppendLine($"**Issues Found ({result.Issues.Count}):**");
+                foreach (var issue in result.Issues)
+                {
+                    var icon = issue.Severity switch { 3 => "🔴", 2 => "🟠", 1 => "🟡", _ => "⚪" };
+                    output.AppendLine($"  {icon} [{issue.Type}] {issue.Message}");
+                    if (!string.IsNullOrEmpty(issue.Fix))
+                    {
+                        output.AppendLine($"     💡 Fix: {issue.Fix}");
+                    }
+                }
+            }
+            else
+            {
+                output.AppendLine("✨ No issues found!");
+            }
+
+            return output.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating design");
+            return $"❌ Error: {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleDesignUpdateBrandAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken)
+    {
+        var context = GetStringArg(arguments, "context");
+        if (string.IsNullOrEmpty(context))
+        {
+            return "❌ Error: context is required";
+        }
+
+        try
+        {
+            // Remove context from updates dict (it's the identifier, not an update)
+            var updates = new Dictionary<string, object>(arguments);
+            updates.Remove("context");
+
+            var brand = await _designAgent.UpdateBrandAsync(context, updates, cancellationToken);
+
+            return $@"✅ **Brand Updated: {brand.Name}**
+
+**Context:** `{brand.Context}`
+**Primary Color:** {brand.GetPrimaryColor()}
+**Font:** {brand.GetFontFamily()}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating brand {Context}", context);
+            return $"❌ Error: {ex.Message}";
+        }
     }
 }
 
