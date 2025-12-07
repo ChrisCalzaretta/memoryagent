@@ -1,21 +1,26 @@
 using AgentContracts.Responses;
+using System.ComponentModel.DataAnnotations;
 
 namespace AgentContracts.Requests;
 
 /// <summary>
 /// Request to generate code via the CodingAgent
 /// </summary>
-public class GenerateCodeRequest
+public class GenerateCodeRequest : IValidatableObject
 {
     /// <summary>
     /// The task description
     /// </summary>
+    [Required(ErrorMessage = "Task description is required")]
+    [StringLength(10000, MinimumLength = 5, ErrorMessage = "Task must be between 5 and 10000 characters")]
     public required string Task { get; set; }
 
     /// <summary>
     /// Target programming language (e.g., "python", "csharp", "typescript", "javascript", "go", "rust")
     /// If not specified, will be auto-detected from workspace or default to C#
     /// </summary>
+    [RegularExpression(@"^(python|csharp|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart|sql|html|css|shell|auto)?$",
+        ErrorMessage = "Invalid language specified")]
     public string? Language { get; set; }
 
     /// <summary>
@@ -31,12 +36,43 @@ public class GenerateCodeRequest
     /// <summary>
     /// Target files to focus on (if modifying existing code)
     /// </summary>
+    [MaxLength(100, ErrorMessage = "Cannot target more than 100 files")]
     public List<string>? TargetFiles { get; set; }
 
     /// <summary>
     /// The workspace path
     /// </summary>
+    [Required(ErrorMessage = "WorkspacePath is required")]
+    [StringLength(500, MinimumLength = 1, ErrorMessage = "WorkspacePath must be between 1 and 500 characters")]
     public required string WorkspacePath { get; set; }
+
+    /// <summary>
+    /// Custom validation
+    /// </summary>
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        // Prevent path traversal
+        if (WorkspacePath.Contains("..") || WorkspacePath.Contains("~"))
+        {
+            yield return new ValidationResult(
+                "WorkspacePath cannot contain path traversal characters",
+                new[] { nameof(WorkspacePath) });
+        }
+
+        // Validate target files don't have path traversal
+        if (TargetFiles != null)
+        {
+            foreach (var file in TargetFiles)
+            {
+                if (file.Contains(".."))
+                {
+                    yield return new ValidationResult(
+                        $"Target file '{file}' contains path traversal characters",
+                        new[] { nameof(TargetFiles) });
+                }
+            }
+        }
+    }
 }
 
 /// <summary>

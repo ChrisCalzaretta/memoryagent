@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Microsoft.Extensions.Options;
 
 namespace CodingOrchestrator.Server.Services;
 
@@ -10,11 +11,15 @@ namespace CodingOrchestrator.Server.Services;
 public class ExecutionService : IExecutionService
 {
     private readonly ILogger<ExecutionService> _logger;
+    private readonly DockerExecutionConfig _config;
     private const string TempDirPrefix = "code-exec-";
 
-    public ExecutionService(ILogger<ExecutionService> logger)
+    public ExecutionService(
+        ILogger<ExecutionService> logger,
+        IOptions<DockerExecutionConfig> config)
     {
         _logger = logger;
+        _config = config.Value;
     }
 
     public async Task<ExecutionResult> ExecuteAsync(
@@ -364,7 +369,7 @@ public class ExecutionService : IExecutionService
                 pullProcess.Start();
                 
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                cts.CancelAfter(TimeSpan.FromMinutes(5)); // 5 min timeout for pull
+                cts.CancelAfter(TimeSpan.FromMinutes(_config.ImagePullTimeoutMinutes)); // Configurable timeout
                 
                 await pullProcess.WaitForExitAsync(cts.Token);
                 _logger.LogInformation("✅ Pulled Docker image: {Image}", image);
@@ -384,17 +389,20 @@ public class ExecutionService : IExecutionService
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        // Build docker run command with security constraints
+        // Build docker run command with security constraints (using config)
         var dockerArgs = new StringBuilder();
         dockerArgs.Append("run --rm ");
         
-        // Resource limits
-        dockerArgs.Append("--memory=512m ");
-        dockerArgs.Append("--cpus=1.0 ");
-        dockerArgs.Append("--pids-limit=100 ");
+        // Resource limits from configuration
+        dockerArgs.Append($"--memory={_config.MemoryLimit} ");
+        dockerArgs.Append($"--cpus={_config.CpuLimit} ");
+        dockerArgs.Append($"--pids-limit={_config.PidsLimit} ");
         
-        // Security (but allow write for compilation)
-        dockerArgs.Append("--network=none ");  // No network access
+        // Security (configurable network access)
+        if (!_config.NetworkEnabled)
+        {
+            dockerArgs.Append("--network=none ");  // No network access
+        }
         dockerArgs.Append("--security-opt=no-new-privileges ");
         
         // Mount workspace as read-write (needed for Python __pycache__, etc.)

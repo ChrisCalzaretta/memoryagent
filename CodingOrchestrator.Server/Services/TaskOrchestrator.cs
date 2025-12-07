@@ -1,6 +1,7 @@
 using AgentContracts.Requests;
 using AgentContracts.Responses;
 using CodingOrchestrator.Server.Clients;
+using System.Diagnostics;
 
 namespace CodingOrchestrator.Server.Services;
 
@@ -16,6 +17,9 @@ public class TaskOrchestrator : ITaskOrchestrator
     private readonly IExecutionService _executionService;
     private readonly ILogger<TaskOrchestrator> _logger;
     private IJobManager? _jobManager;
+    
+    // 📊 OpenTelemetry ActivitySource for distributed tracing
+    private static readonly ActivitySource _activitySource = new("CodingOrchestrator.TaskOrchestrator");
 
     public TaskOrchestrator(
         ICodingAgentClient codingAgent,
@@ -46,6 +50,14 @@ public class TaskOrchestrator : ITaskOrchestrator
 
     public async Task<TaskStatusResponse> ExecuteTaskAsync(OrchestrateTaskRequest request, string? jobId, CancellationToken cancellationToken)
     {
+        // 📊 Start a trace for this task execution
+        using var activity = _activitySource.StartActivity("ExecuteTask", ActivityKind.Server);
+        activity?.SetTag("task.id", jobId ?? "inline");
+        activity?.SetTag("task.language", request.Language ?? "auto");
+        activity?.SetTag("task.context", request.Context);
+        activity?.SetTag("task.max_iterations", request.MaxIterations);
+        activity?.SetTag("task.min_score", request.MinValidationScore);
+        
         var startTime = DateTime.UtcNow;
         _logger.LogInformation("Starting orchestration for task: {Task}", request.Task);
 
@@ -95,11 +107,36 @@ public class TaskOrchestrator : ITaskOrchestrator
             EndPhase(jobId, estimatePhase);
             response.Timeline.Add(estimatePhase);
 
-            // Phase 1: Get context from Lightning (if available)
+            // Phase 1: Get context from Lightning (with graceful degradation)
             UpdateProgress(jobId, TaskState.Running, 10, "Gathering context", 0);
             var contextPhase = StartPhase("context_gathering");
             
-            var context = await _memoryAgent.GetContextAsync(request.Task, request.Context, cancellationToken);
+            // 🛡️ GRACEFUL DEGRADATION: Continue without context if Memory Agent is unavailable
+            CodeContext? context = null;
+            try
+            {
+                context = await _memoryAgent.GetContextAsync(request.Task, request.Context, cancellationToken);
+                _logger.LogInformation("✅ Retrieved context from Memory Agent");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "⚠️ Memory Agent unavailable - proceeding without context (degraded mode)");
+                contextPhase.Details = new Dictionary<string, object>
+                {
+                    ["status"] = "degraded",
+                    ["error"] = ex.Message,
+                    ["fallback"] = "Proceeding without historical context"
+                };
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "⚠️ Memory Agent timed out - proceeding without context");
+                contextPhase.Details = new Dictionary<string, object>
+                {
+                    ["status"] = "timeout",
+                    ["fallback"] = "Proceeding without historical context"
+                };
+            }
             
             EndPhase(jobId, contextPhase);
             response.Timeline.Add(contextPhase);
@@ -345,26 +382,39 @@ public class TaskOrchestrator : ITaskOrchestrator
                 response.Result = result;
                 response.Iteration = iteration;
 
-                // Store successful Q&A and record prompt feedback in Lightning
+                // Store successful Q&A and record prompt feedback in Lightning (with graceful degradation)
                 if (lastValidation.Passed)
                 {
-                    await StoreSuccessfulResultAsync(request, lastGeneratedCode, cancellationToken);
-                    
-                    // Record prompt feedback for learning
-                    await _memoryAgent.RecordPromptFeedbackAsync(
-                        "coding_agent_system",
-                        wasSuccessful: true,
-                        rating: lastValidation.Score,
-                        cancellationToken);
+                    // 🛡️ GRACEFUL DEGRADATION: Don't fail if storage fails
+                    try
+                    {
+                        await StoreSuccessfulResultAsync(request, lastGeneratedCode, cancellationToken);
+                        await _memoryAgent.RecordPromptFeedbackAsync(
+                            "coding_agent_system",
+                            wasSuccessful: true,
+                            rating: lastValidation.Score,
+                            cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "⚠️ Failed to store result in Lightning memory (non-critical)");
+                    }
                 }
                 else
                 {
-                    // Record failure for learning
-                    await _memoryAgent.RecordPromptFeedbackAsync(
-                        "coding_agent_system",
-                        wasSuccessful: false,
-                        rating: lastValidation.Score,
-                        cancellationToken);
+                    // 🛡️ Record failure for learning (non-critical)
+                    try
+                    {
+                        await _memoryAgent.RecordPromptFeedbackAsync(
+                            "coding_agent_system",
+                            wasSuccessful: false,
+                            rating: lastValidation.Score,
+                            cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "⚠️ Failed to record feedback in Lightning (non-critical)");
+                    }
                 }
             }
             else
