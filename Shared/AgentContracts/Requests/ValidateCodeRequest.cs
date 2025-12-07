@@ -16,6 +16,12 @@ public class ValidateCodeRequest
     public required string Context { get; set; }
 
     /// <summary>
+    /// Target programming language (for language-specific validation rules)
+    /// If not specified, will be auto-detected from file extensions
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>
     /// Validation rules to apply
     /// </summary>
     public List<string> Rules { get; set; } = new() { "best_practices", "security", "patterns" };

@@ -21,6 +21,13 @@ public class OrchestrateTaskRequest
     public required string WorkspacePath { get; set; }
 
     /// <summary>
+    /// Target programming language for code generation.
+    /// Supported: python, csharp, typescript, javascript, go, rust, java, ruby, php, swift, kotlin, dart, sql, html, css, shell
+    /// If not specified, will be auto-detected from workspace or task description
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>
     /// Run as background job (returns job ID immediately)
     /// </summary>
     public bool Background { get; set; } = true;

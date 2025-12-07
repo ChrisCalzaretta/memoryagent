@@ -13,6 +13,12 @@ public class GenerateCodeRequest
     public required string Task { get; set; }
 
     /// <summary>
+    /// Target programming language (e.g., "python", "csharp", "typescript", "javascript", "go", "rust")
+    /// If not specified, will be auto-detected from workspace or default to C#
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>
     /// Context from Lightning (past solutions, patterns, etc.)
     /// </summary>
     public CodeContext? Context { get; set; }

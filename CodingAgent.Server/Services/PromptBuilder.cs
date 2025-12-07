@@ -6,13 +6,14 @@ namespace CodingAgent.Server.Services;
 
 /// <summary>
 /// Builds prompts for the coding LLM - LEARNS FROM LIGHTNING
+/// Supports multi-language code generation!
 /// </summary>
 public class PromptBuilder : IPromptBuilder
 {
     private readonly IMemoryAgentClient _memoryAgent;
     private readonly ILogger<PromptBuilder> _logger;
 
-    // Default fallback if Lightning is unavailable
+    // Default fallback if Lightning is unavailable (generic, multi-language)
     private const string DefaultSystemPrompt = @"You are an expert coding agent. Your task is to write production-quality code.
 
 🔴 CRITICAL - SEARCH BEFORE WRITE:
@@ -27,16 +28,224 @@ STRICT RULES:
 2. Do NOT ""improve"" or refactor unrelated code
 3. Do NOT add features that weren't requested
 4. You MAY add package references if needed for your implementation
-5. You MUST include proper error handling and null checks
-6. You MUST include XML documentation on public methods
-7. Follow naming conventions and best practices for the language
+5. You MUST include proper error handling
+6. You MUST include documentation comments
+7. Follow naming conventions and best practices for the target language
 
 REQUIREMENTS:
-- Always check for null before accessing properties
-- Use async/await for I/O operations
-- Prefer dependency injection for services
-- Include CancellationToken support for async methods
-- Log important operations";
+- Include proper error handling for the target language
+- Use async patterns where appropriate
+- Follow idiomatic patterns for the target language
+- Include type hints/annotations where the language supports them";
+
+    // Language-specific guidance
+    private static readonly Dictionary<string, LanguageGuidance> LanguageGuidelines = new()
+    {
+        ["python"] = new LanguageGuidance
+        {
+            FileExtension = ".py",
+            CommentStyle = "# Comment",
+            DocStyle = "Triple-quoted docstrings (Google style)",
+            Guidelines = @"PYTHON REQUIREMENTS:
+- Use type hints (def func(param: str) -> int:)
+- Use docstrings with Args/Returns/Raises sections
+- Follow PEP 8 style guide
+- Use snake_case for functions and variables
+- Use PascalCase for classes
+- Use async/await with asyncio for I/O
+- Handle exceptions with try/except
+- Use context managers (with statement) for resources
+- Import statements at top, organized (stdlib, third-party, local)"
+        },
+        ["typescript"] = new LanguageGuidance
+        {
+            FileExtension = ".ts",
+            CommentStyle = "// Comment",
+            DocStyle = "JSDoc comments (/** */)",
+            Guidelines = @"TYPESCRIPT REQUIREMENTS:
+- Use strict TypeScript with explicit types
+- Use interfaces for object shapes
+- Use async/await for promises
+- Use camelCase for variables/functions, PascalCase for classes/interfaces
+- Handle errors with try/catch
+- Export types and interfaces
+- Use const for immutable values
+- Use optional chaining (?.) and nullish coalescing (??)"
+        },
+        ["javascript"] = new LanguageGuidance
+        {
+            FileExtension = ".js",
+            CommentStyle = "// Comment",
+            DocStyle = "JSDoc comments (/** */)",
+            Guidelines = @"JAVASCRIPT REQUIREMENTS:
+- Use JSDoc comments for documentation
+- Use async/await for promises
+- Use camelCase for variables/functions, PascalCase for classes
+- Handle errors with try/catch
+- Use const/let (not var)
+- Use arrow functions where appropriate
+- Use destructuring and spread operators"
+        },
+        ["csharp"] = new LanguageGuidance
+        {
+            FileExtension = ".cs",
+            CommentStyle = "// Comment",
+            DocStyle = "XML documentation (/// <summary>)",
+            Guidelines = @"C# REQUIREMENTS:
+- Use XML documentation on public members
+- Use async/await with CancellationToken for async methods
+- Use PascalCase for public members, _camelCase for private fields
+- Use nullable reference types (string?, int?)
+- Use dependency injection
+- Use proper exception handling
+- Use ILogger for logging
+- Use records for DTOs where appropriate"
+        },
+        ["go"] = new LanguageGuidance
+        {
+            FileExtension = ".go",
+            CommentStyle = "// Comment",
+            DocStyle = "Doc comments above declarations",
+            Guidelines = @"GO REQUIREMENTS:
+- Use error returns (not exceptions)
+- Use camelCase for private, PascalCase for exported
+- Use defer for cleanup
+- Handle all errors explicitly
+- Use interfaces for abstraction
+- Use context.Context for cancellation
+- Keep functions small and focused
+- Use gofmt style"
+        },
+        ["rust"] = new LanguageGuidance
+        {
+            FileExtension = ".rs",
+            CommentStyle = "// Comment",
+            DocStyle = "Doc comments (/// or //!)",
+            Guidelines = @"RUST REQUIREMENTS:
+- Use Result<T, E> for error handling
+- Use snake_case for functions/variables
+- Use PascalCase for types/traits
+- Use impl blocks for methods
+- Handle all Result and Option cases
+- Use derive macros where appropriate
+- Follow ownership/borrowing rules
+- Use lifetimes where needed"
+        },
+        ["java"] = new LanguageGuidance
+        {
+            FileExtension = ".java",
+            CommentStyle = "// Comment",
+            DocStyle = "Javadoc comments (/** */)",
+            Guidelines = @"JAVA REQUIREMENTS:
+- Use Javadoc on public methods
+- Use camelCase for methods/variables, PascalCase for classes
+- Handle exceptions properly
+- Use Optional for nullable returns
+- Use try-with-resources for AutoCloseable
+- Follow SOLID principles
+- Use dependency injection"
+        },
+        ["ruby"] = new LanguageGuidance
+        {
+            FileExtension = ".rb",
+            CommentStyle = "# Comment",
+            DocStyle = "YARD documentation",
+            Guidelines = @"RUBY REQUIREMENTS:
+- Use snake_case for methods/variables
+- Use PascalCase for classes/modules
+- Use blocks and procs idiomatically
+- Handle exceptions with begin/rescue/end
+- Use symbols where appropriate
+- Follow Ruby style guide"
+        },
+        ["php"] = new LanguageGuidance
+        {
+            FileExtension = ".php",
+            CommentStyle = "// Comment",
+            DocStyle = "PHPDoc comments (/** */)",
+            Guidelines = @"PHP REQUIREMENTS:
+- Use PHPDoc comments
+- Use type declarations (PHP 7+)
+- Use namespaces properly
+- Handle exceptions with try/catch
+- Use camelCase for methods, PascalCase for classes
+- Follow PSR-12 coding style"
+        },
+        ["swift"] = new LanguageGuidance
+        {
+            FileExtension = ".swift",
+            CommentStyle = "// Comment",
+            DocStyle = "Documentation comments (///)",
+            Guidelines = @"SWIFT REQUIREMENTS:
+- Use optionals properly (? and !)
+- Use guard for early returns
+- Use camelCase for properties/methods, PascalCase for types
+- Use protocols for abstraction
+- Handle errors with do/try/catch
+- Use async/await for concurrency"
+        },
+        ["kotlin"] = new LanguageGuidance
+        {
+            FileExtension = ".kt",
+            CommentStyle = "// Comment",
+            DocStyle = "KDoc comments (/** */)",
+            Guidelines = @"KOTLIN REQUIREMENTS:
+- Use nullable types properly (Type?)
+- Use data classes for DTOs
+- Use coroutines for async code
+- Use camelCase for functions/properties, PascalCase for classes
+- Use sealed classes where appropriate
+- Use extension functions idiomatically"
+        },
+        ["dart"] = new LanguageGuidance
+        {
+            FileExtension = ".dart",
+            CommentStyle = "// Comment",
+            DocStyle = "Documentation comments (///)",
+            Guidelines = @"DART/FLUTTER REQUIREMENTS:
+- Use dartdoc comments
+- Use async/await for futures
+- Use camelCase for variables/functions, PascalCase for classes
+- Use nullable types (Type?)
+- Follow Flutter widget patterns if UI
+- Use const constructors where possible"
+        },
+        ["sql"] = new LanguageGuidance
+        {
+            FileExtension = ".sql",
+            CommentStyle = "-- Comment",
+            DocStyle = "Comment blocks at top",
+            Guidelines = @"SQL REQUIREMENTS:
+- Use UPPERCASE for SQL keywords
+- Use snake_case for table/column names
+- Include comments explaining complex queries
+- Use parameterized queries (prevent SQL injection)
+- Use proper indexing hints where needed
+- Follow database-specific best practices"
+        },
+        ["shell"] = new LanguageGuidance
+        {
+            FileExtension = ".sh",
+            CommentStyle = "# Comment",
+            DocStyle = "Header comments",
+            Guidelines = @"SHELL/BASH REQUIREMENTS:
+- Add shebang (#!/bin/bash or #!/usr/bin/env bash)
+- Use set -euo pipefail for safety
+- Quote variables properly
+- Use functions for reusable code
+- Handle errors with trap
+- Use snake_case for variables
+- Add usage/help documentation"
+        }
+    };
+
+    private class LanguageGuidance
+    {
+        public required string FileExtension { get; set; }
+        public required string CommentStyle { get; set; }
+        public required string DocStyle { get; set; }
+        public required string Guidelines { get; set; }
+    }
 
     public PromptBuilder(IMemoryAgentClient memoryAgent, ILogger<PromptBuilder> logger)
     {
@@ -56,6 +265,25 @@ REQUIREMENTS:
         
         sb.AppendLine(systemPrompt);
         sb.AppendLine();
+        
+        // 🌐 LANGUAGE-SPECIFIC GUIDANCE
+        var language = request.Language?.ToLowerInvariant() ?? "csharp";
+        if (LanguageGuidelines.TryGetValue(language, out var guidance))
+        {
+            sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
+            sb.AppendLine($"File Extension: {guidance.FileExtension}");
+            sb.AppendLine($"Documentation Style: {guidance.DocStyle}");
+            sb.AppendLine();
+            sb.AppendLine(guidance.Guidelines);
+            sb.AppendLine();
+            _logger.LogInformation("Using language-specific guidance for: {Language}", language);
+        }
+        else
+        {
+            sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
+            sb.AppendLine("Follow best practices and idiomatic patterns for this language.");
+            sb.AppendLine();
+        }
         
         // 🔍 SEARCH BEFORE WRITE: Find existing code to avoid duplication
         var context = "memoryagent"; // Default context
@@ -182,6 +410,17 @@ REQUIREMENTS:
         
         sb.AppendLine(systemPrompt);
         sb.AppendLine();
+        
+        // 🌐 LANGUAGE-SPECIFIC GUIDANCE (for fixes too!)
+        var language = request.Language?.ToLowerInvariant() ?? "csharp";
+        if (LanguageGuidelines.TryGetValue(language, out var guidance))
+        {
+            sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
+            sb.AppendLine($"File Extension: {guidance.FileExtension}");
+            sb.AppendLine(guidance.Guidelines);
+            sb.AppendLine();
+        }
+        
         sb.AppendLine("=== TASK ===");
         sb.AppendLine(request.Task);
         sb.AppendLine();

@@ -107,11 +107,15 @@ The **CodingOrchestrator** provides multi-agent code generation with automatic v
 - Complex multi-file implementations
 - Tasks requiring quality validation (score >= 8/10)
 - When you want iterative refinement until quality passes
+- **ANY programming language** (Python, TypeScript, Go, Rust, etc.)
 
 **DON'T USE** for:
 - Simple one-line changes
 - Quick fixes that don't need validation
 - Tasks you can complete faster manually
+
+### Supported Languages 🌐
+`python` | `csharp` | `typescript` | `javascript` | `go` | `rust` | `java` | `ruby` | `php` | `swift` | `kotlin` | `dart` | `sql` | `html` | `css` | `shell`
 
 ### Orchestrator Tools
 | Tool | Description |
@@ -122,6 +126,17 @@ The **CodingOrchestrator** provides multi-agent code generation with automatic v
 | `cancel_task` | Cancel a running task |
 | `list_tasks` | List all active/recent tasks |
 
+### `orchestrate_task` Parameters
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `task` | ✅ | The coding task (e.g., "Create hello world in Python") |
+| `language` | ❌ | Target language: `python`, `csharp`, `typescript`, etc. **Auto-detected if not specified** |
+| `context` | ❌ | Project context for Lightning memory (default: "default") |
+| `workspacePath` | ❌ | Path to workspace (default: ".") |
+| `background` | ❌ | Run in background (default: true) |
+| `maxIterations` | ❌ | Max coding/validation loops (default: 5) |
+| `minValidationScore` | ❌ | Minimum score to pass (default: 8) |
+
 ### 🚨 File Application Workflow (MANDATORY)
 When task is **Complete**, agent MUST:
 1. Call `apply_task_files(jobId, basePath)` 
@@ -131,14 +146,14 @@ When task is **Complete**, agent MUST:
 
 ### Example Workflow
 ```
-1. orchestrate_task(task: "Create a UserService with CRUD operations")
+1. orchestrate_task(task: "Create hello world", language: "python")
    → Returns jobId: "abc123"
 
 2. get_task_status(jobId: "abc123")
-   → Shows progress: 40%, iteration 2/5
+   → Shows progress: 40%, iteration 2/5, Language: 🐍 Python
 
 3. get_task_status(jobId: "abc123")
-   → COMPLETE! Score 9/10
+   → COMPLETE! Score 9/10, generated: hello_world.py
 
 4. apply_task_files(jobId: "abc123", basePath: "E:\\GitHub\\MyProject")
    → Returns files with explicit write instructions
@@ -146,6 +161,12 @@ When task is **Complete**, agent MUST:
 5. AGENT WRITES EACH FILE using write tool
    → User sees "Keep/Review" UI for each file
 ```
+
+### Language Auto-Detection
+If `language` is not specified or set to `"auto"`:
+1. **Task keywords** - "python", "flask", "django" → Python; "react", "node" → JavaScript
+2. **Workspace files** - `requirements.txt` → Python; `package.json` → JS/TS; `*.csproj` → C#
+3. **Default** - Falls back to C# if nothing detected
 
 ### 🚨 CRITICAL: Agent Must Apply Files
 **ALWAYS** After task shows **Complete**:

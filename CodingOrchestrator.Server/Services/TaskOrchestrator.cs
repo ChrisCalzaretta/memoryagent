@@ -93,6 +93,7 @@ public class TaskOrchestrator : ITaskOrchestrator
                 var generateRequest = new GenerateCodeRequest
                 {
                     Task = request.Task,
+                    Language = request.Language,
                     Context = context,
                     WorkspacePath = request.WorkspacePath,
                     PreviousFeedback = feedback
@@ -135,6 +136,7 @@ public class TaskOrchestrator : ITaskOrchestrator
                         IsNew = f.Type == FileChangeType.Created
                     }).ToList(),
                     Context = request.Context,
+                    Language = request.Language,
                     OriginalTask = request.Task,
                     WorkspacePath = request.WorkspacePath
                 };

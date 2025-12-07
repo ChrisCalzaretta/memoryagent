@@ -6,6 +6,7 @@ namespace ValidationAgent.Server.Services;
 
 /// <summary>
 /// Builds prompts for the validation LLM - LEARNS FROM LIGHTNING
+/// Supports multi-language validation!
 /// </summary>
 public class ValidationPromptBuilder : IValidationPromptBuilder
 {
@@ -15,13 +16,13 @@ public class ValidationPromptBuilder : IValidationPromptBuilder
     private const string DefaultSystemPrompt = @"You are an expert code reviewer. Your task is to review code for quality, security, and best practices.
 
 VALIDATION RULES:
-1. Check for null reference vulnerabilities
-2. Check for proper error handling
-3. Check for security issues (SQL injection, hardcoded secrets, etc.)
-4. Check for proper async patterns
-5. Check for proper resource disposal
-6. Check for code maintainability
-7. Check for proper naming conventions
+1. Check for proper error handling (language-appropriate)
+2. Check for security issues (injection, hardcoded secrets, etc.)
+3. Check for proper async patterns (if applicable)
+4. Check for proper resource management
+5. Check for code maintainability
+6. Check for proper naming conventions
+7. Check for proper documentation
 
 SCORING:
 - 10: Perfect, no issues
@@ -30,7 +31,122 @@ SCORING:
 - 4-5: Poor, significant issues
 - 0-3: Critical, major problems
 
-Be strict but fair. Focus on real issues, not style preferences.";
+Be strict but fair. Focus on real issues, not style preferences.
+Validate according to the TARGET LANGUAGE's best practices and idioms.";
+
+    // Language-specific validation rules
+    private static readonly Dictionary<string, string> LanguageValidationRules = new()
+    {
+        ["python"] = @"PYTHON VALIDATION RULES:
+- Check for type hints on function parameters and returns
+- Check for docstrings on functions/classes
+- Check for proper exception handling (try/except)
+- Check for PEP 8 compliance (naming, spacing)
+- Check for proper use of context managers
+- Check for potential security issues (eval, exec, pickle)
+- Check for proper async/await patterns if using asyncio",
+
+        ["typescript"] = @"TYPESCRIPT VALIDATION RULES:
+- Check for proper type annotations (no 'any' abuse)
+- Check for strict null checks
+- Check for proper async/await patterns
+- Check for proper error handling (try/catch)
+- Check for interface usage for object shapes
+- Check for potential XSS vulnerabilities
+- Check for proper module exports",
+
+        ["javascript"] = @"JAVASCRIPT VALIDATION RULES:
+- Check for JSDoc documentation
+- Check for const/let usage (no var)
+- Check for proper async/await patterns
+- Check for proper error handling (try/catch)
+- Check for potential security issues (eval, innerHTML)
+- Check for proper null/undefined handling",
+
+        ["csharp"] = @"C# VALIDATION RULES:
+- Check for XML documentation on public members
+- Check for nullable reference type handling
+- Check for proper async/await with CancellationToken
+- Check for proper exception handling
+- Check for IDisposable pattern compliance
+- Check for proper dependency injection usage
+- Check for potential security issues (SQL injection, XSS)",
+
+        ["go"] = @"GO VALIDATION RULES:
+- Check for proper error handling (all errors checked)
+- Check for proper defer usage for cleanup
+- Check for proper context.Context usage
+- Check for exported names capitalization
+- Check for proper interface usage
+- Check for potential goroutine leaks",
+
+        ["rust"] = @"RUST VALIDATION RULES:
+- Check for proper Result/Option handling
+- Check for proper error propagation
+- Check for ownership/borrowing correctness
+- Check for proper lifetime annotations
+- Check for unsafe code justification
+- Check for proper derive macro usage",
+
+        ["java"] = @"JAVA VALIDATION RULES:
+- Check for Javadoc on public methods
+- Check for proper exception handling
+- Check for try-with-resources usage
+- Check for Optional usage for nullables
+- Check for proper access modifiers
+- Check for potential security issues",
+
+        ["ruby"] = @"RUBY VALIDATION RULES:
+- Check for YARD documentation
+- Check for proper exception handling (begin/rescue)
+- Check for proper method visibility
+- Check for Ruby idioms usage
+- Check for potential security issues",
+
+        ["php"] = @"PHP VALIDATION RULES:
+- Check for PHPDoc comments
+- Check for type declarations
+- Check for proper exception handling
+- Check for SQL injection vulnerabilities
+- Check for XSS vulnerabilities
+- Check for PSR-12 compliance",
+
+        ["swift"] = @"SWIFT VALIDATION RULES:
+- Check for documentation comments
+- Check for proper optional handling
+- Check for proper error handling (do/try/catch)
+- Check for proper access control
+- Check for memory management (weak/unowned)",
+
+        ["kotlin"] = @"KOTLIN VALIDATION RULES:
+- Check for KDoc documentation
+- Check for proper null safety usage
+- Check for proper coroutine patterns
+- Check for proper sealed class usage
+- Check for proper extension function usage",
+
+        ["dart"] = @"DART/FLUTTER VALIDATION RULES:
+- Check for dartdoc comments
+- Check for proper null safety
+- Check for proper async/await patterns
+- Check for proper widget composition (if Flutter)
+- Check for const usage where possible",
+
+        ["sql"] = @"SQL VALIDATION RULES:
+- Check for SQL injection vulnerabilities
+- Check for proper parameterization
+- Check for proper indexing considerations
+- Check for proper transaction handling
+- Check for proper error handling",
+
+        ["shell"] = @"SHELL/BASH VALIDATION RULES:
+- Check for shebang line
+- Check for set -euo pipefail
+- Check for proper quoting
+- Check for proper error handling (trap)
+- Check for shellcheck compliance
+- Check for potential command injection"
+    };
 
     public ValidationPromptBuilder(IMemoryAgentClient memoryAgent, ILogger<ValidationPromptBuilder> logger)
     {
@@ -50,6 +166,16 @@ Be strict but fair. Focus on real issues, not style preferences.";
         
         sb.AppendLine(systemPrompt);
         sb.AppendLine();
+        
+        // 🌐 LANGUAGE-SPECIFIC VALIDATION
+        var language = DetectLanguage(request);
+        if (LanguageValidationRules.TryGetValue(language, out var langRules))
+        {
+            sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
+            sb.AppendLine(langRules);
+            sb.AppendLine();
+            _logger.LogInformation("Using language-specific validation rules for: {Language}", language);
+        }
         
         if (!string.IsNullOrEmpty(request.OriginalTask))
         {
@@ -104,5 +230,55 @@ Be strict but fair. Focus on real issues, not style preferences.";
         sb.AppendLine("4. Overall summary");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Detect language from request or file extensions
+    /// </summary>
+    private static string DetectLanguage(ValidateCodeRequest request)
+    {
+        // If explicitly set, use it
+        if (!string.IsNullOrEmpty(request.Language))
+        {
+            return request.Language.ToLowerInvariant();
+        }
+
+        // Auto-detect from file extensions
+        var extensionCounts = new Dictionary<string, int>();
+        foreach (var file in request.Files)
+        {
+            var ext = System.IO.Path.GetExtension(file.Path)?.ToLowerInvariant();
+            var lang = ext switch
+            {
+                ".py" => "python",
+                ".ts" => "typescript",
+                ".tsx" => "typescript",
+                ".js" => "javascript",
+                ".jsx" => "javascript",
+                ".cs" => "csharp",
+                ".go" => "go",
+                ".rs" => "rust",
+                ".java" => "java",
+                ".rb" => "ruby",
+                ".php" => "php",
+                ".swift" => "swift",
+                ".kt" => "kotlin",
+                ".kts" => "kotlin",
+                ".dart" => "dart",
+                ".sql" => "sql",
+                ".sh" => "shell",
+                ".bash" => "shell",
+                ".ps1" => "shell",
+                _ => null
+            };
+
+            if (lang != null)
+            {
+                extensionCounts[lang] = extensionCounts.GetValueOrDefault(lang, 0) + 1;
+            }
+        }
+
+        // Return the most common language, or default to csharp
+        return extensionCounts.OrderByDescending(kv => kv.Value).FirstOrDefault().Key ?? "csharp";
     }
 }
