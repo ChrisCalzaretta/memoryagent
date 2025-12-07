@@ -117,9 +117,13 @@ The **CodingOrchestrator** provides multi-agent code generation with automatic v
 | Tool | Description |
 |------|-------------|
 | `orchestrate_task` | Start multi-agent coding (returns job ID) |
-| `get_task_status` | Check progress, get generated code when complete |
+| `get_task_status` | Check progress, **get generated code** when complete |
 | `cancel_task` | Cancel a running task |
 | `list_tasks` | List all active/recent tasks |
+
+### File Output Options
+- `autoWriteFiles: false` (default) → Files returned in `get_task_status` for review
+- `autoWriteFiles: true` → Files auto-written to `workspace/generated/` folder
 
 ### Example Workflow
 ```
@@ -129,9 +133,12 @@ The **CodingOrchestrator** provides multi-agent code generation with automatic v
 2. get_task_status(jobId: "abc123")
    → Shows progress: 40%, iteration 2/5, validation score 6/10
 
-3. get_task_status(jobId: "abc123")  (later)
-   → COMPLETE! Score 9/10, shows generated files
+3. get_task_status(jobId: "abc123")  (when complete)
+   → COMPLETE! Score 9/10, FULL CODE returned in response
+   → Copy generated files to your project
 ```
+
+**⚠️ Important:** Files are returned IN THE RESPONSE - copy them to your project!
 
 ---
 

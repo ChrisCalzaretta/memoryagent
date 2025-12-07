@@ -34,7 +34,7 @@ Timeline:
 
 ### Completed Task
 ```
-📊 Task Status: Complete
+📊 Task Status: ✅ Complete
 Job ID: abc123
 
 ✅ COMPLETED
@@ -42,10 +42,17 @@ Job ID: abc123
 - Total Iterations: 2
 - Duration: 8500ms
 - Files Generated: 1
+- Summary: Successfully generated code...
 
-**Services/UserService.cs** (Created)
-[Generated code shown here]
+---
+### 📄 Services/UserService.cs
+**Change Type:** Created
+**Reason:** Generated csharp code
+
+[FULL CODE IS SHOWN HERE - COPY TO YOUR PROJECT]
 ```
+
+**⚠️ Files are returned in the response!** Copy them to your project manually, or use `autoWriteFiles: true` when starting the task.
 
 ### Failed Task
 ```

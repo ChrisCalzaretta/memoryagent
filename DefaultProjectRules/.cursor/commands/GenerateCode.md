@@ -24,9 +24,14 @@ Use the `orchestrate_task` tool from the coding-orchestrator MCP server:
 orchestrate_task(
   task: "[DESCRIBE WHAT TO BUILD]",
   maxIterations: 5,
-  minValidationScore: 8
+  minValidationScore: 8,
+  autoWriteFiles: false  // Set to true to auto-write files to workspace
 )
 ```
+
+**Options:**
+- `autoWriteFiles: false` (default) - Files returned in response for review
+- `autoWriteFiles: true` - Files auto-written to workspace/generated/ folder
 
 ### Step 2: Monitor Progress
 ```
