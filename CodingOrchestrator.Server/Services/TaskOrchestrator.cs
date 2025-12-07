@@ -59,6 +59,42 @@ public class TaskOrchestrator : ITaskOrchestrator
 
         try
         {
+            // 🧠 Phase 0: Estimate complexity and adjust iterations dynamically
+            UpdateProgress(jobId, TaskState.Running, 5, "Estimating complexity", 0);
+            var estimatePhase = StartPhase("complexity_estimation");
+            
+            var estimateRequest = new EstimateComplexityRequest
+            {
+                Task = request.Task,
+                Language = request.Language,
+                Context = request.Context
+            };
+            
+            var complexity = await _codingAgent.EstimateComplexityAsync(estimateRequest, cancellationToken);
+            
+            // Use user's max iterations as hard cap - don't let LLM override it
+            // The user knows their time/resource budget
+            var effectiveMaxIterations = request.MaxIterations;
+            if (complexity.Success && complexity.RecommendedIterations > request.MaxIterations)
+            {
+                _logger.LogWarning("🧠 LLM recommended {Recommended} iterations but user set max={Max}. Respecting user's limit.",
+                    complexity.RecommendedIterations, request.MaxIterations);
+            }
+            
+            // Update response with effective iterations
+            response.MaxIterations = effectiveMaxIterations;
+            
+            estimatePhase.Details = new Dictionary<string, object>
+            {
+                ["complexityLevel"] = complexity.ComplexityLevel,
+                ["recommendedIterations"] = complexity.RecommendedIterations,
+                ["effectiveIterations"] = effectiveMaxIterations,
+                ["estimatedFiles"] = complexity.EstimatedFiles,
+                ["reasoning"] = complexity.Reasoning
+            };
+            EndPhase(jobId, estimatePhase);
+            response.Timeline.Add(estimatePhase);
+
             // Phase 1: Get context from Lightning (if available)
             UpdateProgress(jobId, TaskState.Running, 10, "Gathering context", 0);
             var contextPhase = StartPhase("context_gathering");
@@ -75,14 +111,17 @@ public class TaskOrchestrator : ITaskOrchestrator
             
             // Track which models have been tried (for smart rotation)
             var triedModels = new HashSet<string>();
+            
+            // 📁 ACCUMULATE files across iterations (not replace!)
+            var accumulatedFiles = new Dictionary<string, FileChange>();
 
-            while (iteration < request.MaxIterations)
+            while (iteration < effectiveMaxIterations)
             {
                 iteration++;
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Coding Agent phase
-                var codingProgress = 10 + (iteration * 80 / request.MaxIterations);
+                var codingProgress = 10 + (iteration * 80 / effectiveMaxIterations);
                 UpdateProgress(jobId, TaskState.Running, codingProgress, $"Coding Agent (iteration {iteration})", iteration);
                 
                 var codingPhase = StartPhase("coding_agent", iteration);
@@ -94,9 +133,16 @@ public class TaskOrchestrator : ITaskOrchestrator
                     feedback.TriedModels = triedModels;
                 }
 
+                // 📁 Tell the LLM what files already exist
+                var existingFilesList = accumulatedFiles.Any()
+                    ? $"\n\n📁 FILES ALREADY GENERATED ({accumulatedFiles.Count}):\n" + 
+                      string.Join("\n", accumulatedFiles.Keys.Select(f => $"- {f}")) +
+                      "\n\n⚠️ Generate the MISSING files. You may also update existing files if needed."
+                    : "";
+
                 var generateRequest = new GenerateCodeRequest
                 {
-                    Task = request.Task,
+                    Task = request.Task + existingFilesList,
                     Language = request.Language,
                     Context = context,
                     WorkspacePath = request.WorkspacePath,
@@ -125,13 +171,24 @@ public class TaskOrchestrator : ITaskOrchestrator
                     continue;
                 }
 
+                // 📁 ACCUMULATE files - merge new files with existing ones
+                foreach (var file in lastGeneratedCode.FileChanges)
+                {
+                    accumulatedFiles[file.Path] = file;
+                    _logger.LogDebug("📁 Accumulated file: {Path} (total: {Count})", file.Path, accumulatedFiles.Count);
+                }
+                
+                _logger.LogInformation("📁 Iteration {Iteration}: Generated {NewFiles} files, Total accumulated: {Total}",
+                    iteration, lastGeneratedCode.FileChanges.Count, accumulatedFiles.Count);
+
                 // 🐳 EXECUTION PHASE: Actually run the code in Docker!
                 var executionProgress = codingProgress + 5;
                 UpdateProgress(jobId, TaskState.Running, executionProgress, $"Docker Execution (iteration {iteration})", iteration);
                 
                 var executionPhase = StartPhase("docker_execution", iteration);
                 
-                var executionFiles = lastGeneratedCode.FileChanges.Select(f => new ExecutionFile
+                // Use ALL accumulated files, not just last iteration's!
+                var executionFiles = accumulatedFiles.Values.Select(f => new ExecutionFile
                 {
                     Path = f.Path,
                     Content = f.Content,
@@ -205,9 +262,10 @@ public class TaskOrchestrator : ITaskOrchestrator
                 
                 var validationPhase = StartPhase("validation_agent", iteration);
 
+                // Validate ALL accumulated files, not just last iteration's!
                 var validateRequest = new ValidateCodeRequest
                 {
-                    Files = lastGeneratedCode.FileChanges.Select(f => new CodeFile
+                    Files = accumulatedFiles.Values.Select(f => new CodeFile
                     {
                         Path = f.Path,
                         Content = f.Content,
@@ -245,16 +303,18 @@ public class TaskOrchestrator : ITaskOrchestrator
                 }
             }
 
-            // Build result
-            if (lastGeneratedCode?.Success == true && lastValidation != null)
+            // Build result using ALL accumulated files
+            if (accumulatedFiles.Any() && lastValidation != null)
             {
-                var files = lastGeneratedCode.FileChanges.Select(f => new GeneratedFile
+                var files = accumulatedFiles.Values.Select(f => new GeneratedFile
                 {
                     Path = f.Path,
                     Content = f.Content,
                     ChangeType = f.Type,
                     Reason = f.Reason
                 }).ToList();
+                
+                _logger.LogInformation("📁 Final result contains {Count} accumulated files", files.Count);
                 
                 // 📝 AUTO-WRITE: Write files to workspace if enabled
                 var filesWritten = new List<string>();

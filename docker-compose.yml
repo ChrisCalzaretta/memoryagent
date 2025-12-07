@@ -122,12 +122,15 @@ services:
     container_name: ${PROJECT_NAME:-memory}-coding-orchestrator
     ports:
       - "${ORCHESTRATOR_PORT:-5003}:5003"
+    volumes:
+      - d:\Memory\${PROJECT_NAME:-default}\memory:/data/memory
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5003
       - MemoryAgent__BaseUrl=http://${PROJECT_NAME:-memory}-agent-server:5000
       - CodingAgent__BaseUrl=http://${PROJECT_NAME:-memory}-coding-agent:5001
       - ValidationAgent__BaseUrl=http://${PROJECT_NAME:-memory}-validation-agent:5002
+      - JobPersistence__Path=/data/memory/orchestrator/jobs
     depends_on:
       - mcp-server
       - coding-agent
@@ -147,6 +150,9 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5001
+      - Ollama__Url=${OLLAMA_URL:-http://${PROJECT_NAME:-memory}-agent-ollama:11434}
+    depends_on:
+      - ollama
     networks:
       - agent-net
     restart: unless-stopped

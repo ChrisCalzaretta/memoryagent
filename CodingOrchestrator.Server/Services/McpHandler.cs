@@ -45,7 +45,7 @@ public class McpHandler : IMcpHandler
                         ["context"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Project context name for Lightning memory" },
                         ["workspacePath"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Path to the workspace root" },
                         ["background"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Run as background job (default: true)", ["default"] = true },
-                        ["maxIterations"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Maximum coding/validation iterations (default: 5)", ["default"] = 5 },
+                        ["maxIterations"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Maximum coding/validation iterations. No limit - set as high as needed (e.g., 100 for complex, 1000+ for huge projects). Default: 50", ["default"] = 50 },
                         ["minValidationScore"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Minimum score to pass validation (default: 8)", ["default"] = 8 },
                         ["autoWriteFiles"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Automatically write generated files to workspace (default: false). When false, files are returned for manual review.", ["default"] = false }
                     },
@@ -139,7 +139,7 @@ public class McpHandler : IMcpHandler
             Context = context,
             WorkspacePath = workspacePath,
             Background = GetBoolArg(arguments, "background", true),
-            MaxIterations = GetIntArg(arguments, "maxIterations", 5),
+            MaxIterations = GetIntArg(arguments, "maxIterations", 50),  // Default 50, no cap - user can set 100000 if needed
             MinValidationScore = GetIntArg(arguments, "minValidationScore", 8),
             AutoWriteFiles = GetBoolArg(arguments, "autoWriteFiles", false)
         };
@@ -193,7 +193,8 @@ public class McpHandler : IMcpHandler
             ["php"] = new[] { " php", ".php", "laravel", "symfony" },
             ["swift"] = new[] { "swift", ".swift", "swiftui", "ios app" },
             ["kotlin"] = new[] { "kotlin", ".kt", "android" },
-            ["dart"] = new[] { "dart", ".dart", "flutter" },
+            ["flutter"] = new[] { "flutter", "flutter app", "flutter widget" },
+            ["dart"] = new[] { "dart", ".dart" },
             ["sql"] = new[] { " sql", ".sql", "database query", "stored procedure" },
             ["html"] = new[] { "html", ".html", "webpage" },
             ["css"] = new[] { " css", ".css", "stylesheet" },

@@ -39,8 +39,9 @@ REQUIREMENTS:
 - Follow idiomatic patterns for the target language
 - Include type hints/annotations where the language supports them";
 
-    // Language-specific guidance
-    private static readonly Dictionary<string, LanguageGuidance> LanguageGuidelines = new()
+    // Language-specific guidance - FALLBACK DEFAULTS (Lightning prompts take priority!)
+    // These are used only if Lightning doesn't have a prompt for the language
+    private static readonly Dictionary<string, LanguageGuidance> DefaultLanguageGuidelines = new()
     {
         ["python"] = new LanguageGuidance
         {
@@ -203,13 +204,109 @@ REQUIREMENTS:
             FileExtension = ".dart",
             CommentStyle = "// Comment",
             DocStyle = "Documentation comments (///)",
-            Guidelines = @"DART/FLUTTER REQUIREMENTS:
-- Use dartdoc comments
-- Use async/await for futures
+            Guidelines = @"DART REQUIREMENTS (non-Flutter):
+- Use dartdoc comments (///)
+- Use async/await for Futures
 - Use camelCase for variables/functions, PascalCase for classes
 - Use nullable types (Type?)
-- Follow Flutter widget patterns if UI
-- Use const constructors where possible"
+- Use const constructors where possible
+- File naming: snake_case.dart"
+        },
+        ["flutter"] = new LanguageGuidance
+        {
+            FileExtension = ".dart",
+            CommentStyle = "// Comment",
+            DocStyle = "Documentation comments (///)",
+            Guidelines = @"🦋 FLUTTER/DART REQUIREMENTS:
+
+FILE STRUCTURE (CRITICAL - use these exact paths):
+- lib/main.dart - App entry point with runApp()
+- lib/models/*.dart - Data models (NOT in Services/)
+- lib/providers/*.dart - State management (ChangeNotifier)
+- lib/screens/*.dart or lib/pages/*.dart - Full-screen widgets
+- lib/widgets/*.dart - Reusable UI components
+- pubspec.yaml - Dependencies (NOT config.yaml, NOT .csproj)
+
+PUBSPEC.YAML FORMAT:
+```yaml
+name: app_name
+description: Description
+version: 1.0.0+1
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.0.0  # if using Provider
+flutter:
+  uses-material-design: true
+```
+
+WIDGET PATTERNS:
+- StatelessWidget for static UI
+- StatefulWidget for dynamic UI with local state
+- Use const constructors: const MyWidget({super.key})
+- Use named parameters with required keyword
+
+EXAMPLE STATELESS WIDGET:
+```dart
+class MyWidget extends StatelessWidget {
+  const MyWidget({super.key});
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container();
+  }
+}
+```
+
+STATE MANAGEMENT (Provider):
+```dart
+class MyProvider extends ChangeNotifier {
+  int _value = 0;
+  int get value => _value;
+  
+  void increment() {
+    _value++;
+    notifyListeners();
+  }
+}
+```
+
+MAIN.DART PATTERN:
+```dart
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+void main() {
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => MyProvider(),
+      child: const MyApp(),
+    ),
+  );
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'App',
+      home: const HomeScreen(),
+    );
+  }
+}
+```
+
+CRITICAL RULES:
+- NEVER mix C# syntax (.cs files, namespaces, using statements)
+- NEVER use 'new' keyword (Dart 2+ doesn't need it)
+- Use 'final' for immutable variables, not 'const' for runtime values
+- Import with: import 'package:flutter/material.dart';
+- NO semicolons after class declarations
+- Use => for single-expression functions"
         },
         ["sql"] = new LanguageGuidance
         {
@@ -267,23 +364,40 @@ REQUIREMENTS:
         sb.AppendLine(systemPrompt);
         sb.AppendLine();
         
-        // 🌐 LANGUAGE-SPECIFIC GUIDANCE
-        var language = request.Language?.ToLowerInvariant() ?? "csharp";
-        if (LanguageGuidelines.TryGetValue(language, out var guidance))
+        // 🌐 LANGUAGE-SPECIFIC GUIDANCE - TRY LIGHTNING FIRST!
+        var language = request.Language?.ToLowerInvariant();
+        if (!string.IsNullOrEmpty(language))
         {
-            sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
-            sb.AppendLine($"File Extension: {guidance.FileExtension}");
-            sb.AppendLine($"Documentation Style: {guidance.DocStyle}");
-            sb.AppendLine();
-            sb.AppendLine(guidance.Guidelines);
-            sb.AppendLine();
-            _logger.LogInformation("Using language-specific guidance for: {Language}", language);
-        }
-        else
-        {
-            sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
-            sb.AppendLine("Follow best practices and idiomatic patterns for this language.");
-            sb.AppendLine();
+            // ✅ LEARNING: Try to fetch language-specific prompt from Lightning
+            var languagePromptName = $"coding_agent_{language}";
+            var languagePrompt = await _memoryAgent.GetPromptAsync(languagePromptName, cancellationToken);
+            
+            if (languagePrompt != null)
+            {
+                // Use Lightning's learned prompt for this language
+                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} (from Lightning v{languagePrompt.Version}) ===");
+                sb.AppendLine(languagePrompt.Content);
+                sb.AppendLine();
+                _logger.LogInformation("✨ Using LEARNED prompt for {Language} (v{Version})", language, languagePrompt.Version);
+            }
+            else if (DefaultLanguageGuidelines.TryGetValue(language, out var guidance))
+            {
+                // Fall back to hardcoded defaults
+                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} (default) ===");
+                sb.AppendLine($"File Extension: {guidance.FileExtension}");
+                sb.AppendLine($"Documentation Style: {guidance.DocStyle}");
+                sb.AppendLine();
+                sb.AppendLine(guidance.Guidelines);
+                sb.AppendLine();
+                _logger.LogInformation("Using DEFAULT guidance for: {Language} (not yet in Lightning)", language);
+            }
+            else
+            {
+                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
+                sb.AppendLine("Follow best practices and idiomatic patterns for this language.");
+                sb.AppendLine();
+                _logger.LogWarning("No guidance found for language: {Language}", language);
+            }
         }
         
         // 🔍 SEARCH BEFORE WRITE: Find existing code to avoid duplication
@@ -431,14 +545,27 @@ REQUIREMENTS:
         sb.AppendLine(systemPrompt);
         sb.AppendLine();
         
-        // 🌐 LANGUAGE-SPECIFIC GUIDANCE (for fixes too!)
-        var language = request.Language?.ToLowerInvariant() ?? "csharp";
-        if (LanguageGuidelines.TryGetValue(language, out var guidance))
+        // 🌐 LANGUAGE-SPECIFIC GUIDANCE (for fixes too!) - TRY LIGHTNING FIRST!
+        var language = request.Language?.ToLowerInvariant();
+        if (!string.IsNullOrEmpty(language))
         {
-            sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
-            sb.AppendLine($"File Extension: {guidance.FileExtension}");
-            sb.AppendLine(guidance.Guidelines);
-            sb.AppendLine();
+            // ✅ LEARNING: Try to fetch language-specific prompt from Lightning
+            var languagePromptName = $"coding_agent_{language}";
+            var languagePrompt = await _memoryAgent.GetPromptAsync(languagePromptName, cancellationToken);
+            
+            if (languagePrompt != null)
+            {
+                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} (from Lightning) ===");
+                sb.AppendLine(languagePrompt.Content);
+                sb.AppendLine();
+            }
+            else if (DefaultLanguageGuidelines.TryGetValue(language, out var guidance))
+            {
+                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
+                sb.AppendLine($"File Extension: {guidance.FileExtension}");
+                sb.AppendLine(guidance.Guidelines);
+                sb.AppendLine();
+            }
         }
         
         sb.AppendLine("=== TASK ===");

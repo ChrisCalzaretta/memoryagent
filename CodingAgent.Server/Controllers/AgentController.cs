@@ -81,6 +81,32 @@ public class AgentController : ControllerBase
             });
         }
     }
+
+    /// <summary>
+    /// Estimate task complexity and recommended iterations
+    /// </summary>
+    [HttpPost("estimate")]
+    public async Task<ActionResult<EstimateComplexityResponse>> EstimateComplexity(
+        [FromBody] EstimateComplexityRequest request,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Estimating complexity for task: {Task}", request.Task);
+
+        try
+        {
+            var response = await _codeGenerationService.EstimateComplexityAsync(request, cancellationToken);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error estimating complexity for task: {Task}", request.Task);
+            return StatusCode(500, new EstimateComplexityResponse
+            {
+                Success = false,
+                Error = ex.Message
+            });
+        }
+    }
 }
 
 

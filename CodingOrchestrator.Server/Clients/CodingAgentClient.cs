@@ -61,6 +61,25 @@ public class CodingAgentClient : ICodingAgentClient
         }
     }
 
+    public async Task<EstimateComplexityResponse> EstimateComplexityAsync(EstimateComplexityRequest request, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Calling CodingAgent to estimate complexity for: {Task}", request.Task);
+
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync("/api/agent/estimate", request, JsonOptions, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<EstimateComplexityResponse>(JsonOptions, cancellationToken);
+            return result ?? new EstimateComplexityResponse { Success = false, Error = "Empty response from CodingAgent" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling CodingAgent estimate");
+            return new EstimateComplexityResponse { Success = false, Error = ex.Message };
+        }
+    }
+
     public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken)
     {
         try

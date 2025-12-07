@@ -9,6 +9,11 @@ namespace CodingOrchestrator.Server.Services;
 public interface IJobManager
 {
     /// <summary>
+    /// Initialize by loading persisted jobs from disk
+    /// </summary>
+    Task InitializeAsync();
+
+    /// <summary>
     /// Start a new background job
     /// </summary>
     Task<string> StartJobAsync(OrchestrateTaskRequest request, CancellationToken cancellationToken);

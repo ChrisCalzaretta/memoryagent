@@ -189,7 +189,7 @@ public static class DockerLanguageConfig
             MainFilePatterns = new[] { "lib/main.dart", "main.dart", "*.dart" },
             SetupCommands = Array.Empty<string>(),
             TimeoutSeconds = 120,  // Flutter builds are slow
-            SkipExecution = false  // We CAN build, just not run interactively
+            SkipExecution = true   // Skip Docker - Flutter needs browser/device, can't validate in container
         },
         
         ["shell"] = new LanguageConfig

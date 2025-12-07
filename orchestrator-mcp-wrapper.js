@@ -78,10 +78,15 @@ const TOOLS = [
           description: 'Run as background job - returns job ID immediately (default: true)', 
           default: true 
         },
+        language: {
+          type: 'string',
+          description: 'Target language: auto, python, csharp, typescript, javascript, go, rust, java, flutter, dart, etc. Default: auto (detects from task)',
+          default: 'auto'
+        },
         maxIterations: { 
           type: 'integer', 
-          description: 'Maximum coding/validation iterations before giving up (default: 5)', 
-          default: 5 
+          description: 'Maximum iterations (default: 50, no limit - set to 1000+ for complex projects)', 
+          default: 50 
         },
         minValidationScore: { 
           type: 'integer', 
@@ -215,10 +220,11 @@ async function handleToolCall(toolName, args) {
     case 'orchestrate_task': {
       const body = {
         task: args.task,
+        language: args.language || 'auto',
         context: args.context,
         workspacePath: args.workspacePath,
         background: args.background !== false,
-        maxIterations: args.maxIterations || 5,
+        maxIterations: args.maxIterations || 50,
         minValidationScore: args.minValidationScore || 8
       };
       
@@ -228,6 +234,7 @@ async function handleToolCall(toolName, args) {
 
 **Job ID:** \`${result.jobId}\`
 **Task:** ${args.task}
+**Language:** ${body.language}
 **Context:** ${args.context}
 **Status:** ${result.status}
 

@@ -110,16 +110,59 @@ public class CodeGenerationService : ICodeGenerationService
 
     public async Task<GenerateCodeResponse> GenerateAsync(GenerateCodeRequest request, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Generating code for task: {Task}", request.Task);
+        _logger.LogInformation("Generating code for task: {Task}, Language: {Language}", 
+            request.Task, request.Language ?? "auto");
 
         // Build prompt from Lightning (includes context, patterns, similar solutions)
         var prompt = await _promptBuilder.BuildGeneratePromptAsync(request, cancellationToken);
         _logger.LogDebug("Built prompt with {Length} characters", prompt.Length);
 
-        // Use the primary pinned model (always loaded, instant)
-        var (model, port) = _modelOrchestrator.GetPrimaryModel();
+        // 🧠 INTELLIGENT MODEL SELECTION based on task complexity and language
+        var (model, port) = await SelectBestModelForTaskAsync(request, cancellationToken);
         
         return await GenerateWithModelAsync(model, port, prompt, request, cancellationToken);
+    }
+
+    /// <summary>
+    /// Select the best model for the task based on language, complexity, and available models
+    /// </summary>
+    private async Task<(string Model, int Port)> SelectBestModelForTaskAsync(
+        GenerateCodeRequest request, 
+        CancellationToken cancellationToken)
+    {
+        var language = request.Language?.ToLowerInvariant() ?? "auto";
+        var task = request.Task.ToLowerInvariant();
+        
+        // Determine if this is a complex task that needs a bigger model
+        var isComplexTask = 
+            language is "flutter" or "dart" or "swift" or "kotlin" ||  // Mobile/Desktop frameworks
+            task.Contains("multi-file") || task.Contains("multiple file") ||
+            task.Contains("full app") || task.Contains("complete app") ||
+            task.Contains("project") || task.Contains("blackjack") ||
+            (request.PreviousFeedback?.TriedModels?.Count ?? 0) > 0;  // Already tried before = complex
+        
+        if (isComplexTask)
+        {
+            _logger.LogInformation("🧠 Complex task detected ({Language}), selecting best available model", language);
+            
+            // Try to get a bigger/better model
+            var selection = await _modelOrchestrator.SelectModelAsync(
+                ModelPurpose.CodeGeneration,
+                new HashSet<string>(),  // Don't exclude any models on first attempt
+                cancellationToken);
+            
+            if (selection != null)
+            {
+                var (selectedModel, selectedPort) = selection.Value;
+                _logger.LogInformation("✨ Selected {Model} for complex {Language} task", selectedModel, language);
+                return (selectedModel, selectedPort);
+            }
+        }
+        
+        // Default: use primary model (always loaded, fastest response)
+        var (primaryModel, primaryPort) = _modelOrchestrator.GetPrimaryModel();
+        _logger.LogInformation("Using primary model {Model} for {Language} task", primaryModel, language);
+        return (primaryModel, primaryPort);
     }
 
     public async Task<GenerateCodeResponse> FixAsync(GenerateCodeRequest request, CancellationToken cancellationToken)
@@ -163,7 +206,14 @@ public class CodeGenerationService : ICodeGenerationService
     {
         _logger.LogInformation("Calling {Model} on port {Port} for code generation", model, port);
         
-        var systemPrompt = @"You are an expert code generator. Generate production-quality code in ANY programming language.
+        // Build language-aware system prompt
+        var requestedLang = request.Language?.ToLowerInvariant() ?? "auto";
+        var langExamples = GetLanguageExamples(requestedLang);
+        
+        var systemPrompt = $@"You are an expert code generator. Generate production-quality code.
+
+🎯 TARGET LANGUAGE: {requestedLang.ToUpperInvariant()}
+You MUST generate code in {requestedLang}. Do NOT use any other language.
 
 OUTPUT FORMAT - You MUST respond with:
 1. A brief explanation of your approach
@@ -173,19 +223,14 @@ OUTPUT FORMAT - You MUST respond with:
 // code here
 ```
 
-EXAMPLES:
-- ```csharp:Services/UserService.cs
-- ```typescript:src/components/Button.tsx
-- ```python:app/services/user_service.py
-- ```sql:migrations/001_create_users.sql
-- ```yaml:docker-compose.yml
+{langExamples}
 
 RULES:
 - ALWAYS include the file path after the language tag
-- Use proper conventions for the target language
-- Include error handling appropriate for the language
-- Follow best practices for the language/framework
-- Use async patterns where applicable";
+- ONLY generate {requestedLang} code - NO other languages
+- Use proper conventions for {requestedLang}
+- Include error handling appropriate for {requestedLang}
+- Follow best practices for {requestedLang}";
 
         try
         {
@@ -396,6 +441,17 @@ RULES:
             "shell" or "bash" or "sh" => $"scripts/script{suffix}",
             "powershell" or "ps1" => $"scripts/script{suffix}",
             
+            // Dart (non-Flutter)
+            "dart" => $"bin/main{suffix}",
+            
+            // Flutter - proper structure
+            "flutter" => index switch
+            {
+                0 => "lib/main",
+                1 => "pubspec",  // Will get .yaml extension
+                _ => $"lib/widgets/widget{suffix}"
+            },
+            
             // Default
             _ => $"Generated{suffix}"
         };
@@ -507,6 +563,231 @@ RULES:
             MainFile = primaryFile.Path,
             BuildCommand = buildCmd,
             RunCommand = runCmd!
+        };
+    }
+
+    /// <summary>
+    /// Get language-specific examples for the system prompt
+    /// </summary>
+    private static string GetLanguageExamples(string language)
+    {
+        return language.ToLowerInvariant() switch
+        {
+            "flutter" => @"🚨 CRITICAL: GENERATE ALL FILES IN ONE RESPONSE! 🚨
+
+You MUST generate ALL required files in a SINGLE response. Do NOT generate just 1 file.
+Include EVERY file needed for a complete, working Flutter app.
+
+FLUTTER FILE STRUCTURE (generate ALL of these):
+```yaml:pubspec.yaml
+```dart:lib/main.dart  
+```dart:lib/models/<name>.dart
+```dart:lib/providers/<name>_provider.dart
+```dart:lib/screens/<name>_screen.dart
+
+EXAMPLE - Minimum complete app needs:
+1. pubspec.yaml - dependencies
+2. lib/main.dart - entry point with runApp()
+3. lib/models/*.dart - data classes
+4. lib/providers/*.dart - state management
+5. lib/screens/*.dart - UI screens
+
+⚠️ DO NOT output just 1 file. Output ALL files with complete implementations.",
+
+            "dart" => @"DART EXAMPLES:
+- ```dart:bin/main.dart
+- ```dart:lib/src/model.dart
+- ```yaml:pubspec.yaml",
+
+            "python" => @"PYTHON EXAMPLES:
+- ```python:main.py
+- ```python:app/services/user_service.py
+- ```python:tests/test_service.py
+- ```txt:requirements.txt",
+
+            "csharp" or "cs" => @"C# EXAMPLES:
+- ```csharp:Services/UserService.cs
+- ```csharp:Models/User.cs
+- ```csharp:Controllers/UserController.cs",
+
+            "typescript" or "ts" => @"TYPESCRIPT EXAMPLES:
+- ```typescript:src/index.ts
+- ```typescript:src/components/Button.tsx
+- ```typescript:src/services/api.ts",
+
+            "javascript" or "js" => @"JAVASCRIPT EXAMPLES:
+- ```javascript:src/index.js
+- ```javascript:src/components/App.jsx
+- ```javascript:server.js",
+
+            _ => @"EXAMPLES:
+- ```csharp:Services/UserService.cs
+- ```typescript:src/components/Button.tsx
+- ```python:app/services/user_service.py
+- ```dart:lib/main.dart
+- ```yaml:config.yml"
+        };
+    }
+
+    /// <summary>
+    /// 🧠 Estimate task complexity and recommended iterations
+    /// Uses LLM to analyze the task and predict difficulty
+    /// </summary>
+    public async Task<EstimateComplexityResponse> EstimateComplexityAsync(
+        EstimateComplexityRequest request, 
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Estimating complexity for: {Task}", request.Task);
+        
+        var (model, port) = _modelOrchestrator.GetPrimaryModel();
+        
+        var systemPrompt = @"You are a task complexity estimator. Analyze coding tasks and estimate their difficulty.
+
+OUTPUT FORMAT - Respond with ONLY this JSON (no other text):
+{
+  ""complexityLevel"": ""simple|moderate|complex|very_complex"",
+  ""recommendedIterations"": <number - suggest based on complexity (50-500 for complex, 1000+ for huge projects)>,
+  ""estimatedFiles"": <number of files>,
+  ""reasoning"": ""brief explanation""
+}
+
+COMPLEXITY GUIDELINES:
+- simple (12 iterations): Single file, basic CRUD, simple utilities, small scripts
+- moderate (15-20 iterations): 2-3 files, basic patterns, standard services
+- complex (25-35 iterations): Multi-file, API integration, state management, UI components
+- very_complex (100-500 iterations): Full features, database + API + UI, complex algorithms, multi-service
+- massive (500-1000+ iterations): Entire applications, multi-module systems, complete rewrites
+
+ALWAYS respond with valid JSON only.";
+
+        var userPrompt = $@"Estimate the complexity of this coding task:
+
+TASK: {request.Task}
+LANGUAGE: {request.Language ?? "not specified"}
+CONTEXT: {request.Context ?? "none"}
+
+Respond with JSON only.";
+
+        try
+        {
+            var response = await _ollamaClient.GenerateAsync(
+                model, 
+                userPrompt, 
+                systemPrompt, 
+                port, 
+                cancellationToken);
+
+            if (!response.Success)
+            {
+                _logger.LogWarning("LLM estimation failed, using heuristic");
+                return EstimateFromHeuristics(request.Task);
+            }
+
+            // Parse JSON response
+            try
+            {
+                // Clean up response - find JSON object
+                var json = response.Response.Trim();
+                var startIdx = json.IndexOf('{');
+                var endIdx = json.LastIndexOf('}');
+                
+                if (startIdx >= 0 && endIdx > startIdx)
+                {
+                    json = json.Substring(startIdx, endIdx - startIdx + 1);
+                }
+                
+                var result = JsonSerializer.Deserialize<EstimateComplexityResponse>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+                
+                if (result != null)
+                {
+                    // Minimum 12 iterations, no max cap
+                    result.RecommendedIterations = Math.Max(result.RecommendedIterations, 12);
+                    result.Success = true;
+                    
+                    _logger.LogInformation("🧠 Complexity estimate: {Level}, {Iterations} iterations, {Files} files",
+                        result.ComplexityLevel, result.RecommendedIterations, result.EstimatedFiles);
+                    
+                    return result;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse complexity JSON, using heuristic");
+            }
+            
+            return EstimateFromHeuristics(request.Task);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error estimating complexity");
+            return EstimateFromHeuristics(request.Task);
+        }
+    }
+    
+    /// <summary>
+    /// Fallback heuristic-based complexity estimation
+    /// </summary>
+    private EstimateComplexityResponse EstimateFromHeuristics(string task)
+    {
+        var taskLower = task.ToLowerInvariant();
+        var wordCount = task.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        
+        // Complex keywords
+        var complexKeywords = new[] { "api", "database", "authentication", "oauth", "jwt", 
+            "integration", "multi", "several", "multiple", "full", "complete", "entire",
+            "flutter", "react", "angular", "vue", "blazor", "async", "concurrent",
+            "websocket", "real-time", "streaming", "upload", "download", "chart", "graph" };
+        
+        // Simple keywords
+        var simpleKeywords = new[] { "simple", "basic", "hello", "test", "example", 
+            "single", "small", "quick", "utility", "helper", "script" };
+        
+        var complexCount = complexKeywords.Count(k => taskLower.Contains(k));
+        var simpleCount = simpleKeywords.Count(k => taskLower.Contains(k));
+        
+        // Determine complexity
+        string level;
+        int iterations;
+        int files;
+        
+        if (simpleCount > complexCount && wordCount < 15)
+        {
+            level = "simple";
+            iterations = 12;
+            files = 1;
+        }
+        else if (complexCount >= 3 || wordCount > 50)
+        {
+            level = "very_complex";
+            iterations = 45;
+            files = 5;
+        }
+        else if (complexCount >= 2 || wordCount > 30)
+        {
+            level = "complex";
+            iterations = 30;
+            files = 3;
+        }
+        else
+        {
+            level = "moderate";
+            iterations = 18;
+            files = 2;
+        }
+        
+        _logger.LogInformation("🧠 Heuristic estimate: {Level}, {Iterations} iterations (words: {Words}, complex: {Complex}, simple: {Simple})",
+            level, iterations, wordCount, complexCount, simpleCount);
+        
+        return new EstimateComplexityResponse
+        {
+            Success = true,
+            ComplexityLevel = level,
+            RecommendedIterations = iterations,
+            EstimatedFiles = files,
+            Reasoning = $"Heuristic estimate based on task analysis (words: {wordCount}, complexity indicators: {complexCount})"
         };
     }
 }

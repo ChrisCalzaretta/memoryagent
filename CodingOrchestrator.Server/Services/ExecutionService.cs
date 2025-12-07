@@ -27,10 +27,17 @@ public class ExecutionService : IExecutionService
         var result = new ExecutionResult();
         var startTime = DateTime.UtcNow;
         
-        // 🧠 USE LLM INSTRUCTIONS if provided, otherwise detect from files
+        // 🎯 PRIORITY: Request language > LLM instructions > File detection
         string detectedLanguage;
-        if (instructions != null && !string.IsNullOrEmpty(instructions.Language))
+        if (!string.IsNullOrEmpty(language) && language != "auto" && language != "python")
         {
+            // Request explicitly specified a language - use it!
+            detectedLanguage = language;
+            _logger.LogInformation("🎯 Using REQUEST language: {Language} (ignoring LLM suggestion)", language);
+        }
+        else if (instructions != null && !string.IsNullOrEmpty(instructions.Language))
+        {
+            // Use LLM's suggestion
             detectedLanguage = instructions.Language;
             _logger.LogInformation("🧠 Using LLM-provided language: {Language}, MainFile: {MainFile}", 
                 instructions.Language, instructions.MainFile);

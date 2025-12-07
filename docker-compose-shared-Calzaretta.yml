@@ -108,6 +108,7 @@ services:
 
   # CodingOrchestrator - Coordinates the multi-agent workflow
   # 🐳 NOW WITH DOCKER EXECUTION - actually runs generated code!
+  # 💾 NOW WITH JOB PERSISTENCE - survives container restarts!
   coding-orchestrator:
     build:
       context: .
@@ -120,12 +121,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Temp directory for code execution
       - /tmp:/tmp
+      # 💾 Job persistence - survives container restarts
+      - d:\Memory\shared\memory:/data/memory
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5003
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       - CodingAgent__BaseUrl=http://memory-coding-agent:5001
       - ValidationAgent__BaseUrl=http://memory-validation-agent:5002
+      - JobPersistence__Path=/data/memory/orchestrator/jobs
     depends_on:
       - mcp-server
       - coding-agent
@@ -154,10 +158,12 @@ services:
       - Gpu__DualGpu=true
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
-      - Gpu__PrimaryModel=deepseek-coder-v2:16b
+      # Use codestral for complex tasks (fits in 16GB swap GPU)
+      - Gpu__PrimaryModel=qwen2.5-coder:14b
       - Gpu__PinnedGpuVram=24
       - Gpu__SwapGpuVram=16
-      - Gpu__PinnedModelsVram=15
+      # Actual pinned usage: phi4(10GB) + embed(1GB) = ~11GB, leave buffer
+      - Gpu__PinnedModelsVram=12
     depends_on:
       - mcp-server
     networks:

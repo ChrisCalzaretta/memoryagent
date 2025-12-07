@@ -37,13 +37,17 @@ builder.Services.AddHttpClient<IValidationAgentClient, ValidationAgentClient>(cl
 // 🐳 Register ExecutionService for Docker-based code execution
 builder.Services.AddSingleton<IExecutionService, ExecutionService>();
 
+// 💾 Register Job Persistence Service
+builder.Services.AddSingleton<IJobPersistenceService, JobPersistenceService>();
+
 // Register services (using factory to break circular dependency)
 builder.Services.AddSingleton<ITaskOrchestrator, TaskOrchestrator>();
 builder.Services.AddSingleton<IJobManager>(sp => 
 {
     var orchestrator = (TaskOrchestrator)sp.GetRequiredService<ITaskOrchestrator>();
+    var persistence = sp.GetRequiredService<IJobPersistenceService>();
     var logger = sp.GetRequiredService<ILogger<JobManager>>();
-    var jobManager = new JobManager(orchestrator, logger);
+    var jobManager = new JobManager(orchestrator, persistence, logger);
     orchestrator.SetJobManager(jobManager);
     return jobManager;
 });
@@ -53,6 +57,10 @@ builder.Services.AddSingleton<IMcpHandler, McpHandler>();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// Initialize job persistence on startup (load persisted jobs)
+var jobManager = app.Services.GetRequiredService<IJobManager>();
+await jobManager.InitializeAsync();
 
 // Configure pipeline
 if (app.Environment.IsDevelopment())

@@ -19,6 +19,11 @@ public interface ICodingAgentClient
     Task<GenerateCodeResponse> FixAsync(GenerateCodeRequest request, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Estimate task complexity and recommended iterations
+    /// </summary>
+    Task<EstimateComplexityResponse> EstimateComplexityAsync(EstimateComplexityRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Check if CodingAgent is available
     /// </summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken);
