@@ -40,11 +40,29 @@ Use `get_task_status` with the returned jobId to check progress:
 get_task_status(jobId: "[JOB_ID]")
 ```
 
-### Step 3: Review Results
+### Step 3: Apply Generated Files
 When status is "Complete":
-- Review generated files in the response
-- Check validation score (should be >= 8)
-- Apply files to your project if satisfied
+```
+apply_task_files(
+  jobId: "[JOB_ID]",
+  basePath: "[WORKSPACE_PATH]"  // e.g., "E:\\GitHub\\MyProject"
+)
+```
+
+This returns each file with explicit write instructions.
+
+### Step 4: Write Each File
+For EACH file in the response, agent MUST:
+```
+write(
+  file_path: "[FULL_PATH_FROM_RESPONSE]",
+  contents: "[CODE_FROM_RESPONSE]"
+)
+```
+
+User sees **"Keep/Review" UI** for each file.
+
+**⚠️ Agent MUST write files - do NOT just display them as text!**
 
 ---
 

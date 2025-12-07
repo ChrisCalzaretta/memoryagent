@@ -117,13 +117,17 @@ The **CodingOrchestrator** provides multi-agent code generation with automatic v
 | Tool | Description |
 |------|-------------|
 | `orchestrate_task` | Start multi-agent coding (returns job ID) |
-| `get_task_status` | Check progress, **get generated code** when complete |
+| `get_task_status` | Check progress and validation scores |
+| `apply_task_files` | **GET FILES + WRITE INSTRUCTIONS** - Use this when complete! |
 | `cancel_task` | Cancel a running task |
 | `list_tasks` | List all active/recent tasks |
 
-### File Output Options
-- `autoWriteFiles: false` (default) → Files returned in `get_task_status` for review
-- `autoWriteFiles: true` → Files auto-written to `workspace/generated/` folder
+### 🚨 File Application Workflow (MANDATORY)
+When task is **Complete**, agent MUST:
+1. Call `apply_task_files(jobId, basePath)` 
+2. Response contains each file with explicit write instructions
+3. Use `write` tool for each file as instructed
+4. User sees "Keep/Review" UI for each file
 
 ### Example Workflow
 ```
@@ -131,14 +135,25 @@ The **CodingOrchestrator** provides multi-agent code generation with automatic v
    → Returns jobId: "abc123"
 
 2. get_task_status(jobId: "abc123")
-   → Shows progress: 40%, iteration 2/5, validation score 6/10
+   → Shows progress: 40%, iteration 2/5
 
-3. get_task_status(jobId: "abc123")  (when complete)
-   → COMPLETE! Score 9/10, FULL CODE returned in response
-   → Copy generated files to your project
+3. get_task_status(jobId: "abc123")
+   → COMPLETE! Score 9/10
+
+4. apply_task_files(jobId: "abc123", basePath: "E:\\GitHub\\MyProject")
+   → Returns files with explicit write instructions
+
+5. AGENT WRITES EACH FILE using write tool
+   → User sees "Keep/Review" UI for each file
 ```
 
-**⚠️ Important:** Files are returned IN THE RESPONSE - copy them to your project!
+### 🚨 CRITICAL: Agent Must Apply Files
+**ALWAYS** After task shows **Complete**:
+1. Call `apply_task_files(jobId, basePath)` to get files
+2. For EACH file in response, use `write` tool
+3. User reviews each file with "Keep/Review" UI
+
+**DO NOT** just display files as text - **WRITE THEM** using `write` tool!
 
 ---
 

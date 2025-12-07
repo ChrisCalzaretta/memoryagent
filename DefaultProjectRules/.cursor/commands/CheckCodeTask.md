@@ -71,9 +71,36 @@ Job ID: abc123
 
 | Status | Action |
 |--------|--------|
-| **Complete** | Review generated files, apply to project |
+| **Complete** | **Agent MUST write files using `write` tool** |
 | **Running** | Wait and check again |
-| **Failed** | Check error, adjust task, try again |
+| **Failed** | Check error, show partial files if available, ask user to retry |
+
+---
+
+## 🚨 CRITICAL: Agent File Writing Protocol
+
+When `get_task_status` returns **Complete** with files:
+
+```
+FOR EACH file in response:
+  1. Extract file.path (e.g., "Services/UserService.cs")
+  2. Extract file.content (the full code)
+  3. Determine target path: {workspacePath}/{file.path}
+  4. Use write tool: write(file_path: targetPath, contents: file.content)
+  5. User sees "Keep/Review" UI
+```
+
+**Example:**
+```
+Response shows:
+  📄 Services/UserService.cs
+  [code block with content]
+
+Agent MUST call:
+  write(file_path: "E:\GitHub\MyProject\Services\UserService.cs", contents: "...")
+```
+
+**DO NOT** just display files as text. **WRITE THEM** so user gets "Keep/Review"!
 
 ---
 

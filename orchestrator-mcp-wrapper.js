@@ -127,6 +127,24 @@ const TOOLS = [
       type: 'object',
       properties: {}
     }
+  },
+  {
+    name: 'apply_task_files',
+    description: 'Get generated files from a completed task in a format ready for writing. Returns explicit instructions for each file. AGENT MUST then use write tool to apply each file.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { 
+          type: 'string', 
+          description: 'The job ID of the completed task' 
+        },
+        basePath: {
+          type: 'string',
+          description: 'Base path for file writes (e.g., "E:\\GitHub\\MyProject"). Files will be written relative to this.'
+        }
+      },
+      required: ['jobId', 'basePath']
+    }
   }
 ];
 
@@ -262,6 +280,16 @@ The CodingAgent and ValidationAgent are now working on your task.
       const isComplete = result.status === 2 || result.status === 'Complete';
       const isFailed = result.status === 3 || result.status === 'Failed';
       
+      // DEBUG: Log what we're working with
+      log(`DEBUG: status=${result.status}, isComplete=${isComplete}, isFailed=${isFailed}`);
+      log(`DEBUG: result.result exists=${!!result.result}`);
+      if (result.result) {
+        log(`DEBUG: result.result.files type=${typeof result.result.files}, isArray=${Array.isArray(result.result.files)}, length=${result.result.files?.length}`);
+      }
+      if (result.error?.partialResult) {
+        log(`DEBUG: partialResult.files type=${typeof result.error.partialResult.files}, isArray=${Array.isArray(result.error.partialResult.files)}, length=${result.error.partialResult.files?.length}`);
+      }
+      
       if (isComplete && result.result) {
         output += `\n**✅ COMPLETED**
 - Validation Score: ${result.result.validationScore}/10
@@ -354,6 +382,60 @@ The CodingAgent and ValidationAgent are now working on your task.
         
         output += `${icon} \`${task.jobId}\` - ${statusName} (${task.progress}%) - ${task.currentPhase || 'N/A'}\n`;
       }
+      
+      return output;
+    }
+    
+    case 'apply_task_files': {
+      const result = await sendToOrchestrator(`/api/orchestrator/task/${args.jobId}`);
+      
+      if (result.error && !result.error.partialResult) {
+        return `❌ Job \`${args.jobId}\` not found or has no files`;
+      }
+      
+      const isComplete = result.status === 2 || result.status === 'Complete';
+      const isFailed = result.status === 3 || result.status === 'Failed';
+      
+      let files = [];
+      if (isComplete && result.result?.files) {
+        files = result.result.files;
+      } else if (isFailed && result.error?.partialResult?.files) {
+        files = result.error.partialResult.files;
+      }
+      
+      if (!files || files.length === 0) {
+        return `❌ Job \`${args.jobId}\` has no files to apply`;
+      }
+      
+      const basePath = args.basePath.replace(/\\/g, '/');
+      
+      let output = `## 🚨 AGENT ACTION REQUIRED: Write ${files.length} file(s)\n\n`;
+      output += `**Base Path:** \`${args.basePath}\`\n`;
+      output += `**Job ID:** \`${args.jobId}\`\n`;
+      output += `**Status:** ${isComplete ? '✅ Complete' : '⚠️ Failed (partial results)'}\n\n`;
+      output += `---\n\n`;
+      output += `**YOU MUST NOW USE THE \`write\` TOOL FOR EACH FILE BELOW:**\n\n`;
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fullPath = `${args.basePath}\\${file.path.replace(/\//g, '\\\\')}`;
+        
+        output += `### File ${i + 1}/${files.length}: ${file.path}\n\n`;
+        output += `**Action:** \`write(file_path: "${fullPath}", contents: <code below>)\`\n\n`;
+        
+        const ext = file.path.split('.').pop()?.toLowerCase() || '';
+        const langMap = {
+          'cs': 'csharp', 'ts': 'typescript', 'tsx': 'typescript',
+          'js': 'javascript', 'jsx': 'javascript', 'py': 'python',
+          'json': 'json', 'yaml': 'yaml', 'yml': 'yaml', 'xml': 'xml'
+        };
+        const lang = langMap[ext] || '';
+        
+        output += `\`\`\`${lang}\n${file.content}\n\`\`\`\n\n`;
+        output += `---\n\n`;
+      }
+      
+      output += `## ✅ After writing all files, confirm to user that code has been applied.\n`;
       
       return output;
     }
