@@ -34,6 +34,9 @@ builder.Services.AddHttpClient<IValidationAgentClient, ValidationAgentClient>(cl
     client.Timeout = TimeSpan.FromSeconds(60);
 }).AddPolicyHandler(retryPolicy);
 
+// 🐳 Register ExecutionService for Docker-based code execution
+builder.Services.AddSingleton<IExecutionService, ExecutionService>();
+
 // Register services (using factory to break circular dependency)
 builder.Services.AddSingleton<ITaskOrchestrator, TaskOrchestrator>();
 builder.Services.AddSingleton<IJobManager>(sp => 

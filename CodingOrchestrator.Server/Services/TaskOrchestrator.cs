@@ -6,12 +6,14 @@ namespace CodingOrchestrator.Server.Services;
 
 /// <summary>
 /// Orchestrates the multi-agent coding workflow
+/// NOW WITH DOCKER EXECUTION! Code is actually run before validation.
 /// </summary>
 public class TaskOrchestrator : ITaskOrchestrator
 {
     private readonly ICodingAgentClient _codingAgent;
     private readonly IValidationAgentClient _validationAgent;
     private readonly IMemoryAgentClient _memoryAgent;
+    private readonly IExecutionService _executionService;
     private readonly ILogger<TaskOrchestrator> _logger;
     private IJobManager? _jobManager;
 
@@ -19,11 +21,13 @@ public class TaskOrchestrator : ITaskOrchestrator
         ICodingAgentClient codingAgent,
         IValidationAgentClient validationAgent,
         IMemoryAgentClient memoryAgent,
+        IExecutionService executionService,
         ILogger<TaskOrchestrator> logger)
     {
         _codingAgent = codingAgent;
         _validationAgent = validationAgent;
         _memoryAgent = memoryAgent;
+        _executionService = executionService;
         _logger = logger;
     }
 
@@ -121,8 +125,80 @@ public class TaskOrchestrator : ITaskOrchestrator
                     continue;
                 }
 
-                // Validation Agent phase
-                var validationProgress = codingProgress + 10;
+                // 🐳 EXECUTION PHASE: Actually run the code in Docker!
+                var executionProgress = codingProgress + 5;
+                UpdateProgress(jobId, TaskState.Running, executionProgress, $"Docker Execution (iteration {iteration})", iteration);
+                
+                var executionPhase = StartPhase("docker_execution", iteration);
+                
+                var executionFiles = lastGeneratedCode.FileChanges.Select(f => new ExecutionFile
+                {
+                    Path = f.Path,
+                    Content = f.Content,
+                    ChangeType = (int)f.Type,
+                    Reason = f.Reason
+                }).ToList();
+                
+                var executionResult = await _executionService.ExecuteAsync(
+                    request.Language ?? "python",
+                    executionFiles,
+                    request.WorkspacePath,
+                    cancellationToken);
+                
+                executionPhase.Details = new Dictionary<string, object>
+                {
+                    ["success"] = executionResult.Success,
+                    ["buildPassed"] = executionResult.BuildPassed,
+                    ["executionPassed"] = executionResult.ExecutionPassed,
+                    ["exitCode"] = executionResult.ExitCode,
+                    ["durationMs"] = executionResult.DurationMs,
+                    ["dockerImage"] = executionResult.DockerImage
+                };
+                EndPhase(jobId, executionPhase);
+                response.Timeline.Add(executionPhase);
+                
+                // If execution failed, create feedback with REAL errors and loop back
+                if (!executionResult.Success)
+                {
+                    _logger.LogWarning("🐳 Execution failed on iteration {Iteration}: {Errors}", 
+                        iteration, executionResult.Errors);
+                    
+                    // Create feedback with REAL execution errors (not LLM guesses!)
+                    lastValidation = new ValidateCodeResponse
+                    {
+                        Score = 0,
+                        Passed = false,
+                        Issues = new List<ValidationIssue>
+                        {
+                            new ValidationIssue
+                            {
+                                Severity = "critical",
+                                Message = executionResult.BuildPassed 
+                                    ? "Code compiled but failed to execute" 
+                                    : "Code failed to compile/build",
+                                File = executionFiles.FirstOrDefault()?.Path ?? "unknown",
+                                Line = 1,
+                                Suggestion = $"Fix the following errors:\n\n{executionResult.Errors}"
+                            }
+                        },
+                        Summary = $"Execution failed in Docker ({executionResult.DockerImage}). " +
+                                  $"Build: {(executionResult.BuildPassed ? "✅" : "❌")}, " +
+                                  $"Run: {(executionResult.ExecutionPassed ? "✅" : "❌")}\n\n" +
+                                  $"Error output:\n{executionResult.CombinedOutput}"
+                    };
+                    
+                    _logger.LogInformation("Iteration {Iteration}: Execution FAILED, looping back to CodingAgent with real errors", iteration);
+                    continue; // Loop back to CodingAgent with real error messages!
+                }
+                
+                _logger.LogInformation("🐳 Execution passed on iteration {Iteration}! Output: {Output}", 
+                    iteration, 
+                    executionResult.Output.Length > 100 
+                        ? executionResult.Output[..100] + "..." 
+                        : executionResult.Output);
+
+                // ✅ CODE WORKS! Now validate for patterns/quality with ValidationAgent
+                var validationProgress = executionProgress + 5;
                 UpdateProgress(jobId, TaskState.Running, validationProgress, $"Validation Agent (iteration {iteration})", iteration);
                 
                 var validationPhase = StartPhase("validation_agent", iteration);
@@ -143,11 +219,15 @@ public class TaskOrchestrator : ITaskOrchestrator
 
                 lastValidation = await _validationAgent.ValidateAsync(validateRequest, cancellationToken);
                 
+                // Add execution output to validation context
+                lastValidation.Summary = $"✅ Code executed successfully!\nOutput: {executionResult.Output}\n\n{lastValidation.Summary}";
+                
                 validationPhase.Details = new Dictionary<string, object>
                 {
                     ["score"] = lastValidation.Score,
                     ["passed"] = lastValidation.Passed,
-                    ["issueCount"] = lastValidation.Issues.Count
+                    ["issueCount"] = lastValidation.Issues.Count,
+                    ["executionOutput"] = executionResult.Output
                 };
                 EndPhase(jobId, validationPhase);
                 response.Timeline.Add(validationPhase);

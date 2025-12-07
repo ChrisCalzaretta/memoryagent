@@ -107,6 +107,7 @@ services:
   # - Port 11435 (5070 Ti): SWAP - alternative models, auto-unload after 5 min
 
   # CodingOrchestrator - Coordinates the multi-agent workflow
+  # 🐳 NOW WITH DOCKER EXECUTION - actually runs generated code!
   coding-orchestrator:
     build:
       context: .
@@ -114,6 +115,11 @@ services:
     container_name: memory-coding-orchestrator
     ports:
       - "5003:5003"
+    volumes:
+      # 🐳 Docker socket for code execution in containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Temp directory for code execution
+      - /tmp:/tmp
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5003
@@ -126,6 +132,9 @@ services:
       - validation-agent
     networks:
       - memory-net
+    # Need elevated permissions for Docker socket access
+    privileged: false
+    user: root
     restart: unless-stopped
 
   # CodingAgent - Generates and fixes code using LLM
