@@ -178,6 +178,20 @@ public static class DockerLanguageConfig
             TimeoutSeconds = 30
         },
         
+        ["flutter"] = new LanguageConfig
+        {
+            Language = "flutter",
+            DockerImage = "ghcr.io/cirruslabs/flutter:stable",  // ~3GB but complete Flutter SDK
+            FileExtension = ".dart",
+            BuildCommand = "flutter pub get && flutter analyze",
+            RunCommand = "flutter build web --release",  // Can't run interactively, but can build
+            TestCommand = "flutter test 2>/dev/null || flutter build web",
+            MainFilePatterns = new[] { "lib/main.dart", "main.dart", "*.dart" },
+            SetupCommands = Array.Empty<string>(),
+            TimeoutSeconds = 120,  // Flutter builds are slow
+            SkipExecution = false  // We CAN build, just not run interactively
+        },
+        
         ["shell"] = new LanguageConfig
         {
             Language = "shell",

@@ -181,6 +181,29 @@ public class ExecutionService : IExecutionService
     /// </summary>
     private string? DetectLanguageFromFiles(List<ExecutionFile> files)
     {
+        // 🦋 FLUTTER DETECTION: Check pubspec.yaml first
+        // Flutter requires special handling - it's a UI framework that can't run interactively in Docker
+        var pubspecFile = files.FirstOrDefault(f => 
+            f.Path.Equals("pubspec.yaml", StringComparison.OrdinalIgnoreCase) ||
+            f.Path.EndsWith("/pubspec.yaml", StringComparison.OrdinalIgnoreCase) ||
+            f.Path.EndsWith("\\pubspec.yaml", StringComparison.OrdinalIgnoreCase));
+        
+        if (pubspecFile != null && !string.IsNullOrEmpty(pubspecFile.Content))
+        {
+            // Check if it's a Flutter project (has flutter SDK or flutter dependencies)
+            if (pubspecFile.Content.Contains("flutter:") || 
+                pubspecFile.Content.Contains("flutter_") ||
+                pubspecFile.Content.Contains("sdk: flutter"))
+            {
+                _logger.LogInformation("🦋 Flutter project detected from pubspec.yaml");
+                return "flutter";
+            }
+            
+            // Regular Dart project (has pubspec but no Flutter)
+            _logger.LogInformation("🎯 Dart project detected from pubspec.yaml (no Flutter)");
+            return "dart";
+        }
+        
         var extensionCounts = new Dictionary<string, int>();
         
         foreach (var file in files)
