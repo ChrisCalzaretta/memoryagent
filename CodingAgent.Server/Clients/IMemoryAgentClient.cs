@@ -29,6 +29,12 @@ public interface IMemoryAgentClient
     /// Check if MemoryAgent is available
     /// </summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🔍 SEARCH BEFORE WRITE: Find existing code that might already solve the task
+    /// Returns existing services, methods, and patterns to avoid duplication
+    /// </summary>
+    Task<ExistingCodeContext> SearchExistingCodeAsync(string task, string context, string? workspacePath, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -62,6 +68,152 @@ public class PatternInfo
     public required string Description { get; set; }
     public string? CodeExample { get; set; }
     public string? BestPractice { get; set; }
+}
+
+/// <summary>
+/// 🔍 Existing code context to prevent duplication (Search Before Write)
+/// </summary>
+public class ExistingCodeContext
+{
+    /// <summary>
+    /// Existing services/interfaces found that might be relevant
+    /// </summary>
+    public List<ExistingService> ExistingServices { get; set; } = new();
+    
+    /// <summary>
+    /// Existing methods that might already solve the task
+    /// </summary>
+    public List<ExistingMethod> ExistingMethods { get; set; } = new();
+    
+    /// <summary>
+    /// Similar implementations found in the codebase
+    /// </summary>
+    public List<SimilarImplementation> SimilarImplementations { get; set; } = new();
+    
+    /// <summary>
+    /// Patterns that are already implemented (don't recreate!)
+    /// </summary>
+    public List<string> ImplementedPatterns { get; set; } = new();
+    
+    /// <summary>
+    /// Files that might need to be modified (not created)
+    /// </summary>
+    public List<string> FilesToModify { get; set; } = new();
+    
+    /// <summary>
+    /// Whether we found existing code that could solve this task
+    /// </summary>
+    public bool HasReusableCode => ExistingServices.Any() || ExistingMethods.Any() || SimilarImplementations.Any();
+    
+    /// <summary>
+    /// Summary for the LLM prompt
+    /// </summary>
+    public string GetPromptSummary()
+    {
+        var lines = new List<string>();
+        
+        if (ExistingServices.Any())
+        {
+            lines.Add("=== ⚠️ EXISTING SERVICES - DO NOT RECREATE ===");
+            foreach (var svc in ExistingServices)
+            {
+                lines.Add($"• {svc.Name} ({svc.FilePath})");
+                if (svc.Methods.Any())
+                {
+                    lines.Add($"  Methods: {string.Join(", ", svc.Methods)}");
+                }
+                if (!string.IsNullOrEmpty(svc.Description))
+                {
+                    lines.Add($"  Purpose: {svc.Description}");
+                }
+            }
+            lines.Add("");
+        }
+        
+        if (ExistingMethods.Any())
+        {
+            lines.Add("=== ⚠️ EXISTING METHODS - REUSE THESE ===");
+            foreach (var method in ExistingMethods)
+            {
+                lines.Add($"• {method.FullSignature}");
+                lines.Add($"  In: {method.ClassName} ({method.FilePath})");
+                if (!string.IsNullOrEmpty(method.Description))
+                {
+                    lines.Add($"  Does: {method.Description}");
+                }
+            }
+            lines.Add("");
+        }
+        
+        if (SimilarImplementations.Any())
+        {
+            lines.Add("=== 📚 SIMILAR CODE EXISTS - LEARN FROM THESE ===");
+            foreach (var impl in SimilarImplementations)
+            {
+                lines.Add($"• {impl.FilePath} ({impl.Similarity:P0} similar)");
+                lines.Add($"  {impl.Description}");
+            }
+            lines.Add("");
+        }
+        
+        if (ImplementedPatterns.Any())
+        {
+            lines.Add("=== ✅ PATTERNS ALREADY IMPLEMENTED ===");
+            foreach (var pattern in ImplementedPatterns)
+            {
+                lines.Add($"• {pattern}");
+            }
+            lines.Add("");
+        }
+        
+        if (FilesToModify.Any())
+        {
+            lines.Add("=== 📝 MODIFY THESE FILES (don't create new) ===");
+            foreach (var file in FilesToModify)
+            {
+                lines.Add($"• {file}");
+            }
+            lines.Add("");
+        }
+        
+        return string.Join("\n", lines);
+    }
+}
+
+/// <summary>
+/// An existing service/interface found in the codebase
+/// </summary>
+public class ExistingService
+{
+    public required string Name { get; set; }
+    public required string FilePath { get; set; }
+    public string? Description { get; set; }
+    public List<string> Methods { get; set; } = new();
+    public bool IsInterface { get; set; }
+}
+
+/// <summary>
+/// An existing method that might be reusable
+/// </summary>
+public class ExistingMethod
+{
+    public required string Name { get; set; }
+    public required string ClassName { get; set; }
+    public required string FilePath { get; set; }
+    public required string FullSignature { get; set; }
+    public string? Description { get; set; }
+    public double Relevance { get; set; }
+}
+
+/// <summary>
+/// A similar implementation found in the codebase
+/// </summary>
+public class SimilarImplementation
+{
+    public required string FilePath { get; set; }
+    public required string Description { get; set; }
+    public double Similarity { get; set; }
+    public string? CodeSnippet { get; set; }
 }
 
 

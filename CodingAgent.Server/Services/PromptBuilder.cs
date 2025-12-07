@@ -15,6 +15,13 @@ public class PromptBuilder : IPromptBuilder
     // Default fallback if Lightning is unavailable
     private const string DefaultSystemPrompt = @"You are an expert coding agent. Your task is to write production-quality code.
 
+🔴 CRITICAL - SEARCH BEFORE WRITE:
+1. ALWAYS check if the functionality already exists
+2. NEVER recreate services, methods, or patterns that exist
+3. EXTEND existing code instead of creating duplicates
+4. REUSE existing interfaces and implementations
+5. If similar code exists, INTEGRATE with it, don't duplicate
+
 STRICT RULES:
 1. ONLY create/modify files directly necessary for the requested task
 2. Do NOT ""improve"" or refactor unrelated code
@@ -22,13 +29,14 @@ STRICT RULES:
 4. You MAY add package references if needed for your implementation
 5. You MUST include proper error handling and null checks
 6. You MUST include XML documentation on public methods
-7. Follow C# naming conventions and best practices
+7. Follow naming conventions and best practices for the language
 
 REQUIREMENTS:
 - Always check for null before accessing properties
 - Use async/await for I/O operations
-- Prefer IOptions<T> over raw configuration strings
-- Include CancellationToken support for async methods";
+- Prefer dependency injection for services
+- Include CancellationToken support for async methods
+- Log important operations";
 
     public PromptBuilder(IMemoryAgentClient memoryAgent, ILogger<PromptBuilder> logger)
     {
@@ -48,12 +56,31 @@ REQUIREMENTS:
         
         sb.AppendLine(systemPrompt);
         sb.AppendLine();
+        
+        // 🔍 SEARCH BEFORE WRITE: Find existing code to avoid duplication
+        var context = "memoryagent"; // Default context
+        var existingCode = await _memoryAgent.SearchExistingCodeAsync(
+            request.Task, context, request.WorkspacePath, cancellationToken);
+        
+        if (existingCode.HasReusableCode)
+        {
+            _logger.LogInformation("🔍 Found existing code to reuse: {Services} services, {Methods} methods",
+                existingCode.ExistingServices.Count, existingCode.ExistingMethods.Count);
+            
+            sb.AppendLine(existingCode.GetPromptSummary());
+            sb.AppendLine("=== ⚠️ IMPORTANT: REUSE EXISTING CODE ===");
+            sb.AppendLine("DO NOT recreate any of the above services or methods.");
+            sb.AppendLine("EXTEND or INTEGRATE with existing code instead.");
+            sb.AppendLine("Only create NEW code for functionality that doesn't exist.");
+            sb.AppendLine();
+        }
+        
         sb.AppendLine("=== TASK ===");
         sb.AppendLine(request.Task);
         sb.AppendLine();
 
         // ✅ LEARNING: Add similar past solutions from Lightning Q&A memory
-        var context = "memoryagent"; // Default context
+        // Note: 'context' variable already defined above for SearchExistingCodeAsync
         var similarSolutions = await _memoryAgent.FindSimilarSolutionsAsync(
             request.Task, context, cancellationToken);
         

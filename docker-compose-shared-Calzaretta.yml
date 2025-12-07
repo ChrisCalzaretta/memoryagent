@@ -9,7 +9,7 @@ services:
     volumes:
       - d:\Memory\shared\memory:/data/memory
       - d:\Memory\shared\logs:/data/logs
-      - E:\GitHub:/workspace:ro
+      - E:\GitHub:/workspace:rw
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5000
@@ -168,7 +168,7 @@ services:
       - ASPNETCORE_URLS=http://+:5002
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       - Ollama__Url=http://10.0.0.20:11434
-      - Gpu__ValidationModel=phi3.5:3.8b
+      - Gpu__ValidationModel=phi4:latest
       # Dual GPU: 3090 (pinned) + 5070 Ti (swap)
       - Gpu__DualGpu=true
       - Gpu__PinnedPort=11434

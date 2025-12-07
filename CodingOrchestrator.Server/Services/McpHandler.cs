@@ -29,7 +29,7 @@ public class McpHandler : IMcpHandler
             new Dictionary<string, object>
             {
                 ["name"] = "orchestrate_task",
-                ["description"] = "Start a multi-agent coding task. The coding agent generates code and the validation agent reviews it until quality standards are met.",
+                ["description"] = "Start a multi-agent coding task. The coding agent generates code and the validation agent reviews it until quality standards are met. Uses 'Search Before Write' to avoid duplicating existing code.",
                 ["inputSchema"] = new Dictionary<string, object>
                 {
                     ["type"] = "object",
@@ -40,7 +40,8 @@ public class McpHandler : IMcpHandler
                         ["workspacePath"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Path to the workspace root" },
                         ["background"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Run as background job (default: true)", ["default"] = true },
                         ["maxIterations"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Maximum coding/validation iterations (default: 5)", ["default"] = 5 },
-                        ["minValidationScore"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Minimum score to pass validation (default: 8)", ["default"] = 8 }
+                        ["minValidationScore"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Minimum score to pass validation (default: 8)", ["default"] = 8 },
+                        ["autoWriteFiles"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Automatically write generated files to workspace (default: false). When false, files are returned for manual review.", ["default"] = false }
                     },
                     ["required"] = new[] { "task", "context", "workspacePath" }
                 }
@@ -110,22 +111,29 @@ public class McpHandler : IMcpHandler
             WorkspacePath = GetStringArg(arguments, "workspacePath"),
             Background = GetBoolArg(arguments, "background", true),
             MaxIterations = GetIntArg(arguments, "maxIterations", 5),
-            MinValidationScore = GetIntArg(arguments, "minValidationScore", 8)
+            MinValidationScore = GetIntArg(arguments, "minValidationScore", 8),
+            AutoWriteFiles = GetBoolArg(arguments, "autoWriteFiles", false)
         };
 
         var jobId = await _jobManager.StartJobAsync(request, cancellationToken);
+        
+        var autoWriteNote = request.AutoWriteFiles 
+            ? "✅ **Auto-write enabled** - Files will be written to workspace automatically"
+            : "📋 **Manual mode** - Files will be returned for you to review and create";
 
         return $@"🚀 **Multi-Agent Coding Task Started**
 
 **Job ID:** `{jobId}`
 **Task:** {request.Task}
 **Context:** {request.Context}
+{autoWriteNote}
 
-The coding agent and validation agent are now working on your task. 
+🔍 **Search Before Write** is enabled - existing code will be reused, not duplicated.
 
 **To check status:** Call `get_task_status` with jobId: `{jobId}`
 
 **Progress will include:**
+- 🔍 Search for existing code (avoid duplication)
 - Context gathering from Lightning memory
 - Code generation iterations
 - Validation passes with scores
@@ -163,6 +171,10 @@ The coding agent and validation agent are now working on your task.
             result.AppendLine();
         }
 
+        // DEBUG: Log what we're checking
+        _logger.LogInformation("DEBUG: status.Status = {Status} (int: {StatusInt}), Result is null: {IsNull}", 
+            status.Status, (int)status.Status, status.Result == null);
+        
         if (status.Status == AgentContracts.Responses.TaskState.Complete && status.Result != null)
         {
             result.AppendLine("**✅ COMPLETED**");
@@ -170,13 +182,45 @@ The coding agent and validation agent are now working on your task.
             result.AppendLine($"- Total Iterations: {status.Result.TotalIterations}");
             result.AppendLine($"- Duration: {status.Result.TotalDurationMs}ms");
             result.AppendLine($"- Files Generated: {status.Result.Files.Count}");
+            result.AppendLine($"- Summary: {status.Result.Summary}");
             result.AppendLine();
+            
+            _logger.LogInformation("Returning {FileCount} files in get_task_status response", status.Result.Files.Count);
+            
+            if (status.Result.Files.Count == 0)
+            {
+                result.AppendLine("⚠️ **No files in result** - Check orchestrator logs for parsing errors");
+            }
             
             foreach (var file in status.Result.Files)
             {
-                result.AppendLine($"**{file.Path}** ({file.ChangeType})");
-                result.AppendLine("```csharp");
-                result.AppendLine(file.Content);
+                _logger.LogInformation("Including file: {Path}, ContentLength: {Len}", file.Path, file.Content?.Length ?? 0);
+                
+                result.AppendLine($"---");
+                result.AppendLine($"### 📄 {file.Path}");
+                result.AppendLine($"**Change Type:** {file.ChangeType}");
+                if (!string.IsNullOrEmpty(file.Reason))
+                {
+                    result.AppendLine($"**Reason:** {file.Reason}");
+                }
+                result.AppendLine();
+                
+                // Detect language from file extension
+                var ext = System.IO.Path.GetExtension(file.Path)?.ToLowerInvariant();
+                var lang = ext switch
+                {
+                    ".cs" => "csharp",
+                    ".ts" => "typescript",
+                    ".js" => "javascript",
+                    ".py" => "python",
+                    ".sql" => "sql",
+                    ".json" => "json",
+                    ".yaml" or ".yml" => "yaml",
+                    _ => ""
+                };
+                
+                result.AppendLine($"```{lang}");
+                result.AppendLine(file.Content ?? "// Empty content");
                 result.AppendLine("```");
                 result.AppendLine();
             }

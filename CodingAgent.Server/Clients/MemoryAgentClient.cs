@@ -204,6 +204,231 @@ public class MemoryAgentClient : IMemoryAgentClient
         }
     }
 
+    /// <summary>
+    /// 🔍 SEARCH BEFORE WRITE: Find existing code that might already solve the task
+    /// </summary>
+    public async Task<ExistingCodeContext> SearchExistingCodeAsync(
+        string task, string context, string? workspacePath, CancellationToken cancellationToken)
+    {
+        var result = new ExistingCodeContext();
+        
+        _logger.LogInformation("🔍 Searching existing code for task: {Task}", task);
+        
+        try
+        {
+            // 1. Use smartsearch to find relevant code
+            var searchResults = await SmartSearchAsync(task, context, cancellationToken);
+            
+            // 2. Extract services/interfaces from search results
+            foreach (var searchResult in searchResults.Where(r => r.Type == "class" || r.Type == "interface"))
+            {
+                var service = new ExistingService
+                {
+                    Name = searchResult.Name,
+                    FilePath = searchResult.FilePath,
+                    Description = searchResult.Description,
+                    IsInterface = searchResult.Type == "interface",
+                    Methods = searchResult.Methods ?? new List<string>()
+                };
+                result.ExistingServices.Add(service);
+            }
+            
+            // 3. Extract relevant methods
+            foreach (var searchResult in searchResults.Where(r => r.Type == "method"))
+            {
+                var method = new ExistingMethod
+                {
+                    Name = searchResult.Name,
+                    ClassName = searchResult.ClassName ?? "Unknown",
+                    FilePath = searchResult.FilePath,
+                    FullSignature = searchResult.Signature ?? searchResult.Name,
+                    Description = searchResult.Description,
+                    Relevance = searchResult.Score
+                };
+                result.ExistingMethods.Add(method);
+            }
+            
+            // 4. Find similar implementations via Q&A
+            var similarSolutions = await FindSimilarSolutionsAsync(task, context, cancellationToken);
+            foreach (var solution in similarSolutions.Take(3))
+            {
+                result.SimilarImplementations.Add(new SimilarImplementation
+                {
+                    FilePath = solution.RelevantFiles.FirstOrDefault() ?? "Unknown",
+                    Description = solution.Question,
+                    Similarity = solution.Similarity,
+                    CodeSnippet = solution.Answer.Length > 500 ? solution.Answer[..500] + "..." : solution.Answer
+                });
+            }
+            
+            // 5. Find implemented patterns
+            var patterns = await GetPatternsAsync(task, context, cancellationToken);
+            result.ImplementedPatterns = patterns
+                .Where(p => !string.IsNullOrEmpty(p.CodeExample))
+                .Select(p => $"{p.Name}: {p.Description}")
+                .ToList();
+            
+            // 6. Identify files that should be modified (not created new)
+            result.FilesToModify = searchResults
+                .Where(r => r.Score > 0.7) // High relevance
+                .Select(r => r.FilePath)
+                .Distinct()
+                .Take(5)
+                .ToList();
+            
+            _logger.LogInformation(
+                "🔍 Search complete: {Services} services, {Methods} methods, {Similar} similar implementations found",
+                result.ExistingServices.Count,
+                result.ExistingMethods.Count,
+                result.SimilarImplementations.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error searching existing code, continuing without context");
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Call Lightning's smartsearch to find relevant code
+    /// </summary>
+    private async Task<List<CodeSearchResult>> SmartSearchAsync(
+        string query, string context, CancellationToken cancellationToken)
+    {
+        var results = new List<CodeSearchResult>();
+        
+        try
+        {
+            var request = new
+            {
+                name = "smartsearch",
+                arguments = new
+                {
+                    query = query,
+                    context = context,
+                    includeRelationships = true,
+                    limit = 20,
+                    minimumScore = 0.3
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogDebug("SmartSearch response: {Content}", content);
+                
+                // Parse the response - it returns markdown formatted results
+                // Extract structured data from the response
+                results = ParseSmartSearchResults(content);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error calling smartsearch");
+        }
+        
+        return results;
+    }
+    
+    /// <summary>
+    /// Parse smartsearch results from Lightning's markdown response
+    /// </summary>
+    private List<CodeSearchResult> ParseSmartSearchResults(string content)
+    {
+        var results = new List<CodeSearchResult>();
+        
+        try
+        {
+            // Try to parse as JSON first (if MCP returns structured data)
+            using var doc = JsonDocument.Parse(content);
+            var root = doc.RootElement;
+            
+            // Check if it's a tool result with content
+            if (root.TryGetProperty("content", out var contentArray) && contentArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in contentArray.EnumerateArray())
+                {
+                    if (item.TryGetProperty("text", out var textElement))
+                    {
+                        var text = textElement.GetString() ?? "";
+                        // Parse the text content for code references
+                        results.AddRange(ExtractCodeReferencesFromText(text));
+                    }
+                }
+            }
+            // Try direct result parsing
+            else if (root.TryGetProperty("result", out var resultElement))
+            {
+                var text = resultElement.GetString() ?? "";
+                results.AddRange(ExtractCodeReferencesFromText(text));
+            }
+        }
+        catch (JsonException)
+        {
+            // Not JSON, try to parse as plain text/markdown
+            results.AddRange(ExtractCodeReferencesFromText(content));
+        }
+        
+        return results;
+    }
+    
+    /// <summary>
+    /// Extract code references from text (file paths, class names, method names)
+    /// </summary>
+    private static List<CodeSearchResult> ExtractCodeReferencesFromText(string text)
+    {
+        var results = new List<CodeSearchResult>();
+        var lines = text.Split('\n');
+        
+        foreach (var line in lines)
+        {
+            // Look for file paths (e.g., Services/UserService.cs)
+            var filePathMatch = System.Text.RegularExpressions.Regex.Match(
+                line, @"[\w/\\]+\.(?:cs|ts|py|js|java|go)\b");
+            
+            if (filePathMatch.Success)
+            {
+                var filePath = filePathMatch.Value;
+                var name = System.IO.Path.GetFileNameWithoutExtension(filePath);
+                
+                // Determine type from name
+                var type = name.StartsWith("I") && char.IsUpper(name[1]) ? "interface" :
+                           name.EndsWith("Service") || name.EndsWith("Repository") ? "class" :
+                           "file";
+                
+                results.Add(new CodeSearchResult
+                {
+                    Name = name,
+                    FilePath = filePath,
+                    Type = type,
+                    Score = 0.5,
+                    Description = line.Trim()
+                });
+            }
+            
+            // Look for method signatures
+            var methodMatch = System.Text.RegularExpressions.Regex.Match(
+                line, @"(?:public|private|protected|internal)\s+(?:async\s+)?[\w<>]+\s+(\w+)\s*\(");
+            
+            if (methodMatch.Success)
+            {
+                results.Add(new CodeSearchResult
+                {
+                    Name = methodMatch.Groups[1].Value,
+                    FilePath = "Unknown",
+                    Type = "method",
+                    Signature = line.Trim(),
+                    Score = 0.6
+                });
+            }
+        }
+        
+        return results.DistinctBy(r => r.Name + r.FilePath).ToList();
+    }
+
     private static string GetDefaultPrompt(string promptName) => promptName switch
     {
         "coding_agent_system" => @"You are an expert coding agent. Your task is to write production-quality code.
@@ -241,6 +466,21 @@ RULES:
 
         _ => "You are a helpful AI coding assistant."
     };
+}
+
+/// <summary>
+/// Internal class for parsing smartsearch results
+/// </summary>
+internal class CodeSearchResult
+{
+    public required string Name { get; set; }
+    public required string FilePath { get; set; }
+    public required string Type { get; set; } // class, interface, method, file
+    public string? Description { get; set; }
+    public string? Signature { get; set; }
+    public string? ClassName { get; set; }
+    public List<string>? Methods { get; set; }
+    public double Score { get; set; }
 }
 
 

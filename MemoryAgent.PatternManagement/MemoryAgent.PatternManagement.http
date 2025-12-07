@@ -1,0 +1,6 @@
+@MemoryAgent.PatternManagement_HostAddress = http://localhost:5299
+
+GET {{MemoryAgent.PatternManagement_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

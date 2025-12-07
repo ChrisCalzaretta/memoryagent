@@ -34,6 +34,12 @@ public class OrchestrateTaskRequest
     /// Minimum validation score to pass (0-10)
     /// </summary>
     public int MinValidationScore { get; set; } = 8;
+    
+    /// <summary>
+    /// If true, automatically write generated files to workspace (default: false)
+    /// When false, files are returned in the response for manual review
+    /// </summary>
+    public bool AutoWriteFiles { get; set; } = false;
 }
 
 

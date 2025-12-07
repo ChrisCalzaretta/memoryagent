@@ -164,21 +164,35 @@ public class TaskOrchestrator : ITaskOrchestrator
             // Build result
             if (lastGeneratedCode?.Success == true && lastValidation != null)
             {
+                var files = lastGeneratedCode.FileChanges.Select(f => new GeneratedFile
+                {
+                    Path = f.Path,
+                    Content = f.Content,
+                    ChangeType = f.Type,
+                    Reason = f.Reason
+                }).ToList();
+                
+                // 📝 AUTO-WRITE: Write files to workspace if enabled
+                var filesWritten = new List<string>();
+                if (request.AutoWriteFiles && lastValidation.Passed && !string.IsNullOrEmpty(request.WorkspacePath))
+                {
+                    filesWritten = await WriteFilesToWorkspaceAsync(files, request.WorkspacePath, cancellationToken);
+                    _logger.LogInformation("📝 Auto-wrote {Count} files to workspace", filesWritten.Count);
+                }
+                
+                var autoWriteStatus = request.AutoWriteFiles && lastValidation.Passed
+                    ? $" Files written to: {string.Join(", ", filesWritten)}"
+                    : " Files returned for manual review.";
+                
                 var result = new TaskResult
                 {
                     Success = lastValidation.Passed,
-                    Files = lastGeneratedCode.FileChanges.Select(f => new GeneratedFile
-                    {
-                        Path = f.Path,
-                        Content = f.Content,
-                        ChangeType = f.Type,
-                        Reason = f.Reason
-                    }).ToList(),
+                    Files = files,
                     ValidationScore = lastValidation.Score,
                     TotalIterations = iteration,
                     TotalDurationMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds,
                     Summary = lastValidation.Passed 
-                        ? $"Successfully generated code with score {lastValidation.Score}/10 in {iteration} iteration(s)"
+                        ? $"Successfully generated code with score {lastValidation.Score}/10 in {iteration} iteration(s).{autoWriteStatus}"
                         : $"Code generated but validation score {lastValidation.Score}/10 did not meet minimum {request.MinValidationScore}"
                 };
 
@@ -295,6 +309,58 @@ public class TaskOrchestrator : ITaskOrchestrator
         {
             _logger.LogWarning(ex, "Failed to store result in Lightning memory");
         }
+    }
+    
+    /// <summary>
+    /// 📝 Write generated files to workspace (when autoWriteFiles is enabled)
+    /// </summary>
+    private async Task<List<string>> WriteFilesToWorkspaceAsync(
+        List<GeneratedFile> files,
+        string workspacePath,
+        CancellationToken cancellationToken)
+    {
+        var writtenFiles = new List<string>();
+        
+        foreach (var file in files)
+        {
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                // Build full path
+                var fullPath = Path.IsPathRooted(file.Path) 
+                    ? file.Path 
+                    : Path.Combine(workspacePath, file.Path);
+                
+                // Ensure directory exists
+                var directory = Path.GetDirectoryName(fullPath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                    _logger.LogDebug("Created directory: {Directory}", directory);
+                }
+                
+                // Check if file exists and create backup if needed
+                if (File.Exists(fullPath) && file.ChangeType == FileChangeType.Created)
+                {
+                    var backupPath = fullPath + ".backup";
+                    File.Copy(fullPath, backupPath, overwrite: true);
+                    _logger.LogInformation("Created backup: {BackupPath}", backupPath);
+                }
+                
+                // Write the file
+                await File.WriteAllTextAsync(fullPath, file.Content, cancellationToken);
+                writtenFiles.Add(file.Path);
+                
+                _logger.LogInformation("📝 Wrote file: {FilePath} ({ChangeType})", file.Path, file.ChangeType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to write file: {FilePath}", file.Path);
+            }
+        }
+        
+        return writtenFiles;
     }
 }
 

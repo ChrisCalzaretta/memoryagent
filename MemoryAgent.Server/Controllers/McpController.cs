@@ -99,8 +99,10 @@ public class McpController : ControllerBase
 
     /// <summary>
     /// HTTP POST endpoint for MCP requests (alternative to SSE)
+    /// Also available at /api/mcp/call for backward compatibility
     /// </summary>
     [HttpPost("mcp")]
+    [HttpPost("api/mcp/call")]
     public async Task<ActionResult> McpEndpoint(
         [FromBody] McpRequest request,
         CancellationToken cancellationToken)

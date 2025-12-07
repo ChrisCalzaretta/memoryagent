@@ -229,7 +229,19 @@ The CodingAgent and ValidationAgent are now working on your task.
         return `❌ Job \`${args.jobId}\` not found`;
       }
       
-      let output = `📊 **Task Status: ${result.status}**
+      // Convert numeric status to string
+      const statusNames = ['Queued', 'Running', 'Complete', 'Failed', 'Cancelled', 'TimedOut'];
+      const statusName = typeof result.status === 'number' ? statusNames[result.status] : result.status;
+      const statusIcon = {
+        'Queued': '⏳',
+        'Running': '🔄',
+        'Complete': '✅',
+        'Failed': '❌',
+        'Cancelled': '🚫',
+        'TimedOut': '⏱️'
+      }[statusName] || '❓';
+      
+      let output = `📊 **Task Status: ${statusIcon} ${statusName}**
 
 **Job ID:** \`${result.jobId}\`
 **Progress:** ${result.progress}%
@@ -246,24 +258,64 @@ The CodingAgent and ValidationAgent are now working on your task.
         }
       }
       
-      if (result.status === 'Complete' && result.result) {
+      // TaskState enum: Queued=0, Running=1, Complete=2, Failed=3, Cancelled=4, TimedOut=5
+      const isComplete = result.status === 2 || result.status === 'Complete';
+      const isFailed = result.status === 3 || result.status === 'Failed';
+      
+      if (isComplete && result.result) {
         output += `\n**✅ COMPLETED**
 - Validation Score: ${result.result.validationScore}/10
 - Total Iterations: ${result.result.totalIterations}
 - Duration: ${result.result.totalDurationMs}ms
 - Files Generated: ${result.result.files?.length || 0}
+- Summary: ${result.result.summary || 'N/A'}
 `;
         
-        if (result.result.files) {
+        if (result.result.files && result.result.files.length > 0) {
+          log(`Returning ${result.result.files.length} files in response`);
           for (const file of result.result.files) {
-            output += `\n**${file.path}** (${file.changeType})\n\`\`\`csharp\n${file.content}\n\`\`\`\n`;
+            // Detect language from file extension
+            const ext = file.path.split('.').pop()?.toLowerCase() || '';
+            const langMap = {
+              'cs': 'csharp',
+              'ts': 'typescript',
+              'tsx': 'typescript',
+              'js': 'javascript',
+              'jsx': 'javascript',
+              'py': 'python',
+              'sql': 'sql',
+              'json': 'json',
+              'yaml': 'yaml',
+              'yml': 'yaml',
+              'xml': 'xml',
+              'html': 'html',
+              'css': 'css',
+              'md': 'markdown'
+            };
+            const lang = langMap[ext] || '';
+            
+            output += `\n---\n### 📄 ${file.path}\n**Change Type:** ${file.changeType}\n`;
+            if (file.reason) {
+              output += `**Reason:** ${file.reason}\n`;
+            }
+            output += `\n\`\`\`${lang}\n${file.content || '// Empty content'}\n\`\`\`\n`;
           }
+        } else {
+          output += '\n⚠️ **No files in result** - Check orchestrator logs for parsing errors\n';
         }
-      } else if (result.status === 'Failed' && result.error) {
+      } else if (isFailed && result.error) {
         output += `\n**❌ FAILED**
 - Error: ${result.error.message}
 - Type: ${result.error.type}
 - Can retry: ${result.error.canRetry ? 'Yes' : 'No'}`;
+        
+        // Include partial result if available
+        if (result.error.partialResult?.files?.length > 0) {
+          output += `\n\n**Partial Results (${result.error.partialResult.files.length} files):**\n`;
+          for (const file of result.error.partialResult.files) {
+            output += `\n**${file.path}**\n\`\`\`\n${file.content}\n\`\`\`\n`;
+          }
+        }
       }
       
       return output;
@@ -285,18 +337,22 @@ The CodingAgent and ValidationAgent are now working on your task.
         return 'No active tasks';
       }
       
+      const statusNames = ['Queued', 'Running', 'Complete', 'Failed', 'Cancelled', 'TimedOut'];
+      const iconMap = {
+        'Queued': '⏳',
+        'Running': '🔄',
+        'Complete': '✅',
+        'Failed': '❌',
+        'Cancelled': '🚫',
+        'TimedOut': '⏱️'
+      };
+      
       let output = '**Active Tasks:**\n\n';
       for (const task of tasks) {
-        const icon = {
-          'Queued': '⏳',
-          'Running': '🔄',
-          'Complete': '✅',
-          'Failed': '❌',
-          'Cancelled': '🚫',
-          'TimedOut': '⏱️'
-        }[task.status] || '❓';
+        const statusName = typeof task.status === 'number' ? statusNames[task.status] : task.status;
+        const icon = iconMap[statusName] || '❓';
         
-        output += `${icon} \`${task.jobId}\` - ${task.status} (${task.progress}%) - ${task.currentPhase || 'N/A'}\n`;
+        output += `${icon} \`${task.jobId}\` - ${statusName} (${task.progress}%) - ${task.currentPhase || 'N/A'}\n`;
       }
       
       return output;
