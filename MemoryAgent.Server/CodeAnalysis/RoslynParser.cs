@@ -13,11 +13,13 @@ public class RoslynParser : ICodeParser
 {
     private readonly ILogger<RoslynParser> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ProjectFileParser _projectFileParser;
 
-    public RoslynParser(ILogger<RoslynParser> logger, ILoggerFactory loggerFactory)
+    public RoslynParser(ILogger<RoslynParser> logger, ILoggerFactory loggerFactory, ProjectFileParser projectFileParser)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
+        _projectFileParser = projectFileParser;
     }
     
     private static bool IsConfigFile(string fileName)
@@ -48,7 +50,7 @@ public class RoslynParser : ICodeParser
                 ".cshtml" or ".razor" => await Task.Run(() => RazorParser.ParseRazorFile(filePath, context, _loggerFactory), cancellationToken),
                 ".md" or ".markdown" => await new MarkdownParser(_loggerFactory.CreateLogger<MarkdownParser>()).ParseFileAsync(filePath, context, cancellationToken),
                 ".css" or ".scss" or ".less" => await Task.Run(() => CssParser.ParseCssFile(filePath, context), cancellationToken),
-                ".csproj" or ".vbproj" or ".fsproj" or ".sln" => await Task.Run(() => ProjectFileParser.ParseProjectFile(filePath, context), cancellationToken),
+                ".csproj" or ".vbproj" or ".fsproj" or ".sln" => await Task.Run(() => _projectFileParser.ParseProjectFile(filePath, context), cancellationToken),
                 ".json" when IsConfigFile(fileName) => await Task.Run(() => ConfigFileParser.ParseConfigFile(filePath, context), cancellationToken),
                 ".yml" or ".yaml" when fileName.Contains("docker-compose") => await Task.Run(() => DockerfileParser.ParseDockerfile(filePath, context), cancellationToken),
                 ".config" when fileName == "web.config" => await Task.Run(() => ConfigFileParser.ParseConfigFile(filePath, context), cancellationToken),

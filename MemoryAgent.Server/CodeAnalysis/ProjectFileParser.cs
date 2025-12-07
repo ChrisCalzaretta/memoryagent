@@ -2,15 +2,24 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using MemoryAgent.Server.Models;
+using Microsoft.Extensions.Logging;
 
 namespace MemoryAgent.Server.CodeAnalysis;
 
 /// <summary>
 /// Parser for .NET project files (.csproj, .vbproj, .fsproj) and solution files (.sln)
+/// Extracts project metadata, dependencies, and relationships
 /// </summary>
 public class ProjectFileParser
 {
-    public static ParseResult ParseProjectFile(string filePath, string? context = null)
+    private readonly ILogger<ProjectFileParser> _logger;
+
+    public ProjectFileParser(ILogger<ProjectFileParser> logger)
+    {
+        _logger = logger;
+    }
+
+    public ParseResult ParseProjectFile(string filePath, string? context = null)
     {
         var result = new ParseResult();
         var extension = Path.GetExtension(filePath).ToLower();
@@ -23,6 +32,8 @@ public class ProjectFileParser
                 return result;
             }
 
+            _logger.LogInformation("Parsing {Extension} file: {FilePath}", extension, filePath);
+
             if (extension == ".sln")
             {
                 return ParseSolutionFile(filePath, context);
@@ -34,13 +45,14 @@ public class ProjectFileParser
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error parsing project file: {FilePath}", filePath);
             result.Errors.Add($"Error parsing project file: {ex.Message}");
         }
         
         return result;
     }
     
-    private static ParseResult ParseCsProjFile(string filePath, string? context)
+    private ParseResult ParseCsProjFile(string filePath, string? context)
     {
         var result = new ParseResult();
         var content = File.ReadAllText(filePath);
@@ -185,7 +197,7 @@ public class ProjectFileParser
         return result;
     }
     
-    private static ParseResult ParseSolutionFile(string filePath, string? context)
+    private ParseResult ParseSolutionFile(string filePath, string? context)
     {
         var result = new ParseResult();
         var content = File.ReadAllText(filePath);

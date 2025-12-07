@@ -51,6 +51,8 @@ builder.Services.AddSingleton<DartParser>();           // Dart/Flutter parser wi
 builder.Services.AddSingleton<TerraformParser>();      // Terraform/HCL parser with IaC pattern detection
 builder.Services.AddSingleton<BicepParser>();          // Azure Bicep parser
 builder.Services.AddSingleton<ARMTemplateParser>();    // Azure ARM Template parser
+builder.Services.AddSingleton<JsonParser>();           // Generic JSON parser (for non-ARM JSON files)
+builder.Services.AddSingleton<ProjectFileParser>();    // .NET solution/project file parser (.sln, .csproj)
 builder.Services.AddSingleton<ICodeParser, CompositeCodeParser>(); // Composite router
 builder.Services.AddScoped<IIndexingService, IndexingService>();
 builder.Services.AddSingleton<ISemgrepService, SemgrepService>();

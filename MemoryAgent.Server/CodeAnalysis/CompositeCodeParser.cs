@@ -16,6 +16,8 @@ public class CompositeCodeParser : ICodeParser
     private readonly TerraformParser _terraformParser;
     private readonly BicepParser _bicepParser;
     private readonly ARMTemplateParser _armParser;
+    private readonly JsonParser _jsonParser;
+    private readonly ProjectFileParser _projectFileParser;
     private readonly ILogger<CompositeCodeParser> _logger;
 
     public CompositeCodeParser(
@@ -27,6 +29,8 @@ public class CompositeCodeParser : ICodeParser
         TerraformParser terraformParser,
         BicepParser bicepParser,
         ARMTemplateParser armParser,
+        JsonParser jsonParser,
+        ProjectFileParser projectFileParser,
         ILogger<CompositeCodeParser> logger)
     {
         _roslynParser = roslynParser;
@@ -37,6 +41,8 @@ public class CompositeCodeParser : ICodeParser
         _terraformParser = terraformParser;
         _bicepParser = bicepParser;
         _armParser = armParser;
+        _jsonParser = jsonParser;
+        _projectFileParser = projectFileParser;
         _logger = logger;
     }
 
@@ -69,12 +75,37 @@ public class CompositeCodeParser : ICodeParser
             // Azure Bicep files - Bicep IaC parser
             ".bicep" => await _bicepParser.ParseFileAsync(filePath, context, cancellationToken),
             
-            // Azure ARM Templates - JSON template parser (checks if it's an ARM template)
-            ".json" => await _armParser.ParseFileAsync(filePath, context, cancellationToken),
+            // JSON files - Try ARM template first, fall back to generic JSON chunking
+            ".json" => await ParseJsonFileAsync(filePath, context, cancellationToken),
+            
+            // .NET Project/Solution files - MSBuild XML parsing
+            ".sln" or ".csproj" or ".vbproj" or ".fsproj" => await Task.FromResult(
+                _projectFileParser.ParseProjectFile(filePath, context)),
             
             // Unsupported types
             _ => CreateUnsupportedResult(filePath, extension, context)
         };
+    }
+
+    /// <summary>
+    /// Parse JSON files: ARM templates get specialized parsing, generic JSON gets chunked
+    /// </summary>
+    private async Task<ParseResult> ParseJsonFileAsync(string filePath, string? context, CancellationToken cancellationToken)
+    {
+        // First, try ARM template parser (checks for $schema and resources)
+        var armResult = await _armParser.ParseFileAsync(filePath, context, cancellationToken);
+        
+        // If ARM parser found something, use that result
+        if (armResult.CodeElements.Count > 0)
+        {
+            _logger.LogDebug("Parsed {FilePath} as ARM template with {Count} elements", 
+                filePath, armResult.CodeElements.Count);
+            return armResult;
+        }
+        
+        // Not an ARM template - use generic JSON parser
+        _logger.LogDebug("File {FilePath} is not an ARM template, using generic JSON parser", filePath);
+        return await _jsonParser.ParseFileAsync(filePath, context, cancellationToken);
     }
 
     public async Task<ParseResult> ParseCodeAsync(string code, string filePath, string? context = null, CancellationToken cancellationToken = default)
@@ -106,12 +137,83 @@ public class CompositeCodeParser : ICodeParser
             // Azure Bicep code - Bicep IaC parser
             ".bicep" => await _bicepParser.ParseCodeAsync(code, filePath, context, cancellationToken),
             
-            // Azure ARM Templates - JSON template parser
-            ".json" => await _armParser.ParseCodeAsync(code, filePath, context, cancellationToken),
+            // JSON code - Try ARM template first, fall back to generic JSON
+            ".json" => await ParseJsonCodeAsync(code, filePath, context, cancellationToken),
+            
+            // .NET Project/Solution files - write to temp and parse
+            ".sln" or ".csproj" or ".vbproj" or ".fsproj" => await ParseProjectCodeAsync(code, filePath, extension, context, cancellationToken),
             
             // Unsupported types
             _ => CreateUnsupportedResult(filePath, extension, context)
         };
+    }
+
+    /// <summary>
+    /// Parse .NET project/solution code: write to temp file and use ProjectFileParser
+    /// </summary>
+    private async Task<ParseResult> ParseProjectCodeAsync(string code, string? filePath, string extension, string? context, CancellationToken cancellationToken)
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"project-parse-{Guid.NewGuid():N}{extension}");
+        try
+        {
+            await File.WriteAllTextAsync(tempFile, code, cancellationToken);
+            var result = _projectFileParser.ParseProjectFile(tempFile, context);
+            
+            // Fix the file path in the result to use the original path
+            foreach (var element in result.CodeElements)
+            {
+                element.FilePath = filePath ?? $"code{extension}";
+            }
+            
+            return result;
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+            {
+                try { File.Delete(tempFile); } catch { /* ignore cleanup errors */ }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parse JSON code: ARM templates get specialized parsing, generic JSON gets chunked
+    /// </summary>
+    private async Task<ParseResult> ParseJsonCodeAsync(string code, string filePath, string? context, CancellationToken cancellationToken)
+    {
+        // First, try ARM template parser
+        var armResult = await _armParser.ParseCodeAsync(code, filePath, context, cancellationToken);
+        
+        // If ARM parser found something, use that result
+        if (armResult.CodeElements.Count > 0)
+        {
+            _logger.LogDebug("Parsed JSON code as ARM template with {Count} elements", armResult.CodeElements.Count);
+            return armResult;
+        }
+        
+        // Not an ARM template - for code parsing, create a temp file to use JsonParser
+        // (JsonParser only has ParseFileAsync, so we write to temp)
+        var tempFile = Path.Combine(Path.GetTempPath(), $"json-parse-{Guid.NewGuid():N}.json");
+        try
+        {
+            await File.WriteAllTextAsync(tempFile, code, cancellationToken);
+            var result = await _jsonParser.ParseFileAsync(tempFile, context, cancellationToken);
+            
+            // Fix the file path in the result to use the original path
+            foreach (var element in result.CodeElements)
+            {
+                element.FilePath = filePath ?? "code.json";
+            }
+            
+            return result;
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+            {
+                try { File.Delete(tempFile); } catch { /* ignore cleanup errors */ }
+            }
+        }
     }
 
     private ParseResult CreateUnsupportedResult(string filePath, string extension, string? context)
