@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 set -e
 
 # Start Ollama server in background
@@ -31,26 +31,26 @@ echo "Currently available models:"
 echo "$MODELS"
 
 if echo "$MODELS" | grep -q "mxbai-embed-large"; then
-    echo "✓ mxbai-embed-large already exists - skipping pull"
+    echo "âœ“ mxbai-embed-large already exists - skipping pull"
 else
     echo "Pulling mxbai-embed-large model..."
     ollama pull mxbai-embed-large:latest
-    echo "✓ Model pulled successfully!"
+    echo "âœ“ Model pulled successfully!"
 fi
 
 # Check and pull LLM model if needed
 echo "Checking for deepseek-coder-v2 model..."
 if echo "$MODELS" | grep -q "deepseek-coder-v2"; then
-    echo "✓ deepseek-coder-v2 already exists - skipping pull"
+    echo "âœ“ deepseek-coder-v2 already exists - skipping pull"
 else
     echo "Pulling deepseek-coder-v2:16b model..."
     ollama pull deepseek-coder-v2:16b
-    echo "✓ Model pulled successfully!"
+    echo "âœ“ Model pulled successfully!"
 fi
 
 # Pre-load DeepSeek model into VRAM in background (non-blocking)
 echo "Pre-loading deepseek-coder-v2:16b into VRAM (background)..."
-(sleep 10 && ollama run deepseek-coder-v2:16b "test" > /dev/null 2>&1 && echo "✓ Model preloaded into VRAM!") &
+(sleep 10 && ollama run deepseek-coder-v2:16b "test" > /dev/null 2>&1 && echo "âœ“ Model preloaded into VRAM!") &
 
 # Keep the server running
 wait $OLLAMA_PID
