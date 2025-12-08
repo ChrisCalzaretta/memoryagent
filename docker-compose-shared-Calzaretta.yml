@@ -38,6 +38,12 @@ services:
           memory: 108G
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     # GRACEFUL SHUTDOWN: Stop MCP server FIRST before databases
     # Gives .NET app 30s to close Neo4j/Qdrant connections cleanly
     stop_grace_period: 30s
@@ -139,10 +145,14 @@ services:
       - PathMapping__HostRoot=E:\GitHub
       - PathMapping__ContainerRoot=/workspace
     depends_on:
-      - mcp-server
-      - coding-agent
-      - validation-agent
-      - design-agent
+      mcp-server:
+        condition: service_healthy
+      coding-agent:
+        condition: service_healthy
+      validation-agent:
+        condition: service_healthy
+      design-agent:
+        condition: service_healthy
     networks:
       - memory-net
     # Need elevated permissions for Docker socket access
@@ -180,9 +190,16 @@ services:
       - PathMapping__HostRoot=E:\GitHub
       - PathMapping__ContainerRoot=/workspace
     depends_on:
-      - mcp-server
+      mcp-server:
+        condition: service_healthy
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   # ValidationAgent - Validates code quality with LLM
@@ -204,9 +221,16 @@ services:
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
     depends_on:
-      - mcp-server
+      mcp-server:
+        condition: service_healthy
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   # DesignAgent - UX Design system, brand guidelines, validation (now with LLM!)
@@ -224,11 +248,18 @@ services:
       # 🧠 LLM for creative brand generation and intelligent validation
       - Ollama__Url=http://10.0.0.20:11434
       - Ollama__Port=11434
-      - Ollama__DefaultModel=phi4:latest
+      - Ollama__DefaultModel=deepseek-coder-v2:16b
     depends_on:
-      - mcp-server
+      mcp-server:
+        condition: service_healthy
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
 networks:

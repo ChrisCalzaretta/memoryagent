@@ -190,6 +190,36 @@ app.UseCors();
 app.UseAuthorization();
 app.MapControllers();
 
+// Health endpoint for orchestrator health checks
+app.MapGet("/health", async (IServiceProvider sp) =>
+{
+    try
+    {
+        var vectorService = sp.GetRequiredService<IVectorService>();
+        var graphService = sp.GetRequiredService<IGraphService>();
+        
+        var qdrantHealthy = await vectorService.HealthCheckAsync();
+        var neo4jHealthy = await graphService.HealthCheckAsync();
+        
+        var status = qdrantHealthy && neo4jHealthy ? "healthy" : "degraded";
+        
+        return Results.Ok(new
+        {
+            status,
+            service = "MemoryAgent",
+            dependencies = new
+            {
+                qdrant = qdrantHealthy ? "healthy" : "unhealthy",
+                neo4j = neo4jHealthy ? "healthy" : "unhealthy"
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { status = "unhealthy", error = ex.Message });
+    }
+});
+
 // Get logger
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
