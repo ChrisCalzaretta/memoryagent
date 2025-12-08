@@ -18,7 +18,7 @@ services:
       - Neo4j__Url=bolt://memory-agent-neo4j:7687
       - Neo4j__User=neo4j
       - Neo4j__Password=memoryagent
-      - Ollama__Url=http://10.10.1.114:11434
+      - Ollama__Url=http://host.docker.internal:11434
       - PathMapping__HostRoot=h:\code\git
       - PathMapping__ContainerRoot=/workspace
       - AutoReindex__Enabled=true
@@ -173,7 +173,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5001
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - Ollama__Url=http://10.10.1.114:11434
+      - Ollama__Url=http://host.docker.internal:11434
       # Dual GPU support (configure based on Gordon's GPU setup)
       - Gpu__DualGpu=false
       - Gpu__PinnedPort=11434
@@ -207,7 +207,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5002
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - Ollama__Url=http://10.10.1.114:11434
+      - Ollama__Url=http://host.docker.internal:11434
       - Gpu__ValidationModel=phi4:latest
       # Dual GPU support (configure based on Gordon's GPU setup)
       - Gpu__DualGpu=false
@@ -239,7 +239,7 @@ services:
       - ASPNETCORE_URLS=http://+:5004
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       # 🧠 LLM for creative brand generation and intelligent validation
-      - Ollama__Url=http://10.10.1.114:11434
+      - Ollama__Url=http://host.docker.internal:11434
       - Ollama__Port=11434
       - Ollama__DefaultModel=deepseek-coder-v2:16b
     depends_on:
