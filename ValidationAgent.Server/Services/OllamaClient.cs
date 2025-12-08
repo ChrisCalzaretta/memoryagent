@@ -7,6 +7,7 @@ namespace ValidationAgent.Server.Services;
 
 /// <summary>
 /// HTTP client for Ollama API - supports multiple ports for multi-GPU setup
+/// Auto-detects and uses optimal context size for each model
 /// </summary>
 public class OllamaClient : IOllamaClient
 {
@@ -14,6 +15,29 @@ public class OllamaClient : IOllamaClient
     private readonly ILogger<OllamaClient> _logger;
     private readonly int _defaultPort;
     private readonly string _baseHost;
+    
+    // Cache model context sizes to avoid repeated API calls
+    private static readonly Dictionary<string, int> _modelContextCache = new();
+    private static readonly SemaphoreSlim _cacheLock = new(1, 1);
+    
+    // Default context sizes by model family (fallback if API query fails)
+    private static readonly Dictionary<string, int> _knownModelContexts = new()
+    {
+        ["deepseek-coder-v2"] = 65536,  // 64k (can go to 128k but uses lots of memory)
+        ["deepseek-coder"] = 16384,
+        ["qwen2.5-coder"] = 32768,
+        ["qwen2.5"] = 32768,
+        ["phi4"] = 16384,
+        ["phi3.5"] = 32768,
+        ["phi3"] = 4096,
+        ["llama3.1"] = 32768,
+        ["llama3.2"] = 32768,
+        ["codellama"] = 16384,
+        ["mistral"] = 32768,
+        ["mixtral"] = 32768,
+        ["gemma2"] = 8192,
+        ["starcoder2"] = 16384,
+    };
     
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -42,6 +66,122 @@ public class OllamaClient : IOllamaClient
         
         _logger.LogInformation("OllamaClient configured with base host: {BaseHost}:{Port}", _baseHost, _defaultPort);
     }
+    
+    /// <summary>
+    /// Get optimal context size for a model based on task type
+    /// Validation needs more prompt room (80% prompt, 20% response) since it includes full code
+    /// </summary>
+    private async Task<int> GetOptimalContextSizeAsync(string model, int port, CancellationToken ct, string taskType = "validation")
+    {
+        var cacheKey = $"{model}:{taskType}";
+        
+        // Check cache first
+        if (_modelContextCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+        
+        await _cacheLock.WaitAsync(ct);
+        try
+        {
+            // Double-check after acquiring lock
+            if (_modelContextCache.TryGetValue(cacheKey, out cached))
+                return cached;
+            
+            // Try to query Ollama for model info
+            var maxContextSize = await QueryModelContextSizeAsync(model, port, ct);
+            
+            // If query failed, use known defaults
+            if (maxContextSize <= 0)
+            {
+                maxContextSize = GetKnownContextSize(model);
+            }
+            
+            // Task-aware context ratio:
+            // - validation: 80% (needs full code in prompt, small JSON response)
+            // - model_selection: 90% (tiny JSON response)
+            var promptRatio = taskType switch
+            {
+                "validation" => 0.80,
+                "model_selection" => 0.90,
+                _ => 0.80
+            };
+            
+            var optimalSize = (int)(maxContextSize * promptRatio);
+            
+            // Ensure minimum of 4096
+            optimalSize = Math.Max(optimalSize, 4096);
+            
+            _modelContextCache[cacheKey] = optimalSize;
+            _logger.LogInformation("📐 Model {Model} ({TaskType}): {Max} max → using {Optimal} ({Ratio:P0} for prompt, {ResponseRatio:P0} for response)", 
+                model, taskType, maxContextSize, optimalSize, promptRatio, 1 - promptRatio);
+            
+            return optimalSize;
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
+    }
+    
+    /// <summary>
+    /// Query Ollama API for model's context size
+    /// </summary>
+    private async Task<int> QueryModelContextSizeAsync(string model, int port, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"{_baseHost}:{port}/api/show";
+            var request = new { name = model };
+            var json = JsonSerializer.Serialize(request);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync(url, content, ct);
+            if (!response.IsSuccessStatusCode)
+                return 0;
+            
+            var body = await response.Content.ReadAsStringAsync(ct);
+            
+            // Parse the modelfile to find num_ctx parameter
+            // Look for patterns like "num_ctx 4096" or context_length in parameters
+            if (body.Contains("num_ctx"))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(body, @"num_ctx["":\s]+(\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var ctx))
+                    return ctx;
+            }
+            
+            // Try to find context_length in model_info
+            if (body.Contains("context_length"))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(body, @"context_length["":\s]+(\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var ctx))
+                    return ctx;
+            }
+            
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not query context size for {Model}", model);
+            return 0;
+        }
+    }
+    
+    /// <summary>
+    /// Get known context size for model family
+    /// </summary>
+    private int GetKnownContextSize(string model)
+    {
+        var lowerModel = model.ToLowerInvariant();
+        
+        foreach (var (prefix, contextSize) in _knownModelContexts)
+        {
+            if (lowerModel.Contains(prefix))
+                return contextSize;
+        }
+        
+        // Default fallback
+        return 8192;
+    }
 
     public async Task<OllamaResponse> GenerateAsync(
         string model, 
@@ -53,7 +193,11 @@ public class OllamaClient : IOllamaClient
         var actualPort = port ?? _defaultPort;
         var url = $"{_baseHost}:{actualPort}/api/generate";
         
-        _logger.LogInformation("Calling Ollama generate on port {Port} with model {Model}", actualPort, model);
+        // 📐 Smart context sizing: 80% for prompt (validation needs full code), 20% for response (small JSON)
+        var optimalContext = await GetOptimalContextSizeAsync(model, actualPort, cancellationToken, "validation");
+        
+        _logger.LogInformation("Calling Ollama generate on port {Port} with model {Model} (context={Context})", 
+            actualPort, model, optimalContext);
         
         var request = new OllamaGenerateRequest
         {
@@ -61,7 +205,11 @@ public class OllamaClient : IOllamaClient
             Prompt = prompt,
             System = systemPrompt,
             Stream = false,
-            KeepAlive = -1 // Keep model loaded
+            KeepAlive = -1, // Keep model loaded
+            Options = new OllamaOptions
+            {
+                NumCtx = optimalContext // Auto-detected: 80% for validation prompts
+            }
         };
 
         try
@@ -225,6 +373,29 @@ internal class OllamaGenerateRequest
     public bool Stream { get; set; }
     [JsonPropertyName("keep_alive")]
     public int KeepAlive { get; set; }
+    /// <summary>
+    /// Model options including context size
+    /// </summary>
+    public OllamaOptions? Options { get; set; }
+}
+
+/// <summary>
+/// Ollama model options - controls context size, temperature, etc.
+/// </summary>
+internal class OllamaOptions
+{
+    /// <summary>
+    /// Context window size in tokens. Default is 4096. 
+    /// Set higher (8192, 16384, 32768) for longer prompts.
+    /// Trade-off: More memory, slower responses.
+    /// </summary>
+    [JsonPropertyName("num_ctx")]
+    public int NumCtx { get; set; } = 8192;
+    
+    /// <summary>
+    /// Temperature for sampling (0.0 = deterministic, 1.0 = creative)
+    /// </summary>
+    public float? Temperature { get; set; }
 }
 
 internal class OllamaGenerateResponse
