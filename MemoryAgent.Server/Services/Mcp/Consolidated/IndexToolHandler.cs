@@ -61,8 +61,18 @@ public class IndexToolHandler : IMcpToolHandler
         
         // Store args for deferred execution
         public Dictionary<string, object>? Args { get; set; }
+        
+        // Cancellation support
+        public CancellationTokenSource CancellationSource { get; } = new();
+        public bool IsCancelled => CancellationSource.IsCancellationRequested;
 
         public void IncrementProcessed() => Interlocked.Increment(ref _filesProcessed);
+        
+        public void Cancel()
+        {
+            CancellationSource.Cancel();
+            Status = "Cancelled";
+        }
     }
 
     public IEnumerable<McpTool> GetTools()
@@ -80,7 +90,7 @@ public class IndexToolHandler : IMcpToolHandler
                     {
                         path = new { type = "string", description = "Path to file or directory to index" },
                         context = new { type = "string", description = "Project context name" },
-                        scope = new { type = "string", description = "Index scope: 'file' (single file), 'directory' (folder), 'reindex' (update changes)", @default = "file", @enum = new[] { "file", "directory", "reindex" } },
+                        scope = new { type = "string", description = "Index scope: 'file' (single file), 'directory' (folder), 'reindex' (update changes), 'status' (check job status), 'cancel' (cancel a job)", @default = "file", @enum = new[] { "file", "directory", "reindex", "status", "cancel" } },
                         recursive = new { type = "boolean", description = "For directory scope: index subdirectories (default: true)", @default = true },
                         removeStale = new { type = "boolean", description = "For reindex scope: remove deleted files from memory (default: true)", @default = true },
                         background = new { type = "boolean", description = "Run in background to avoid timeout on large projects (default: false). Use for directory/reindex on large codebases.", @default = false },
@@ -112,9 +122,15 @@ public class IndexToolHandler : IMcpToolHandler
         var jobId = args?.GetValueOrDefault("jobId")?.ToString();
 
         // Check status of background job
-        if (scope == "status" || !string.IsNullOrEmpty(jobId))
+        if (scope == "status" || (!string.IsNullOrEmpty(jobId) && scope != "cancel"))
         {
             return GetBackgroundJobStatus(jobId, context);
+        }
+
+        // Cancel a background job
+        if (scope == "cancel")
+        {
+            return CancelBackgroundJob(jobId);
         }
 
         if (string.IsNullOrWhiteSpace(path))
@@ -271,6 +287,13 @@ public class IndexToolHandler : IMcpToolHandler
                 
                 try
                 {
+                    // Skip if job was cancelled while queued
+                    if (job.IsCancelled)
+                    {
+                        _logger.LogInformation("⏭️ Skipping cancelled job {JobId}", job.Id);
+                        continue;
+                    }
+                    
                     job.Status = "Running";
                     job.StartedAt = DateTime.UtcNow;
                     job.QueuePosition = 0;
@@ -296,11 +319,11 @@ public class IndexToolHandler : IMcpToolHandler
                             job.Path, 
                             recursive, 
                             job.Context, 
-                            CancellationToken.None,
+                            job.CancellationSource.Token,  // Use job's cancellation token
                             progressCallback: _ => job.IncrementProcessed());
                         job.FilesProcessed = result.FilesIndexed;
                         job.Errors = result.Errors;
-                        job.Status = result.Success ? "Completed" : "Failed";
+                        job.Status = job.IsCancelled ? "Cancelled" : (result.Success ? "Completed" : "Failed");
                     }
                     else if (job.Scope == "reindex")
                     {
@@ -309,20 +332,28 @@ public class IndexToolHandler : IMcpToolHandler
                             context: job.Context,
                             path: job.Path,
                             removeStale: removeStale,
-                            cancellationToken: CancellationToken.None,
+                            cancellationToken: job.CancellationSource.Token,  // Use job's cancellation token
                             progressCallback: _ => job.IncrementProcessed());
                         job.FilesProcessed = result.FilesAdded + result.FilesUpdated + result.FilesRemoved;
                         job.Errors = result.Errors;
-                        job.Status = result.Success ? "Completed" : "Failed";
+                        job.Status = job.IsCancelled ? "Cancelled" : (result.Success ? "Completed" : "Failed");
                     }
 
                     job.CompletedAt = DateTime.UtcNow;
-                    _logger.LogInformation("✅ Background job {JobId} completed: {Files} files processed", 
+                    var statusEmoji = job.Status == "Cancelled" ? "🛑" : "✅";
+                    _logger.LogInformation("{Emoji} Background job {JobId} {Status}: {Files} files processed", 
+                        statusEmoji, job.Id, job.Status.ToLower(), job.FilesProcessed);
+                }
+                catch (OperationCanceledException)
+                {
+                    job.Status = "Cancelled";
+                    job.CompletedAt = DateTime.UtcNow;
+                    _logger.LogInformation("🛑 Background job {JobId} cancelled: {Files} files processed", 
                         job.Id, job.FilesProcessed);
                 }
                 catch (Exception ex)
                 {
-                    job.Status = "Failed";
+                    job.Status = job.IsCancelled ? "Cancelled" : "Failed";
                     job.Errors.Add(ex.Message);
                     job.CompletedAt = DateTime.UtcNow;
                     _logger.LogError(ex, "❌ Background job {JobId} failed", job.Id);
@@ -341,6 +372,68 @@ public class IndexToolHandler : IMcpToolHandler
             }
             _logger.LogInformation("🔄 Index job queue processor stopped (queue empty)");
         }
+    }
+
+    private McpToolResult CancelBackgroundJob(string? jobId)
+    {
+        if (string.IsNullOrEmpty(jobId))
+        {
+            return new McpToolResult
+            {
+                IsError = true,
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = "❌ jobId is required to cancel a job.\n\nUsage: index(scope=\"cancel\", jobId=\"abc123\", path=\".\", context=\"x\")" }
+                }
+            };
+        }
+
+        if (!_backgroundJobs.TryGetValue(jobId, out var job))
+        {
+            return new McpToolResult
+            {
+                IsError = true,
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"❌ Job not found: {jobId}" }
+                }
+            };
+        }
+
+        if (job.Status == "Completed" || job.Status == "Failed" || job.Status == "Cancelled")
+        {
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"⚠️ Job {jobId} already {job.Status.ToLower()} - cannot cancel." }
+                }
+            };
+        }
+
+        var wasRunning = job.Status == "Running";
+        job.Cancel();
+        job.CompletedAt = DateTime.UtcNow;
+        
+        _logger.LogInformation("🛑 Cancelled background job {JobId} (was {Status})", jobId, wasRunning ? "running" : "queued");
+
+        var output = $"🛑 Job Cancelled\n";
+        output += $"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+        output += $"Job ID: {job.Id}\n";
+        output += $"Context: {job.Context}\n";
+        output += $"Was: {(wasRunning ? "Running" : "Queued")}\n";
+        output += $"Files Processed: {job.FilesProcessed}\n";
+        
+        if (wasRunning)
+            output += $"\n⚠️ Note: The job may take a moment to fully stop.\n";
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent>
+            {
+                new McpContent { Type = "text", Text = output }
+            }
+        };
     }
 
     private McpToolResult GetBackgroundJobStatus(string? jobId, string? context)
@@ -377,6 +470,7 @@ public class IndexToolHandler : IMcpToolHandler
                     "Queued" => "⏳",
                     "Running" => "🔄",
                     "Completed" => "✅",
+                    "Cancelled" => "🛑",
                     "Failed" => "❌",
                     _ => "❓"
                 };
@@ -422,6 +516,7 @@ public class IndexToolHandler : IMcpToolHandler
             "Queued" => "⏳",
             "Running" => "🔄",
             "Completed" => "✅",
+            "Cancelled" => "🛑",
             "Failed" => "❌",
             _ => "❓"
         };
