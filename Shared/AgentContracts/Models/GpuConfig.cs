@@ -44,6 +44,13 @@ public class GpuConfig
     /// Estimated VRAM used by pinned models (GB)
     /// </summary>
     public int PinnedModelsVram { get; set; } = 11; // ~10GB deepseek + ~1GB embedding
+    
+    /// <summary>
+    /// Whether to use LLM-based smart model selection.
+    /// Set to false on single GPU to avoid model thrashing.
+    /// When false, always uses PrimaryModel without LLM analysis.
+    /// </summary>
+    public bool UseSmartModelSelection { get; set; } = true;
 }
 
 /// <summary>

@@ -186,6 +186,9 @@ services:
       - Gpu__SwapGpuVram=16
       # Actual pinned usage: phi4(10GB) + embed(1GB) = ~11GB, leave buffer
       - Gpu__PinnedModelsVram=12
+      # ⚡ Smart model selection: false = always use PrimaryModel (best for single GPU)
+      # Set to true if you have multiple GPUs and want LLM-based model selection
+      - Gpu__UseSmartModelSelection=true
       # 🗂️ Path translation: Windows paths → container paths
       - PathMapping__HostRoot=E:\GitHub
       - PathMapping__ContainerRoot=/workspace
@@ -220,6 +223,8 @@ services:
       - Gpu__DualGpu=true
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
+      # ⚡ Smart model selection: false = always use ValidationModel (best for single GPU)
+      - Gpu__UseSmartModelSelection=true
     depends_on:
       mcp-server:
         condition: service_healthy

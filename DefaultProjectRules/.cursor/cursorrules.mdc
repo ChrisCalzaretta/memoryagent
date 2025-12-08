@@ -5,7 +5,7 @@ alwaysApply: true
 # Memory Agent Rules - MANDATORY FOR EVERY QUERY
 
 ## 🚨 CRITICAL - MCP TOOLS ARE REQUIRED ON EVERY QUERY
-
+**AUTO** Context = workspace folder name (e.g., "memoryagent")
 **ALWAYS** On EVERY query, call at least ONE MCP tool before responding
 **ALWAYS** Call `get_context` before starting ANY task
 **ALWAYS** Use `smartsearch` before answering ANY code question

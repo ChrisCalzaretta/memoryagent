@@ -15,7 +15,8 @@ public interface IIndexingService
     /// <summary>
     /// Index a directory recursively
     /// </summary>
-    Task<IndexResult> IndexDirectoryAsync(string directoryPath, bool recursive = true, string? context = null, CancellationToken cancellationToken = default);
+    /// <param name="progressCallback">Optional callback invoked after each file is indexed</param>
+    Task<IndexResult> IndexDirectoryAsync(string directoryPath, bool recursive = true, string? context = null, CancellationToken cancellationToken = default, Action<string>? progressCallback = null);
 
     /// <summary>
     /// Query code memory
