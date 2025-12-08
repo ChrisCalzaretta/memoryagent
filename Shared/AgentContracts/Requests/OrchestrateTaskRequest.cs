@@ -47,7 +47,7 @@ public class OrchestrateTaskRequest : IValidatableObject
     /// Maximum iterations before giving up (default: 10 for robust retry)
     /// </summary>
     [Range(1, 50, ErrorMessage = "MaxIterations must be between 1 and 50")]
-    public int MaxIterations { get; set; } = 10;
+    public int MaxIterations { get; set; } = 50;
 
     /// <summary>
     /// Minimum validation score to pass (0-10)

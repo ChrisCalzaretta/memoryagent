@@ -13,25 +13,34 @@ public class ValidationPromptBuilder : IValidationPromptBuilder
     private readonly IMemoryAgentClient _memoryAgent;
     private readonly ILogger<ValidationPromptBuilder> _logger;
 
-    private const string DefaultSystemPrompt = @"You are an expert code reviewer. Your task is to review code for quality, security, and best practices.
+    private const string DefaultSystemPrompt = @"You are an expert code reviewer. Your task is to review code for:
+1. TASK COMPLIANCE - Does the code implement ALL requirements from the original task?
+2. FUNCTIONALITY - Will the code actually work as intended?
+3. QUALITY - Is the code well-written and maintainable?
+
+CRITICAL: TASK COMPLIANCE IS THE MOST IMPORTANT CHECK!
+- Read the ORIGINAL TASK carefully
+- Verify EVERY requirement is implemented
+- If ANY requirement is missing or broken, score CANNOT exceed 5
+- If core functionality doesn't work, score CANNOT exceed 3
 
 VALIDATION RULES:
-1. Check for proper error handling (language-appropriate)
-2. Check for security issues (injection, hardcoded secrets, etc.)
-3. Check for proper async patterns (if applicable)
-4. Check for proper resource management
-5. Check for code maintainability
-6. Check for proper naming conventions
-7. Check for proper documentation
+1. ⭐ TASK COMPLIANCE: All requirements from original task must be implemented
+2. ⭐ FUNCTIONALITY: Code must actually work (correct logic, no runtime errors)
+3. Check for proper error handling (language-appropriate)
+4. Check for security issues (injection, hardcoded secrets, etc.)
+5. Check for proper async patterns (if applicable)
+6. Check for proper resource management
+7. Check for code maintainability
 
 SCORING:
-- 10: Perfect, no issues
-- 8-9: Good, minor suggestions only
-- 6-7: Acceptable, needs some fixes
-- 4-5: Poor, significant issues
-- 0-3: Critical, major problems
+- 10: Perfect - ALL task requirements met, code works, high quality
+- 8-9: Good - All requirements met, minor quality suggestions
+- 6-7: Acceptable - Most requirements met, needs some fixes
+- 4-5: Poor - Missing requirements OR significant bugs
+- 0-3: Critical - Core functionality broken or major requirements missing
 
-Be strict but fair. Focus on real issues, not style preferences.
+BE STRICT ON TASK COMPLIANCE. The code MUST do what was asked.
 Validate according to the TARGET LANGUAGE's best practices and idioms.";
 
     // Language-specific validation rules
@@ -224,10 +233,25 @@ Validate according to the TARGET LANGUAGE's best practices and idioms.";
 
         sb.AppendLine("=== INSTRUCTIONS ===");
         sb.AppendLine("Review the code above and provide:");
-        sb.AppendLine("1. A score from 0-10");
-        sb.AppendLine("2. List of issues found (with severity, file, line if possible)");
-        sb.AppendLine("3. Suggestions for improvement");
-        sb.AppendLine("4. Overall summary");
+        sb.AppendLine();
+        sb.AppendLine("⭐ FIRST: TASK COMPLIANCE CHECK");
+        sb.AppendLine("- Go through EACH requirement in the ORIGINAL TASK");
+        sb.AppendLine("- Verify it is implemented correctly");
+        sb.AppendLine("- List any MISSING or BROKEN requirements as CRITICAL issues");
+        sb.AppendLine();
+        sb.AppendLine("⭐ SECOND: FUNCTIONALITY CHECK");
+        sb.AppendLine("- Will this code actually run without errors?");
+        sb.AppendLine("- Is the logic correct? (e.g., game rules, calculations)");
+        sb.AppendLine("- Are there runtime bugs?");
+        sb.AppendLine();
+        sb.AppendLine("THEN: Code quality, security, best practices");
+        sb.AppendLine();
+        sb.AppendLine("OUTPUT:");
+        sb.AppendLine("1. A score from 0-10 (MAX 5 if requirements missing, MAX 3 if core broken)");
+        sb.AppendLine("2. List of issues found (with severity: critical/high/medium/low)");
+        sb.AppendLine("3. For each missing requirement: severity=critical");
+        sb.AppendLine("4. Suggestions for improvement");
+        sb.AppendLine("5. Overall summary");
 
         return sb.ToString();
     }
