@@ -1,5 +1,6 @@
 using AgentContracts.Requests;
 using AgentContracts.Responses;
+using AgentContracts.Services;
 using CodingOrchestrator.Server.Clients;
 using System.Diagnostics;
 
@@ -15,6 +16,7 @@ public class TaskOrchestrator : ITaskOrchestrator
     private readonly IValidationAgentClient _validationAgent;
     private readonly IMemoryAgentClient _memoryAgent;
     private readonly IExecutionService _executionService;
+    private readonly IPathTranslationService _pathTranslation;
     private readonly ILogger<TaskOrchestrator> _logger;
     private IJobManager? _jobManager;
     
@@ -26,12 +28,14 @@ public class TaskOrchestrator : ITaskOrchestrator
         IValidationAgentClient validationAgent,
         IMemoryAgentClient memoryAgent,
         IExecutionService executionService,
+        IPathTranslationService pathTranslation,
         ILogger<TaskOrchestrator> logger)
     {
         _codingAgent = codingAgent;
         _validationAgent = validationAgent;
         _memoryAgent = memoryAgent;
         _executionService = executionService;
+        _pathTranslation = pathTranslation;
         _logger = logger;
     }
 
@@ -507,6 +511,7 @@ public class TaskOrchestrator : ITaskOrchestrator
     
     /// <summary>
     /// 📝 Write generated files to workspace (when autoWriteFiles is enabled)
+    /// Handles path translation for Docker container paths
     /// </summary>
     private async Task<List<string>> WriteFilesToWorkspaceAsync(
         List<GeneratedFile> files,
@@ -515,16 +520,20 @@ public class TaskOrchestrator : ITaskOrchestrator
     {
         var writtenFiles = new List<string>();
         
+        // 🗂️ Translate workspace path from host (Windows) to container path
+        var containerWorkspacePath = _pathTranslation.TranslateToContainerPath(workspacePath);
+        _logger.LogDebug("Path translation: {HostPath} -> {ContainerPath}", workspacePath, containerWorkspacePath);
+        
         foreach (var file in files)
         {
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 
-                // Build full path
+                // Build full path using translated container workspace path
                 var fullPath = Path.IsPathRooted(file.Path) 
-                    ? file.Path 
-                    : Path.Combine(workspacePath, file.Path);
+                    ? _pathTranslation.TranslateToContainerPath(file.Path)
+                    : Path.Combine(containerWorkspacePath, file.Path);
                 
                 // Ensure directory exists
                 var directory = Path.GetDirectoryName(fullPath);

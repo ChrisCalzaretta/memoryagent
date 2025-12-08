@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentContracts.Requests;
+using AgentContracts.Services;
 using CodingOrchestrator.Server.Clients;
 
 namespace CodingOrchestrator.Server.Services;
@@ -12,6 +13,7 @@ public class McpHandler : IMcpHandler
 {
     private readonly IJobManager _jobManager;
     private readonly IDesignAgentClient _designAgent;
+    private readonly IPathTranslationService _pathTranslation;
     private readonly ILogger<McpHandler> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new() 
     { 
@@ -19,10 +21,15 @@ public class McpHandler : IMcpHandler
         WriteIndented = true
     };
 
-    public McpHandler(IJobManager jobManager, IDesignAgentClient designAgent, ILogger<McpHandler> logger)
+    public McpHandler(
+        IJobManager jobManager, 
+        IDesignAgentClient designAgent, 
+        IPathTranslationService pathTranslation,
+        ILogger<McpHandler> logger)
     {
         _jobManager = jobManager;
         _designAgent = designAgent;
+        _pathTranslation = pathTranslation;
         _logger = logger;
     }
 
@@ -327,11 +334,13 @@ public class McpHandler : IMcpHandler
         }
         
         // Check workspace for common files
-        if (!string.IsNullOrEmpty(workspacePath) && Directory.Exists(workspacePath))
+        // 🗂️ Translate Windows path to container path for Docker environment
+        var containerPath = _pathTranslation.TranslateToContainerPath(workspacePath);
+        if (!string.IsNullOrEmpty(containerPath) && Directory.Exists(containerPath))
         {
             try
             {
-                var files = Directory.GetFiles(workspacePath, "*.*", SearchOption.TopDirectoryOnly);
+                var files = Directory.GetFiles(containerPath, "*.*", SearchOption.TopDirectoryOnly);
                 
                 // Check for language-specific project files
                 if (files.Any(f => f.EndsWith(".csproj") || f.EndsWith(".sln"))) return "csharp";
