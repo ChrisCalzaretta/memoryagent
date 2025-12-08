@@ -167,6 +167,107 @@ public class MemoryAgentClient : IMemoryAgentClient
         }
     }
 
+    /// <summary>
+    /// 🧠 TASK LEARNING: Record detailed task failure for future avoidance
+    /// </summary>
+    public async Task RecordTaskFailureAsync(TaskFailureRecord failure, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new
+            {
+                name = "store_task_failure",
+                arguments = new
+                {
+                    taskDescription = failure.TaskDescription,
+                    taskKeywords = failure.TaskKeywords,
+                    language = failure.Language,
+                    failurePhase = failure.FailurePhase,
+                    errorMessage = failure.ErrorMessage,
+                    errorPattern = failure.ErrorPattern,
+                    approachesTried = failure.ApproachesTried,
+                    modelsUsed = failure.ModelsUsed,
+                    iterationsAttempted = failure.IterationsAttempted,
+                    lessonsLearned = failure.LessonsLearned,
+                    context = failure.Context
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation(
+                    "📝 Recorded task failure: {Phase} in {Language} - {Pattern}", 
+                    failure.FailurePhase, failure.Language, failure.ErrorPattern);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to record task failure: {StatusCode}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error recording task failure (non-critical)");
+        }
+    }
+
+    /// <summary>
+    /// 🧠 TASK LEARNING: Query lessons learned from similar failed tasks
+    /// </summary>
+    public async Task<TaskLessonsResult> QueryTaskLessonsAsync(
+        string taskDescription, 
+        List<string> keywords, 
+        string language, 
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new
+            {
+                name = "query_task_lessons",
+                arguments = new
+                {
+                    taskDescription,
+                    taskKeywords = keywords,
+                    language,
+                    limit = 5
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                
+                // Parse MCP response
+                var mcpResponse = JsonSerializer.Deserialize<McpCallResponse>(content, JsonOptions);
+                if (mcpResponse?.Content?.FirstOrDefault()?.Text != null)
+                {
+                    var result = JsonSerializer.Deserialize<TaskLessonsResult>(
+                        mcpResponse.Content.First().Text, JsonOptions);
+                    
+                    if (result != null)
+                    {
+                        _logger.LogInformation(
+                            "🧠 Found {Count} lessons learned for similar tasks", 
+                            result.FoundLessons);
+                        return result;
+                    }
+                }
+            }
+            
+            _logger.LogDebug("No lessons found for task");
+            return new TaskLessonsResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error querying task lessons (non-critical)");
+            return new TaskLessonsResult();
+        }
+    }
+
     private static string GetDefaultPrompt(string promptName) => promptName switch
     {
         "coding_agent_system" => @"You are an expert coding agent. Your task is to write production-quality code.

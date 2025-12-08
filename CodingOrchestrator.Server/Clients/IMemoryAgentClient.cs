@@ -31,6 +31,59 @@ public interface IMemoryAgentClient
     /// Check if MemoryAgent is available
     /// </summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🧠 TASK LEARNING: Record detailed task failure for future avoidance
+    /// </summary>
+    Task RecordTaskFailureAsync(TaskFailureRecord failure, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🧠 TASK LEARNING: Query lessons learned from similar failed tasks
+    /// </summary>
+    Task<TaskLessonsResult> QueryTaskLessonsAsync(string taskDescription, List<string> keywords, string language, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Record of a failed task for learning
+/// </summary>
+public class TaskFailureRecord
+{
+    public required string TaskDescription { get; set; }
+    public List<string> TaskKeywords { get; set; } = new();
+    public required string Language { get; set; }
+    public required string FailurePhase { get; set; }  // code_generation, validation, docker_build, docker_run
+    public required string ErrorMessage { get; set; }
+    public string ErrorPattern { get; set; } = "unknown";  // Categorized error type
+    public List<string> ApproachesTried { get; set; } = new();
+    public List<string> ModelsUsed { get; set; } = new();
+    public int IterationsAttempted { get; set; }
+    public string LessonsLearned { get; set; } = "";
+    public string Context { get; set; } = "default";
+}
+
+/// <summary>
+/// Result of querying task lessons
+/// </summary>
+public class TaskLessonsResult
+{
+    public int FoundLessons { get; set; }
+    public string AvoidanceAdvice { get; set; } = "";
+    public List<string> SuggestedApproaches { get; set; } = new();
+    public List<TaskLesson> Lessons { get; set; } = new();
+}
+
+/// <summary>
+/// A single lesson learned from a past failure
+/// </summary>
+public class TaskLesson
+{
+    public string TaskDescription { get; set; } = "";
+    public string Language { get; set; } = "";
+    public string FailurePhase { get; set; } = "";
+    public string ErrorPattern { get; set; } = "";
+    public string ErrorMessage { get; set; } = "";
+    public List<string> ApproachesTried { get; set; } = new();
+    public string LessonsLearned { get; set; } = "";
 }
 
 /// <summary>
