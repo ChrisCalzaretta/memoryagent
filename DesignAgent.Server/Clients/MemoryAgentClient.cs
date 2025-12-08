@@ -59,19 +59,43 @@ public class MemoryAgentClient : IMemoryAgentClient
         try
         {
             var client = _httpClientFactory.CreateClient("MemoryAgent");
-            var response = await client.GetAsync($"/api/prompts/{promptName}", cancellationToken);
             
-            if (!response.IsSuccessStatusCode)
+            // Use MCP call to get prompt from Lightning
+            var request = new
             {
-                _logger.LogDebug("Prompt '{Name}' not found in Lightning (using default)", promptName);
-                return null;
+                name = "manage_prompts",
+                arguments = new
+                {
+                    action = "list",
+                    name = promptName,
+                    activeOnly = true
+                }
+            };
+            
+            var response = await client.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogDebug("Got prompt from Lightning: {Prompt}", promptName);
+                
+                // Parse MCP response to extract prompt
+                var mcpResponse = JsonSerializer.Deserialize<McpResponse>(content, JsonOptions);
+                if (mcpResponse?.Content?.FirstOrDefault()?.Text != null)
+                {
+                    // Extract prompt content from MCP response
+                    // The MCP response contains the prompt data
+                    return new PromptTemplate
+                    {
+                        Name = promptName,
+                        Content = mcpResponse.Content.First().Text ?? "",
+                        Version = 1
+                    };
+                }
             }
             
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var prompt = JsonSerializer.Deserialize<PromptTemplate>(content, JsonOptions);
-            
-            _logger.LogDebug("Got prompt '{Name}' v{Version} from Lightning", promptName, prompt?.Version);
-            return prompt;
+            _logger.LogDebug("Prompt '{Name}' not found in Lightning (using default)", promptName);
+            return null;
         }
         catch (Exception ex)
         {
@@ -85,20 +109,52 @@ public class MemoryAgentClient : IMemoryAgentClient
         try
         {
             var client = _httpClientFactory.CreateClient("MemoryAgent");
-            var queryParams = new List<string>();
-            if (!string.IsNullOrEmpty(language)) queryParams.Add($"language={language}");
-            if (!string.IsNullOrEmpty(taskType)) queryParams.Add($"taskType={taskType}");
             
-            var query = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-            var response = await client.GetAsync($"/api/model-stats{query}", cancellationToken);
+            // Use MCP call to query best model
+            var request = new
+            {
+                name = "query_best_model",
+                arguments = new
+                {
+                    taskDescription = $"{taskType ?? "design"} task",
+                    language = language ?? "blazor",
+                    complexity = "moderate",
+                    taskType = taskType ?? "design",
+                    context = "design-agent"
+                }
+            };
+            
+            var response = await client.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
             
             if (!response.IsSuccessStatusCode)
             {
+                _logger.LogDebug("MCP query_best_model returned {Status}", response.StatusCode);
                 return new List<ModelStats>();
             }
             
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            return JsonSerializer.Deserialize<List<ModelStats>>(content, JsonOptions) ?? new List<ModelStats>();
+            var result = JsonSerializer.Deserialize<McpResponse>(content, JsonOptions);
+            
+            // Convert MCP response to model stats
+            if (result?.Content != null)
+            {
+                var stats = new List<ModelStats>();
+                foreach (var item in result.Content)
+                {
+                    if (item.Text != null && item.Text.Contains("success_rate"))
+                    {
+                        try
+                        {
+                            var modelData = JsonSerializer.Deserialize<ModelStats>(item.Text, JsonOptions);
+                            if (modelData != null) stats.Add(modelData);
+                        }
+                        catch { /* ignore parse errors */ }
+                    }
+                }
+                return stats;
+            }
+            
+            return new List<ModelStats>();
         }
         catch (Exception ex)
         {
@@ -115,30 +171,57 @@ public class MemoryAgentClient : IMemoryAgentClient
         try
         {
             var client = _httpClientFactory.CreateClient("MemoryAgent");
-            var payload = new
+            
+            // Use MCP call to store model performance
+            var request = new
             {
-                model,
-                taskType,
-                outcome = succeeded ? "success" : "failure",
-                score,
-                language = language ?? "design",
-                complexity = complexity ?? "moderate",
-                iterations,
-                durationMs,
-                errorType,
-                context = "design-agent"
+                name = "store_model_performance",
+                arguments = new
+                {
+                    model,
+                    taskType,
+                    language = language ?? "blazor",
+                    complexity = complexity ?? "moderate",
+                    outcome = succeeded ? "success" : "failure",
+                    score,
+                    durationMs,
+                    iterations,
+                    taskKeywords = new[] { "design", taskType },
+                    errorType,
+                    context = "design-agent"
+                }
             };
             
-            var json = JsonSerializer.Serialize(payload, JsonOptions);
-            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await client.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
             
-            await client.PostAsync("/api/model-performance", content, cancellationToken);
-            _logger.LogDebug("Recorded performance for {Model}: {Outcome}", model, succeeded ? "success" : "failure");
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("📊 Recorded performance for {Model}: {Outcome}", model, succeeded ? "success" : "failure");
+            }
+            else
+            {
+                _logger.LogDebug("Failed to record performance: {Status}", response.StatusCode);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to record model performance");
         }
     }
+}
+
+/// <summary>
+/// MCP response wrapper
+/// </summary>
+public class McpResponse
+{
+    public List<McpContent>? Content { get; set; }
+    public bool IsError { get; set; }
+}
+
+public class McpContent
+{
+    public string? Type { get; set; }
+    public string? Text { get; set; }
 }
 

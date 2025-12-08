@@ -296,47 +296,133 @@ Return as JSON.";
 
     #region Response Parsing
 
-    private LlmBrandSuggestions ParseBrandSuggestions(string response)
+    /// <summary>
+    /// Extract JSON from LLM response - handles markdown code blocks, plain JSON, etc.
+    /// </summary>
+    private string? ExtractJsonFromResponse(string response)
     {
-        try
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
+        
+        // Try 1: JSON in markdown code block (```json ... ``` or ``` ... ```)
+        var codeBlockMatch = Regex.Match(response, @"```(?:json)?\s*([\s\S]*?)```", RegexOptions.IgnoreCase);
+        if (codeBlockMatch.Success)
         {
-            var jsonMatch = Regex.Match(response, @"\{[\s\S]*\}", RegexOptions.Singleline);
-            if (jsonMatch.Success)
+            var jsonCandidate = codeBlockMatch.Groups[1].Value.Trim();
+            if (jsonCandidate.StartsWith("{") || jsonCandidate.StartsWith("["))
             {
-                var parsed = JsonSerializer.Deserialize<LlmBrandSuggestions>(jsonMatch.Value, JsonOptions);
-                if (parsed != null) return parsed;
+                _logger.LogDebug("Extracted JSON from markdown code block");
+                return jsonCandidate;
             }
         }
-        catch (Exception ex)
+        
+        // Try 2: Find first complete JSON object { ... }
+        var braceMatch = Regex.Match(response, @"\{(?:[^{}]|(?:\{[^{}]*\}))*\}", RegexOptions.Singleline);
+        if (braceMatch.Success)
         {
-            _logger.LogWarning(ex, "Failed to parse brand suggestions JSON");
+            _logger.LogDebug("Extracted JSON using brace matching");
+            return braceMatch.Value;
         }
         
-        // Extract what we can from plain text
+        // Try 3: Response is already JSON
+        var trimmed = response.Trim();
+        if (trimmed.StartsWith("{") && trimmed.EndsWith("}"))
+        {
+            _logger.LogDebug("Response is already JSON");
+            return trimmed;
+        }
+        
+        _logger.LogWarning("Could not extract JSON from response (length: {Length})", response.Length);
+        return null;
+    }
+
+    private LlmBrandSuggestions ParseBrandSuggestions(string response)
+    {
+        var json = ExtractJsonFromResponse(response);
+        
+        if (json != null)
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<LlmBrandSuggestions>(json, JsonOptions);
+                if (parsed != null) 
+                {
+                    _logger.LogDebug("✅ Successfully parsed brand suggestions JSON");
+                    return parsed;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning("JSON deserialization failed: {Error}. JSON: {Json}", 
+                    ex.Message, json.Length > 200 ? json[..200] + "..." : json);
+            }
+        }
+        
+        // Fallback: Extract what we can from plain text
+        _logger.LogInformation("Using text extraction fallback for brand suggestions");
         return new LlmBrandSuggestions
         {
-            CreativeTagline = ExtractSection(response, "tagline"),
-            BrandStory = ExtractSection(response, "story")
+            CreativeTagline = ExtractSection(response, "tagline") ?? ExtractQuotedText(response, "tagline"),
+            BrandStory = ExtractSection(response, "story") ?? ExtractSection(response, "brand story"),
+            ColorSuggestions = ExtractListItems(response, "color")
         };
     }
 
     private LlmValidationFeedback ParseValidationFeedback(string response, List<DesignIssue> issues)
     {
-        try
+        var json = ExtractJsonFromResponse(response);
+        
+        if (json != null)
         {
-            var jsonMatch = Regex.Match(response, @"\{[\s\S]*\}", RegexOptions.Singleline);
-            if (jsonMatch.Success)
+            try
             {
-                var parsed = JsonSerializer.Deserialize<LlmValidationFeedback>(jsonMatch.Value, JsonOptions);
-                if (parsed != null) return parsed;
+                var parsed = JsonSerializer.Deserialize<LlmValidationFeedback>(json, JsonOptions);
+                if (parsed != null)
+                {
+                    _logger.LogDebug("✅ Successfully parsed validation feedback JSON");
+                    return parsed;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning("JSON deserialization failed: {Error}", ex.Message);
             }
         }
-        catch (Exception ex)
+        
+        _logger.LogInformation("Using fallback feedback generation");
+        return GenerateFallbackFeedback(issues);
+    }
+    
+    private string? ExtractQuotedText(string text, string near)
+    {
+        // Find text in quotes near a keyword
+        var nearIndex = text.IndexOf(near, StringComparison.OrdinalIgnoreCase);
+        if (nearIndex == -1) return null;
+        
+        var searchArea = text.Substring(nearIndex, Math.Min(200, text.Length - nearIndex));
+        var quoteMatch = Regex.Match(searchArea, @"""([^""]+)""");
+        return quoteMatch.Success ? quoteMatch.Groups[1].Value : null;
+    }
+    
+    private List<string> ExtractListItems(string text, string section)
+    {
+        var items = new List<string>();
+        
+        // Find section and extract bullet points or numbered items
+        var sectionStart = text.IndexOf(section, StringComparison.OrdinalIgnoreCase);
+        if (sectionStart == -1) return items;
+        
+        var searchArea = text.Substring(sectionStart, Math.Min(500, text.Length - sectionStart));
+        var listMatches = Regex.Matches(searchArea, @"[-•*]\s*([^\n]+)");
+        
+        foreach (Match match in listMatches)
         {
-            _logger.LogWarning(ex, "Failed to parse validation feedback JSON");
+            var item = match.Groups[1].Value.Trim();
+            if (!string.IsNullOrEmpty(item) && item.Length < 100)
+                items.Add(item);
         }
         
-        return GenerateFallbackFeedback(issues);
+        return items;
     }
 
     private LlmValidationFeedback GenerateFallbackFeedback(List<DesignIssue> issues)
@@ -412,7 +498,9 @@ Your job is to generate creative, cohesive brand suggestions that:
 
 Be creative but practical. Suggest specific hex colors, real font names, and actionable guidelines.
 
-OUTPUT FORMAT - Return JSON:
+CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory text before or after.
+
+Return this exact JSON structure:
 {
     ""creativeTagline"": ""A memorable tagline"",
     ""colorSuggestions"": [""#HEX1"", ""#HEX2""],
@@ -436,7 +524,9 @@ Your job is to:
 
 Be constructive and educational. Help developers understand design principles.
 
-OUTPUT FORMAT - Return JSON:
+CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory text before or after.
+
+Return this exact JSON structure:
 {
     ""summary"": ""Overall assessment"",
     ""issueExplanations"": [
