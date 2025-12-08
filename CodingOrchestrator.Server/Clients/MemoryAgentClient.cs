@@ -174,22 +174,29 @@ public class MemoryAgentClient : IMemoryAgentClient
     {
         try
         {
+            // Use proper JSONRPC format
             var request = new
             {
-                name = "store_task_failure",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    taskDescription = failure.TaskDescription,
-                    taskKeywords = failure.TaskKeywords,
-                    language = failure.Language,
-                    failurePhase = failure.FailurePhase,
-                    errorMessage = failure.ErrorMessage,
-                    errorPattern = failure.ErrorPattern,
-                    approachesTried = failure.ApproachesTried,
-                    modelsUsed = failure.ModelsUsed,
-                    iterationsAttempted = failure.IterationsAttempted,
-                    lessonsLearned = failure.LessonsLearned,
-                    context = failure.Context
+                    name = "store_task_failure",
+                    arguments = new
+                    {
+                        taskDescription = failure.TaskDescription,
+                        taskKeywords = failure.TaskKeywords,
+                        language = failure.Language,
+                        failurePhase = failure.FailurePhase,
+                        errorMessage = failure.ErrorMessage,
+                        errorPattern = failure.ErrorPattern,
+                        approachesTried = failure.ApproachesTried,
+                        modelsUsed = failure.ModelsUsed,
+                        iterationsAttempted = failure.IterationsAttempted,
+                        lessonsLearned = failure.LessonsLearned,
+                        context = failure.Context
+                    }
                 }
             };
 
@@ -223,15 +230,22 @@ public class MemoryAgentClient : IMemoryAgentClient
     {
         try
         {
+            // Use proper JSONRPC format
             var request = new
             {
-                name = "query_task_lessons",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    taskDescription,
-                    taskKeywords = keywords,
-                    language,
-                    limit = 5
+                    name = "query_task_lessons",
+                    arguments = new
+                    {
+                        taskDescription,
+                        taskKeywords = keywords,
+                        language,
+                        limit = 5
+                    }
                 }
             };
 
@@ -241,12 +255,12 @@ public class MemoryAgentClient : IMemoryAgentClient
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 
-                // Parse MCP response
-                var mcpResponse = JsonSerializer.Deserialize<McpCallResponse>(content, JsonOptions);
-                if (mcpResponse?.Content?.FirstOrDefault()?.Text != null)
+                // Parse JSONRPC response structure
+                var jsonrpcResponse = JsonSerializer.Deserialize<JsonRpcResponse>(content, JsonOptions);
+                if (jsonrpcResponse?.Result?.Content?.FirstOrDefault()?.Text != null)
                 {
                     var result = JsonSerializer.Deserialize<TaskLessonsResult>(
-                        mcpResponse.Content.First().Text, JsonOptions);
+                        jsonrpcResponse.Result.Content.First().Text, JsonOptions);
                     
                     if (result != null)
                     {
@@ -312,9 +326,17 @@ Be strict but fair. Focus on real issues, not style preferences.",
 }
 
 /// <summary>
-/// MCP call response wrapper
+/// JSONRPC response wrapper
 /// </summary>
-internal class McpCallResponse
+internal class JsonRpcResponse
+{
+    public string? JsonRpc { get; set; }
+    public int? Id { get; set; }
+    public McpCallResult? Result { get; set; }
+    public JsonRpcError? Error { get; set; }
+}
+
+internal class McpCallResult
 {
     public List<McpContent>? Content { get; set; }
     public bool IsError { get; set; }
@@ -324,5 +346,11 @@ internal class McpContent
 {
     public string? Type { get; set; }
     public string? Text { get; set; }
+}
+
+internal class JsonRpcError
+{
+    public int Code { get; set; }
+    public string? Message { get; set; }
 }
 
