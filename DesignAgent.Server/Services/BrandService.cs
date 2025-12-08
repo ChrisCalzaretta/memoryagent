@@ -297,27 +297,29 @@ public class BrandService : IBrandService
         try
         {
             var client = _httpClientFactory.CreateClient("MemoryAgent");
-            var response = await client.PostAsJsonAsync("/api/mcp", new
+            
+            // Use the correct MCP call endpoint
+            var request = new
             {
-                jsonrpc = "2.0",
-                id = 1,
-                method = "tools/call",
-                @params = new
+                name = "store_qa",
+                arguments = new
                 {
-                    name = "store_qa",
-                    arguments = new
-                    {
-                        question = $"What are the brand guidelines for {brand.Name}?",
-                        answer = $"Brand: {brand.Name}\nContext: {brand.Context}\nPrimary Color: {brand.Tokens.Colors.Primary}\nFont: {brand.Tokens.Typography.FontFamilySans}",
-                        context = brand.Context,
-                        relevantFiles = Array.Empty<string>()
-                    }
+                    question = $"What are the brand guidelines for {brand.Name}?",
+                    answer = $"Brand: {brand.Name}\nContext: {brand.Context}\nPrimary Color: {brand.Tokens.Colors.Primary}\nFont: {brand.Tokens.Typography.FontFamilySans}\nTagline: {brand.Tagline}",
+                    context = brand.Context,
+                    relevantFiles = Array.Empty<string>()
                 }
-            }, cancellationToken);
+            };
+            
+            var response = await client.PostAsJsonAsync("/api/mcp/call", request, cancellationToken);
             
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("Stored brand in Memory Agent");
+                _logger.LogInformation("✅ Stored brand {Name} in Memory Agent", brand.Name);
+            }
+            else
+            {
+                _logger.LogDebug("Failed to store brand: {Status}", response.StatusCode);
             }
         }
         catch (Exception ex)
