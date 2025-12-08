@@ -180,8 +180,8 @@ services:
       - Gpu__DualGpu=true
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
-      # Use codestral for complex tasks (fits in 16GB swap GPU)
-      - Gpu__PrimaryModel=qwen2.5-coder:14b
+      # Use deepseek-coder for code generation (pinned on 3090)
+      - Gpu__PrimaryModel=deepseek-coder-v2:16b
       - Gpu__PinnedGpuVram=24
       - Gpu__SwapGpuVram=16
       # Actual pinned usage: phi4(10GB) + embed(1GB) = ~11GB, leave buffer

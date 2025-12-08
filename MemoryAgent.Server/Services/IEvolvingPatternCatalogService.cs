@@ -156,6 +156,16 @@ public interface IEvolvingPatternCatalogService
     /// </summary>
     Task<List<EvolvingPattern>> GetRecentlyEvolvedAsync(int days = 30, int limit = 20, CancellationToken cancellationToken = default);
     
+    /// <summary>
+    /// Get patterns by type or category - useful for code generation prompts
+    /// </summary>
+    Task<List<EvolvingPattern>> GetPatternsByTypeAsync(string type, int limit = 10, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Search patterns by keyword - matches name, description, or recommendation
+    /// </summary>
+    Task<List<EvolvingPattern>> SearchPatternsAsync(string keyword, int limit = 10, CancellationToken cancellationToken = default);
+    
     #endregion
     
     #region Initialization

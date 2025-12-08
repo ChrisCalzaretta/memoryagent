@@ -725,9 +725,10 @@ public class EvolvingPatternCatalogService : IEvolvingPatternCatalogService, IDi
 
         return await session.ExecuteReadAsync(async tx =>
         {
+            // First try patterns with detections (proven useful)
             var cursor = await tx.RunAsync(@"
                 MATCH (p:EvolvingPattern)
-                WHERE p.isActive = true AND p.isDeprecated = false AND p.timesDetected > 5
+                WHERE p.isActive = true AND p.isDeprecated = false AND p.timesDetected > 0
                 RETURN p
                 ORDER BY p.usefulnessScore DESC, p.timesDetected DESC
                 LIMIT $limit",
@@ -738,6 +739,24 @@ public class EvolvingPatternCatalogService : IEvolvingPatternCatalogService, IDi
             {
                 var node = cursor.Current["p"].As<INode>();
                 patterns.Add(MapPatternFromNode(node));
+            }
+
+            // If no detected patterns, return top patterns by usefulness score (for new projects)
+            if (!patterns.Any())
+            {
+                cursor = await tx.RunAsync(@"
+                    MATCH (p:EvolvingPattern)
+                    WHERE p.isActive = true AND p.isDeprecated = false
+                    RETURN p
+                    ORDER BY p.usefulnessScore DESC, p.name
+                    LIMIT $limit",
+                    new { limit });
+
+                while (await cursor.FetchAsync())
+                {
+                    var node = cursor.Current["p"].As<INode>();
+                    patterns.Add(MapPatternFromNode(node));
+                }
             }
 
             return patterns;
@@ -783,6 +802,67 @@ public class EvolvingPatternCatalogService : IEvolvingPatternCatalogService, IDi
                 ORDER BY p.createdAt DESC
                 LIMIT $limit",
                 new { days, limit });
+
+            var patterns = new List<EvolvingPattern>();
+            while (await cursor.FetchAsync())
+            {
+                var node = cursor.Current["p"].As<INode>();
+                patterns.Add(MapPatternFromNode(node));
+            }
+
+            return patterns;
+        });
+    }
+
+    /// <summary>
+    /// Get patterns by type or category - useful for code generation prompts
+    /// Returns patterns even if not yet detected (for new projects)
+    /// </summary>
+    public async Task<List<EvolvingPattern>> GetPatternsByTypeAsync(string type, int limit = 10, CancellationToken cancellationToken = default)
+    {
+        await using var session = _driver.AsyncSession();
+
+        return await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(@"
+                MATCH (p:EvolvingPattern)
+                WHERE p.isActive = true AND p.isDeprecated = false
+                  AND (toLower(p.type) = toLower($type) OR toLower(p.category) CONTAINS toLower($type))
+                RETURN p
+                ORDER BY p.usefulnessScore DESC, p.timesDetected DESC
+                LIMIT $limit",
+                new { type, limit });
+
+            var patterns = new List<EvolvingPattern>();
+            while (await cursor.FetchAsync())
+            {
+                var node = cursor.Current["p"].As<INode>();
+                patterns.Add(MapPatternFromNode(node));
+            }
+
+            return patterns;
+        });
+    }
+
+    /// <summary>
+    /// Search patterns by keyword - matches name, description, or recommendation
+    /// </summary>
+    public async Task<List<EvolvingPattern>> SearchPatternsAsync(string keyword, int limit = 10, CancellationToken cancellationToken = default)
+    {
+        await using var session = _driver.AsyncSession();
+
+        return await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(@"
+                MATCH (p:EvolvingPattern)
+                WHERE p.isActive = true AND p.isDeprecated = false
+                  AND (toLower(p.name) CONTAINS toLower($keyword) 
+                       OR toLower(p.description) CONTAINS toLower($keyword)
+                       OR toLower(p.recommendation) CONTAINS toLower($keyword))
+                RETURN p
+                ORDER BY p.usefulnessScore DESC, p.timesDetected DESC
+                LIMIT $limit",
+                new { keyword, limit });
 
             var patterns = new List<EvolvingPattern>();
             while (await cursor.FetchAsync())

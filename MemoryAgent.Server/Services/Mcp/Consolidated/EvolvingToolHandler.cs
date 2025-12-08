@@ -51,16 +51,18 @@ public class EvolvingToolHandler : IMcpToolHandler
             new McpTool
             {
                 Name = "manage_patterns",
-                Description = "Manage evolving patterns. Actions: 'list', 'get_metrics', 'get_useful', 'get_needing_improvement', 'suggest_new', 'evolve', 'deprecate', 'get_catalog_metrics'.",
+                Description = "Manage evolving patterns. Actions: 'list', 'get_metrics', 'get_useful', 'get_for_codegen', 'search', 'get_needing_improvement', 'suggest_new', 'evolve', 'deprecate', 'get_catalog_metrics'.",
                 InputSchema = new
                 {
                     type = "object",
                     properties = new
                     {
-                        action = new { type = "string", description = "Action to perform", @enum = new[] { "list", "get_metrics", "get_useful", "get_needing_improvement", "suggest_new", "evolve", "deprecate", "get_catalog_metrics" } },
+                        action = new { type = "string", description = "Action to perform", @enum = new[] { "list", "get_metrics", "get_useful", "get_for_codegen", "search", "get_needing_improvement", "suggest_new", "evolve", "deprecate", "get_catalog_metrics" } },
                         name = new { type = "string", description = "Pattern name (for get_metrics, evolve, deprecate)" },
                         limit = new { type = "number", description = "Max results (default: 20)", @default = 20 },
                         threshold = new { type = "number", description = "Usefulness threshold for get_needing_improvement (default: 0.5)", @default = 0.5 },
+                        type = new { type = "string", description = "Pattern type for get_for_codegen (e.g., 'Caching', 'Security', 'Flutter')" },
+                        keyword = new { type = "string", description = "Search keyword for 'search' action" },
                         
                         // For suggest_new
                         codeExample = new { type = "string", description = "Code example for suggest_new" },
@@ -350,6 +352,8 @@ public class EvolvingToolHandler : IMcpToolHandler
         return action switch
         {
             "list" or "get_useful" => await GetUsefulPatternsAsync(args, ct),
+            "get_for_codegen" => await GetPatternsForCodegenAsync(args, ct),
+            "search" => await SearchPatternsAsync(args, ct),
             "get_metrics" => await GetPatternMetricsAsync(args, ct),
             "get_needing_improvement" => await GetPatternsNeedingImprovementAsync(args, ct),
             "suggest_new" => await SuggestNewPatternAsync(args, ct),
@@ -377,6 +381,80 @@ public class EvolvingToolHandler : IMcpToolHandler
         return new McpToolResult
         {
             Content = new List<McpContent> { new() { Type = "text", Text = output } }
+        };
+    }
+
+    /// <summary>
+    /// Get patterns for code generation - returns JSON that CodingAgent can parse
+    /// </summary>
+    private async Task<McpToolResult> GetPatternsForCodegenAsync(Dictionary<string, object>? args, CancellationToken ct)
+    {
+        var type = args?.GetValueOrDefault("type")?.ToString() ?? "";
+        var limit = SafeParseInt(args?.GetValueOrDefault("limit"), 10);
+        
+        List<EvolvingPattern> patterns;
+        
+        if (!string.IsNullOrEmpty(type))
+        {
+            patterns = await _patternCatalogService.GetPatternsByTypeAsync(type, limit, ct);
+        }
+        else
+        {
+            patterns = await _patternCatalogService.GetMostUsefulPatternsAsync(limit, ct);
+        }
+
+        // Return JSON format that CodingAgent can parse
+        var patternsJson = new
+        {
+            patterns = patterns.Select(p => new
+            {
+                name = p.Name,
+                description = p.Recommendation,  // Recommendation serves as description
+                recommendation = p.Recommendation,
+                codeExample = p.Examples.FirstOrDefault() ?? "",
+                type = p.Type.ToString(),
+                category = p.Category.ToString()
+            }).ToList()
+        };
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent> { new() { Type = "text", Text = JsonSerializer.Serialize(patternsJson) } }
+        };
+    }
+
+    /// <summary>
+    /// Search patterns by keyword
+    /// </summary>
+    private async Task<McpToolResult> SearchPatternsAsync(Dictionary<string, object>? args, CancellationToken ct)
+    {
+        var keyword = args?.GetValueOrDefault("keyword")?.ToString() ?? "";
+        var limit = SafeParseInt(args?.GetValueOrDefault("limit"), 10);
+        
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return ErrorResult("keyword is required for search action");
+        }
+        
+        var patterns = await _patternCatalogService.SearchPatternsAsync(keyword, limit, ct);
+
+        // Return JSON format
+        var patternsJson = new
+        {
+            patterns = patterns.Select(p => new
+            {
+                name = p.Name,
+                description = p.Recommendation,
+                recommendation = p.Recommendation,
+                codeExample = p.Examples.FirstOrDefault() ?? "",
+                type = p.Type.ToString(),
+                category = p.Category.ToString()
+            }).ToList()
+        };
+
+        return new McpToolResult
+        {
+            Content = new List<McpContent> { new() { Type = "text", Text = JsonSerializer.Serialize(patternsJson) } }
         };
     }
 

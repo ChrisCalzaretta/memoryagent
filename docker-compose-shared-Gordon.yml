@@ -178,7 +178,7 @@ services:
       - Gpu__DualGpu=false
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
-      - Gpu__PrimaryModel=qwen2.5-coder:14b
+      - Gpu__PrimaryModel=deepseek-coder-v2:16b
       # 🗂️ Path translation: Windows paths → container paths
       - PathMapping__HostRoot=h:\code\git
       - PathMapping__ContainerRoot=/workspace
