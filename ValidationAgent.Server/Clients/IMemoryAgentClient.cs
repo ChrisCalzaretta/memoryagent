@@ -29,6 +29,45 @@ public interface IMemoryAgentClient
     /// Check if MemoryAgent is available
     /// </summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Record model performance for future selection
+    /// </summary>
+    Task RecordModelPerformanceAsync(
+        string model,
+        string taskType,
+        bool succeeded,
+        double score,
+        string? language = null,
+        string? complexity = null,
+        int iterations = 1,
+        long durationMs = 0,
+        string? errorType = null,
+        List<string>? taskKeywords = null,
+        string? context = null,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Get historical stats for models
+    /// </summary>
+    Task<List<ModelPerformanceStats>> GetModelStatsAsync(
+        string? taskType,
+        string? language,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Model performance statistics for selection
+/// </summary>
+public class ModelPerformanceStats
+{
+    public string Model { get; set; } = "";
+    public string TaskType { get; set; } = "";
+    public string Language { get; set; } = "";
+    public int TotalAttempts { get; set; }
+    public int Successes { get; set; }
+    public double SuccessRate => TotalAttempts > 0 ? (double)Successes / TotalAttempts * 100 : 0;
+    public double AverageScore { get; set; }
 }
 
 /// <summary>

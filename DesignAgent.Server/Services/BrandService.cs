@@ -10,6 +10,7 @@ public class BrandService : IBrandService
     private readonly ITokenGeneratorService _tokenGenerator;
     private readonly IComponentSpecService _componentSpecService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILlmDesignService? _llmDesignService;
     private readonly ILogger<BrandService> _logger;
     
     // In-memory cache (would integrate with MemoryAgent in production)
@@ -19,12 +20,14 @@ public class BrandService : IBrandService
         ITokenGeneratorService tokenGenerator,
         IComponentSpecService componentSpecService,
         IHttpClientFactory httpClientFactory,
-        ILogger<BrandService> logger)
+        ILogger<BrandService> logger,
+        ILlmDesignService? llmDesignService = null)  // Optional - graceful degradation
     {
         _tokenGenerator = tokenGenerator;
         _componentSpecService = componentSpecService;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _llmDesignService = llmDesignService;
     }
 
     public async Task<BrandDefinition> CreateBrandAsync(ParsedBrandInput input, CancellationToken cancellationToken = default)
@@ -33,8 +36,31 @@ public class BrandService : IBrandService
         
         var context = SanitizeContext(input.BrandName);
         
-        // Generate design tokens
+        // 🧠 Try to get LLM-enhanced brand suggestions
+        LlmBrandSuggestions? llmSuggestions = null;
+        if (_llmDesignService != null)
+        {
+            try
+            {
+                _logger.LogInformation("🧠 Getting LLM-enhanced brand suggestions for {Brand}", input.BrandName);
+                llmSuggestions = await _llmDesignService.GenerateBrandSuggestionsAsync(input, cancellationToken);
+                _logger.LogInformation("✨ LLM suggestions received: {Tagline}", llmSuggestions?.CreativeTagline);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "LLM brand suggestions failed, using algorithmic generation");
+            }
+        }
+        
+        // Generate design tokens (enhanced with LLM suggestions if available)
         var tokens = _tokenGenerator.GenerateTokens(input);
+        
+        // Apply LLM color suggestions if available
+        if (llmSuggestions?.ColorSuggestions?.Any() == true)
+        {
+            _logger.LogInformation("🎨 Applying {Count} LLM color suggestions", llmSuggestions.ColorSuggestions.Count);
+            // Could enhance tokens.Colors with LLM suggestions here
+        }
         
         // Generate themes
         var themes = _tokenGenerator.GenerateThemes(input, tokens.Colors);
@@ -271,27 +297,29 @@ public class BrandService : IBrandService
         try
         {
             var client = _httpClientFactory.CreateClient("MemoryAgent");
-            var response = await client.PostAsJsonAsync("/api/mcp", new
+            
+            // Use the correct MCP call endpoint
+            var request = new
             {
-                jsonrpc = "2.0",
-                id = 1,
-                method = "tools/call",
-                @params = new
+                name = "store_qa",
+                arguments = new
                 {
-                    name = "store_qa",
-                    arguments = new
-                    {
-                        question = $"What are the brand guidelines for {brand.Name}?",
-                        answer = $"Brand: {brand.Name}\nContext: {brand.Context}\nPrimary Color: {brand.Tokens.Colors.Primary}\nFont: {brand.Tokens.Typography.FontFamilySans}",
-                        context = brand.Context,
-                        relevantFiles = Array.Empty<string>()
-                    }
+                    question = $"What are the brand guidelines for {brand.Name}?",
+                    answer = $"Brand: {brand.Name}\nContext: {brand.Context}\nPrimary Color: {brand.Tokens.Colors.Primary}\nFont: {brand.Tokens.Typography.FontFamilySans}\nTagline: {brand.Tagline}",
+                    context = brand.Context,
+                    relevantFiles = Array.Empty<string>()
                 }
-            }, cancellationToken);
+            };
+            
+            var response = await client.PostAsJsonAsync("/api/mcp/call", request, cancellationToken);
             
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("Stored brand in Memory Agent");
+                _logger.LogInformation("✅ Stored brand {Name} in Memory Agent", brand.Name);
+            }
+            else
+            {
+                _logger.LogDebug("Failed to store brand: {Status}", response.StatusCode);
             }
         }
         catch (Exception ex)

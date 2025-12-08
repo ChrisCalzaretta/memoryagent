@@ -35,8 +35,12 @@ builder.Services.AddSingleton<IModelOrchestrator>(sp =>
     var logger = sp.GetRequiredService<ILogger<ModelOrchestrator>>();
     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
     var httpClient = httpClientFactory.CreateClient(nameof(ModelOrchestrator));
-    return new ModelOrchestrator(config, logger, httpClient);
+    var memoryAgent = sp.GetService<IMemoryAgentClient>(); // Optional - graceful degradation
+    return new ModelOrchestrator(config, logger, httpClient, memoryAgent);
 });
+
+// 🧠 LLM Model Selector - uses LLM to confirm model selection based on task + historical rates
+builder.Services.AddScoped<ILlmModelSelector, LlmModelSelector>();
 
 // Register services (Scoped to ensure fresh instances per request)
 builder.Services.AddScoped<ICodeGenerationService, CodeGenerationService>();

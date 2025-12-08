@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using AgentContracts.Models;
 
 namespace CodingAgent.Server.Clients;
 
@@ -427,6 +428,161 @@ public class MemoryAgentClient : IMemoryAgentClient
         }
         
         return results.DistinctBy(r => r.Name + r.FilePath).ToList();
+    }
+
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Record model performance for future selection
+    /// </summary>
+    public async Task RecordModelPerformanceAsync(ModelPerformanceRecord record, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new
+            {
+                name = "store_model_performance",
+                arguments = new
+                {
+                    model = record.Model,
+                    taskType = record.TaskType,
+                    language = record.Language,
+                    complexity = record.Complexity,
+                    outcome = record.Outcome,
+                    score = record.Score,
+                    durationMs = record.DurationMs,
+                    iterations = record.Iterations,
+                    taskKeywords = record.TaskKeywords,
+                    errorType = record.ErrorType,
+                    context = record.Context
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation(
+                    "📊 Recorded model performance: {Model} on {TaskType}/{Language} = {Outcome} ({Score}/10)",
+                    record.Model, record.TaskType, record.Language, record.Outcome, record.Score);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to record model performance: {Status}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error recording model performance for {Model}", record.Model);
+        }
+    }
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Query the best model for a task based on historical performance
+    /// </summary>
+    public async Task<BestModelResponse> QueryBestModelAsync(BestModelRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var mcpRequest = new
+            {
+                name = "query_best_model",
+                arguments = new
+                {
+                    taskType = request.TaskType,
+                    language = request.Language,
+                    complexity = request.Complexity,
+                    taskKeywords = request.TaskKeywords,
+                    context = request.Context,
+                    excludeModels = request.ExcludeModels,
+                    maxVramGb = request.MaxVramGb
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", mcpRequest, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogDebug("QueryBestModel response: {Content}", content);
+                
+                // Try to parse the response
+                try
+                {
+                    using var doc = JsonDocument.Parse(content);
+                    var root = doc.RootElement;
+                    
+                    // Check for result in MCP response format
+                    if (root.TryGetProperty("result", out var resultElement))
+                    {
+                        var result = JsonSerializer.Deserialize<BestModelResponse>(resultElement.GetRawText(), JsonOptions);
+                        if (result != null) return result;
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogDebug(ex, "Could not parse QueryBestModel JSON response, using default");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error querying best model from Lightning");
+        }
+        
+        // Return empty response (no historical data)
+        return new BestModelResponse
+        {
+            RecommendedModel = "",
+            Reasoning = "No historical data available",
+            IsHistorical = false
+        };
+    }
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Get aggregated stats for all models
+    /// </summary>
+    public async Task<List<ModelStats>> GetModelStatsAsync(string? language, string? taskType, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new
+            {
+                name = "get_model_stats",
+                arguments = new
+                {
+                    language = language,
+                    taskType = taskType
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                
+                try
+                {
+                    using var doc = JsonDocument.Parse(content);
+                    var root = doc.RootElement;
+                    
+                    if (root.TryGetProperty("result", out var resultElement))
+                    {
+                        var stats = JsonSerializer.Deserialize<List<ModelStats>>(resultElement.GetRawText(), JsonOptions);
+                        if (stats != null) return stats;
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogDebug(ex, "Could not parse model stats JSON response");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting model stats from Lightning");
+        }
+        
+        return new List<ModelStats>();
     }
 
     private static string GetDefaultPrompt(string promptName) => promptName switch

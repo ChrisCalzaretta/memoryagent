@@ -8,15 +8,18 @@ public class DesignValidationService : IDesignValidationService
 {
     private readonly IBrandService _brandService;
     private readonly IAccessibilityService _accessibilityService;
+    private readonly ILlmDesignService? _llmDesignService;
     private readonly ILogger<DesignValidationService> _logger;
 
     public DesignValidationService(
         IBrandService brandService,
         IAccessibilityService accessibilityService,
-        ILogger<DesignValidationService> logger)
+        ILogger<DesignValidationService> logger,
+        ILlmDesignService? llmDesignService = null)  // Optional - graceful degradation
     {
         _brandService = brandService;
         _accessibilityService = accessibilityService;
+        _llmDesignService = llmDesignService;
         _logger = logger;
     }
 
@@ -58,6 +61,37 @@ public class DesignValidationService : IDesignValidationService
         // Calculate score
         var score = CalculateScore(issues);
         var grade = CalculateGrade(score);
+        
+        // 🧠 Get LLM-enhanced feedback if available and there are issues
+        var suggestions = new List<string>();
+        if (_llmDesignService != null && issues.Any())
+        {
+            try
+            {
+                _logger.LogInformation("🧠 Getting LLM feedback for {Count} design issues", issues.Count);
+                var llmFeedback = await _llmDesignService.GenerateValidationFeedbackAsync(
+                    code, brand, issues, cancellationToken);
+                
+                // Enhance issues with LLM explanations
+                foreach (var explanation in llmFeedback.IssueExplanations)
+                {
+                    var matchingIssue = issues.FirstOrDefault(i => 
+                        i.Message.Contains(explanation.Issue, StringComparison.OrdinalIgnoreCase));
+                    if (matchingIssue != null)
+                    {
+                        matchingIssue.Fix = explanation.HowToFix;
+                        matchingIssue.FixCode = explanation.FixCode;
+                    }
+                }
+                
+                suggestions.AddRange(llmFeedback.QuickWins);
+                _logger.LogInformation("✨ LLM provided {Count} quick wins", llmFeedback.QuickWins.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "LLM validation feedback failed, using rule-based results");
+            }
+        }
 
         return new DesignValidationResult
         {
@@ -65,6 +99,7 @@ public class DesignValidationService : IDesignValidationService
             Score = score,
             Grade = grade,
             Issues = issues,
+            Suggestions = suggestions,
             Summary = new ValidationSummary
             {
                 TotalIssues = issues.Count,

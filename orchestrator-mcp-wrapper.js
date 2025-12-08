@@ -303,7 +303,7 @@ async function handleToolCall(toolName, args) {
         context: args.context,
         workspacePath: args.workspacePath,
         background: args.background !== false,
-        maxIterations: args.maxIterations || 50,
+        maxIterations: Math.max(args.maxIterations || 50, 50), // Minimum 50 iterations
         minValidationScore: args.minValidationScore || 8
       };
       

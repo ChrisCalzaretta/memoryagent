@@ -110,6 +110,8 @@ services:
     volumes:
       # 💾 Job persistence - survives container restarts
       - d:\Memory\shared\memory:/data/memory
+      # 📁 Workspace access for reading/writing code files
+      - h:\code\git:/workspace:rw
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5003
@@ -118,6 +120,9 @@ services:
       - ValidationAgent__BaseUrl=http://memory-validation-agent:5002
       - DesignAgent__BaseUrl=http://memory-design-agent:5004
       - JobPersistence__Path=/data/memory/orchestrator/jobs
+      # 🗂️ Path translation: Windows paths → container paths
+      - PathMapping__HostRoot=h:\code\git
+      - PathMapping__ContainerRoot=/workspace
     depends_on:
       - mcp-server
       - coding-agent
@@ -135,11 +140,17 @@ services:
     container_name: memory-coding-agent
     ports:
       - "5001:5001"
+    volumes:
+      # 📁 Workspace access for reading source files
+      - h:\code\git:/workspace:rw
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5001
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - Ollama__Url=http://10.10.1.114:11434
+      - Ollama__Url=http://memory-agent-ollama:11434
+      # 🗂️ Path translation: Windows paths → container paths
+      - PathMapping__HostRoot=h:\code\git
+      - PathMapping__ContainerRoot=/workspace
     depends_on:
       - mcp-server
     networks:

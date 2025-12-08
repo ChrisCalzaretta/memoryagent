@@ -26,6 +26,9 @@ builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client =>
 builder.Services.AddScoped<IValidationService, ValidationService>();
 builder.Services.AddScoped<IValidationPromptBuilder, ValidationPromptBuilder>();
 
+// 🧠 Smart model selection - uses LLM + historical data to pick best model
+builder.Services.AddScoped<IValidationModelSelector, ValidationModelSelector>();
+
 // Add health checks
 builder.Services.AddHealthChecks();
 

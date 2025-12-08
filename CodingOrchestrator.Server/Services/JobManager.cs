@@ -181,6 +181,12 @@ public class JobManager : IJobManager
 
     public TaskStatusResponse? GetJobStatus(string jobId)
     {
+        // Ensure we're initialized (loads persisted jobs from disk)
+        if (!_initialized)
+        {
+            InitializeAsync().GetAwaiter().GetResult();
+        }
+        
         if (_jobs.TryGetValue(jobId, out var jobState))
         {
             // Calculate duration
@@ -209,6 +215,12 @@ public class JobManager : IJobManager
 
     public IEnumerable<TaskStatusResponse> GetAllJobs()
     {
+        // Ensure we're initialized (loads persisted jobs from disk)
+        if (!_initialized)
+        {
+            InitializeAsync().GetAwaiter().GetResult();
+        }
+        
         return _jobs.Values.Select(j => j.Status).ToList();
     }
 

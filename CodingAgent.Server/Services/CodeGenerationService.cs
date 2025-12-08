@@ -19,6 +19,7 @@ public class CodeGenerationService : ICodeGenerationService
     private readonly IPromptBuilder _promptBuilder;
     private readonly IOllamaClient _ollamaClient;
     private readonly IModelOrchestrator _modelOrchestrator;
+    private readonly ILlmModelSelector? _llmModelSelector;
     private readonly ILogger<CodeGenerationService> _logger;
     
     /// <summary>
@@ -100,12 +101,14 @@ public class CodeGenerationService : ICodeGenerationService
         IPromptBuilder promptBuilder,
         IOllamaClient ollamaClient,
         IModelOrchestrator modelOrchestrator,
-        ILogger<CodeGenerationService> logger)
+        ILogger<CodeGenerationService> logger,
+        ILlmModelSelector? llmModelSelector = null)  // Optional - graceful degradation
     {
         _promptBuilder = promptBuilder;
         _ollamaClient = ollamaClient;
         _modelOrchestrator = modelOrchestrator;
         _logger = logger;
+        _llmModelSelector = llmModelSelector;
     }
 
     public async Task<GenerateCodeResponse> GenerateAsync(GenerateCodeRequest request, CancellationToken cancellationToken)
@@ -133,7 +136,7 @@ public class CodeGenerationService : ICodeGenerationService
         var language = request.Language?.ToLowerInvariant() ?? "auto";
         var task = request.Task.ToLowerInvariant();
         
-        // Determine if this is a complex task that needs a bigger model
+        // Determine complexity for smart model selection
         var isComplexTask = 
             language is "flutter" or "dart" or "swift" or "kotlin" ||  // Mobile/Desktop frameworks
             task.Contains("multi-file") || task.Contains("multiple file") ||
@@ -141,27 +144,35 @@ public class CodeGenerationService : ICodeGenerationService
             task.Contains("project") || task.Contains("blackjack") ||
             (request.PreviousFeedback?.TriedModels?.Count ?? 0) > 0;  // Already tried before = complex
         
-        if (isComplexTask)
+        var complexity = isComplexTask ? "complex" : "moderate";
+        
+        // Extract task keywords for better model matching
+        var taskKeywords = ExtractTaskKeywords(task);
+        
+        _logger.LogInformation("🧠 Using smart model selection for {Language} ({Complexity}) task", language, complexity);
+        
+        // 🧠 Use SMART model selection with historical data, warm models, and LLM confirmation
+        var selection = await _modelOrchestrator.SelectBestModelAsync(
+            ModelPurpose.CodeGeneration,
+            language,
+            complexity,
+            new HashSet<string>(),  // Don't exclude any models on first attempt
+            taskKeywords,
+            context: null,  // No specific context
+            task,  // Pass full task description for LLM analysis
+            _llmModelSelector,  // Pass LLM selector for smart selection
+            cancellationToken);
+        
+        if (selection != null)
         {
-            _logger.LogInformation("🧠 Complex task detected ({Language}), selecting best available model", language);
-            
-            // Try to get a bigger/better model
-            var selection = await _modelOrchestrator.SelectModelAsync(
-                ModelPurpose.CodeGeneration,
-                new HashSet<string>(),  // Don't exclude any models on first attempt
-                cancellationToken);
-            
-            if (selection != null)
-            {
-                var (selectedModel, selectedPort) = selection.Value;
-                _logger.LogInformation("✨ Selected {Model} for complex {Language} task", selectedModel, language);
-                return (selectedModel, selectedPort);
-            }
+            var (selectedModel, selectedPort) = selection.Value;
+            _logger.LogInformation("✨ Smart selection chose {Model} for {Language} task", selectedModel, language);
+            return (selectedModel, selectedPort);
         }
         
-        // Default: use primary model (always loaded, fastest response)
+        // Fallback: use primary model (always loaded, fastest response)
         var (primaryModel, primaryPort) = _modelOrchestrator.GetPrimaryModel();
-        _logger.LogInformation("Using primary model {Model} for {Language} task", primaryModel, language);
+        _logger.LogInformation("Using primary model {Model} for {Language} task (smart selection returned null)", primaryModel, language);
         return (primaryModel, primaryPort);
     }
 
@@ -176,10 +187,19 @@ public class CodeGenerationService : ICodeGenerationService
         // Get models that have already been tried (from previous feedback)
         var triedModels = request.PreviousFeedback?.TriedModels ?? new HashSet<string>();
         
-        // Try to get a DIFFERENT model for fixing (fresh perspective!)
-        var selection = await _modelOrchestrator.SelectModelAsync(
+        var language = request.Language?.ToLowerInvariant() ?? "auto";
+        var taskKeywords = ExtractTaskKeywords(request.Task);
+        
+        // 🧠 Use SMART model selection for fixes too (with tried models excluded)
+        var selection = await _modelOrchestrator.SelectBestModelAsync(
             ModelPurpose.CodeGeneration, 
-            triedModels, 
+            language,
+            "complex",  // Fixes are considered complex (need careful reasoning)
+            triedModels,
+            taskKeywords,
+            context: null,
+            request.Task,
+            _llmModelSelector,  // Pass LLM selector for smart selection
             cancellationToken);
         
         if (selection == null)
@@ -191,10 +211,41 @@ public class CodeGenerationService : ICodeGenerationService
         }
         
         var (selectedModel, selectedPort) = selection.Value;
-        _logger.LogInformation("Using DIFFERENT model for fix: {Model} (previously tried: {Tried})",
+        _logger.LogInformation("🧠 Smart selection for fix: {Model} (previously tried: {Tried})",
             selectedModel, string.Join(", ", triedModels));
         
         return await GenerateWithModelAsync(selectedModel, selectedPort, prompt, request, cancellationToken);
+    }
+    
+    /// <summary>
+    /// Extract keywords from task for better model matching
+    /// </summary>
+    private static List<string> ExtractTaskKeywords(string task)
+    {
+        var keywords = new List<string>();
+        var lower = task.ToLowerInvariant();
+        
+        // Framework keywords
+        if (lower.Contains("flutter")) keywords.Add("flutter");
+        if (lower.Contains("blazor")) keywords.Add("blazor");
+        if (lower.Contains("react")) keywords.Add("react");
+        if (lower.Contains("angular")) keywords.Add("angular");
+        if (lower.Contains("vue")) keywords.Add("vue");
+        if (lower.Contains("maui")) keywords.Add("maui");
+        if (lower.Contains("wpf")) keywords.Add("wpf");
+        if (lower.Contains("swiftui")) keywords.Add("swiftui");
+        if (lower.Contains("jetpack")) keywords.Add("jetpack-compose");
+        
+        // Task type keywords
+        if (lower.Contains("api")) keywords.Add("api");
+        if (lower.Contains("database")) keywords.Add("database");
+        if (lower.Contains("ui") || lower.Contains("interface")) keywords.Add("ui");
+        if (lower.Contains("test")) keywords.Add("testing");
+        if (lower.Contains("crud")) keywords.Add("crud");
+        if (lower.Contains("auth")) keywords.Add("authentication");
+        if (lower.Contains("game")) keywords.Add("game");
+        
+        return keywords;
     }
 
     private async Task<GenerateCodeResponse> GenerateWithModelAsync(
@@ -288,11 +339,11 @@ RULES:
 
             // Record performance for learning
             await _modelOrchestrator.RecordModelPerformanceAsync(
-                model, 
-                "code_generation", 
-                true, 
-                10.0, // Will be updated by validator
-                cancellationToken);
+                model: model, 
+                taskType: "code_generation", 
+                succeeded: true, 
+                score: 10.0, // Will be updated by validator
+                cancellationToken: cancellationToken);
 
             return new GenerateCodeResponse
             {

@@ -15,6 +15,7 @@ public class RoslynParserEnhancedCallsTests
     private readonly RoslynParser _parser;
     private readonly Mock<ILogger<RoslynParser>> _mockLogger;
     private readonly Mock<ILoggerFactory> _mockLoggerFactory;
+    private readonly Mock<ProjectFileParser> _mockProjectFileParser;
 
     public RoslynParserEnhancedCallsTests()
     {
@@ -22,7 +23,8 @@ public class RoslynParserEnhancedCallsTests
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>()))
             .Returns(_mockLogger.Object);
-        _parser = new RoslynParser(_mockLogger.Object, _mockLoggerFactory.Object);
+        _mockProjectFileParser = new Mock<ProjectFileParser>(MockBehavior.Loose, null);
+        _parser = new RoslynParser(_mockLogger.Object, _mockLoggerFactory.Object, _mockProjectFileParser.Object);
     }
 
     private async Task<ParseResult> ParseCode(string code, string fileName = "TestFile.cs")

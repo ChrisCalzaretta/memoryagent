@@ -1,3 +1,5 @@
+using AgentContracts.Models;
+
 namespace CodingAgent.Server.Clients;
 
 /// <summary>
@@ -35,6 +37,21 @@ public interface IMemoryAgentClient
     /// Returns existing services, methods, and patterns to avoid duplication
     /// </summary>
     Task<ExistingCodeContext> SearchExistingCodeAsync(string task, string context, string? workspacePath, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Record model performance for future selection
+    /// </summary>
+    Task RecordModelPerformanceAsync(ModelPerformanceRecord record, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Query the best model for a task based on historical performance
+    /// </summary>
+    Task<BestModelResponse> QueryBestModelAsync(BestModelRequest request, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Get aggregated stats for all models
+    /// </summary>
+    Task<List<ModelStats>> GetModelStatsAsync(string? language, string? taskType, CancellationToken cancellationToken);
 }
 
 /// <summary>

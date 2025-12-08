@@ -333,8 +333,16 @@ public class McpService : IMcpService
     {
         await Task.CompletedTask;
 
-        // Internal tools that are auto-called by wrapper, not shown to AI
-        var internalTools = new HashSet<string> { "register_workspace", "unregister_workspace" };
+        // Internal tools that are auto-called by wrapper or other agents, not shown to Cursor AI
+        var internalTools = new HashSet<string> 
+        { 
+            "register_workspace", 
+            "unregister_workspace",
+            // Model learning tools - used internally by CodingAgent, not exposed to Cursor
+            "store_model_performance",
+            "query_best_model",
+            "get_model_stats"
+        };
 
         var allTools = _handlers
             .SelectMany(handler => handler.GetTools())

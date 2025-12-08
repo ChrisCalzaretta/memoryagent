@@ -1,5 +1,6 @@
 using AgentContracts.Requests;
 using AgentContracts.Responses;
+using AgentContracts.Services;
 using CodingOrchestrator.Server.Clients;
 using System.Diagnostics;
 
@@ -15,6 +16,7 @@ public class TaskOrchestrator : ITaskOrchestrator
     private readonly IValidationAgentClient _validationAgent;
     private readonly IMemoryAgentClient _memoryAgent;
     private readonly IExecutionService _executionService;
+    private readonly IPathTranslationService _pathTranslation;
     private readonly ILogger<TaskOrchestrator> _logger;
     private IJobManager? _jobManager;
     
@@ -26,12 +28,14 @@ public class TaskOrchestrator : ITaskOrchestrator
         IValidationAgentClient validationAgent,
         IMemoryAgentClient memoryAgent,
         IExecutionService executionService,
+        IPathTranslationService pathTranslation,
         ILogger<TaskOrchestrator> logger)
     {
         _codingAgent = codingAgent;
         _validationAgent = validationAgent;
         _memoryAgent = memoryAgent;
         _executionService = executionService;
+        _pathTranslation = pathTranslation;
         _logger = logger;
     }
 
@@ -148,9 +152,14 @@ public class TaskOrchestrator : ITaskOrchestrator
             
             // Track which models have been tried (for smart rotation)
             var triedModels = new HashSet<string>();
+            var modelsUsedDuringTask = new List<string>();  // For failure recording
+            var approachesTried = new List<string>();  // Track approaches for failure learning
             
             // 📁 ACCUMULATE files across iterations (not replace!)
             var accumulatedFiles = new Dictionary<string, FileChange>();
+            
+            // 🧠 TASK LEARNING: Query lessons from similar failed tasks
+            var taskLessons = await QueryLessonsForTaskAsync(request, cancellationToken);
 
             while (iteration < effectiveMaxIterations)
             {
@@ -177,9 +186,14 @@ public class TaskOrchestrator : ITaskOrchestrator
                       "\n\n⚠️ Generate the MISSING files. You may also update existing files if needed."
                     : "";
 
+                // 🧠 Include lessons learned in the task description
+                var lessonsSection = taskLessons.FoundLessons > 0 
+                    ? $"\n\n{taskLessons.AvoidanceAdvice}\n\n✅ SUGGESTED APPROACHES:\n{string.Join("\n", taskLessons.SuggestedApproaches.Select(a => $"- {a}"))}"
+                    : "";
+                
                 var generateRequest = new GenerateCodeRequest
                 {
-                    Task = request.Task + existingFilesList,
+                    Task = request.Task + existingFilesList + lessonsSection,
                     Language = request.Language,
                     Context = context,
                     WorkspacePath = request.WorkspacePath,
@@ -194,9 +208,14 @@ public class TaskOrchestrator : ITaskOrchestrator
                 if (!string.IsNullOrEmpty(lastGeneratedCode.ModelUsed))
                 {
                     triedModels.Add(lastGeneratedCode.ModelUsed);
+                    modelsUsedDuringTask.Add(lastGeneratedCode.ModelUsed);  // For failure learning
                     _logger.LogDebug("Added {Model} to tried models. Total tried: {Count}",
                         lastGeneratedCode.ModelUsed, triedModels.Count);
                 }
+                
+                // Track approaches tried
+                var approachKey = $"Iteration {iteration}: {(iteration == 1 ? "Initial generation" : "Fix attempt")} with {lastGeneratedCode.ModelUsed}";
+                approachesTried.Add(approachKey);
 
                 EndPhase(jobId, codingPhase);
                 response.Timeline.Add(codingPhase);
@@ -248,7 +267,18 @@ public class TaskOrchestrator : ITaskOrchestrator
                     ["executionPassed"] = executionResult.ExecutionPassed,
                     ["exitCode"] = executionResult.ExitCode,
                     ["durationMs"] = executionResult.DurationMs,
-                    ["dockerImage"] = executionResult.DockerImage
+                    ["dockerImage"] = executionResult.DockerImage,
+                    // 📝 Capture errors for status display
+                    ["error"] = !executionResult.Success 
+                        ? (executionResult.Errors?.Length > 1000 
+                            ? executionResult.Errors.Substring(0, 1000) + "..." 
+                            : executionResult.Errors ?? "Unknown error")
+                        : null,
+                    ["output"] = executionResult.Success 
+                        ? (executionResult.Output?.Length > 500 
+                            ? executionResult.Output.Substring(0, 500) + "..." 
+                            : executionResult.Output)
+                        : null
                 };
                 EndPhase(jobId, executionPhase);
                 response.Timeline.Add(executionPhase);
@@ -324,7 +354,14 @@ public class TaskOrchestrator : ITaskOrchestrator
                     ["score"] = lastValidation.Score,
                     ["passed"] = lastValidation.Passed,
                     ["issueCount"] = lastValidation.Issues.Count,
-                    ["executionOutput"] = executionResult.Output
+                    ["executionOutput"] = executionResult.Output?.Length > 200 
+                        ? executionResult.Output.Substring(0, 200) + "..." 
+                        : executionResult.Output,
+                    // 📝 Capture feedback for status display
+                    ["feedback"] = lastValidation.Summary?.Length > 500 
+                        ? lastValidation.Summary.Substring(0, 500) + "..." 
+                        : lastValidation.Summary,
+                    ["topIssues"] = lastValidation.Issues.Take(3).Select(i => $"{i.Severity}: {i.Message}").ToList()
                 };
                 EndPhase(jobId, validationPhase);
                 response.Timeline.Add(validationPhase);
@@ -409,6 +446,15 @@ public class TaskOrchestrator : ITaskOrchestrator
                             "coding_agent_system",
                             wasSuccessful: false,
                             rating: lastValidation.Score,
+                            cancellationToken);
+                        
+                        // 🧠 TASK LEARNING: Record detailed failure for future avoidance
+                        await RecordDetailedFailureAsync(
+                            request, 
+                            lastValidation, 
+                            iteration, 
+                            modelsUsedDuringTask,
+                            approachesTried,
                             cancellationToken);
                     }
                     catch (Exception ex)
@@ -507,6 +553,7 @@ public class TaskOrchestrator : ITaskOrchestrator
     
     /// <summary>
     /// 📝 Write generated files to workspace (when autoWriteFiles is enabled)
+    /// Handles path translation for Docker container paths
     /// </summary>
     private async Task<List<string>> WriteFilesToWorkspaceAsync(
         List<GeneratedFile> files,
@@ -515,16 +562,20 @@ public class TaskOrchestrator : ITaskOrchestrator
     {
         var writtenFiles = new List<string>();
         
+        // 🗂️ Translate workspace path from host (Windows) to container path
+        var containerWorkspacePath = _pathTranslation.TranslateToContainerPath(workspacePath);
+        _logger.LogDebug("Path translation: {HostPath} -> {ContainerPath}", workspacePath, containerWorkspacePath);
+        
         foreach (var file in files)
         {
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 
-                // Build full path
+                // Build full path using translated container workspace path
                 var fullPath = Path.IsPathRooted(file.Path) 
-                    ? file.Path 
-                    : Path.Combine(workspacePath, file.Path);
+                    ? _pathTranslation.TranslateToContainerPath(file.Path)
+                    : Path.Combine(containerWorkspacePath, file.Path);
                 
                 // Ensure directory exists
                 var directory = Path.GetDirectoryName(fullPath);
@@ -555,6 +606,190 @@ public class TaskOrchestrator : ITaskOrchestrator
         }
         
         return writtenFiles;
+    }
+    
+    /// <summary>
+    /// 🧠 TASK LEARNING: Query lessons from similar failed tasks
+    /// </summary>
+    private async Task<TaskLessonsResult> QueryLessonsForTaskAsync(
+        OrchestrateTaskRequest request, 
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Extract keywords from task description
+            var keywords = ExtractTaskKeywords(request.Task);
+            
+            var lessons = await _memoryAgent.QueryTaskLessonsAsync(
+                request.Task,
+                keywords,
+                request.Language ?? "unknown",
+                cancellationToken);
+            
+            if (lessons.FoundLessons > 0)
+            {
+                _logger.LogInformation(
+                    "🧠 Found {Count} lessons from similar failed tasks. Avoidance advice added to prompt.",
+                    lessons.FoundLessons);
+            }
+            
+            return lessons;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️ Failed to query task lessons (continuing without)");
+            return new TaskLessonsResult();
+        }
+    }
+    
+    /// <summary>
+    /// 🧠 TASK LEARNING: Record detailed failure for future avoidance
+    /// </summary>
+    private async Task RecordDetailedFailureAsync(
+        OrchestrateTaskRequest request,
+        ValidateCodeResponse validation,
+        int iteration,
+        List<string> modelsUsed,
+        List<string> approachesTried,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Categorize the error pattern
+            var errorPattern = CategorizeErrorPattern(validation);
+            
+            // Build lessons learned from this failure
+            var lessonsLearned = BuildLessonsLearned(validation, iteration);
+            
+            var failure = new TaskFailureRecord
+            {
+                TaskDescription = request.Task.Length > 200 
+                    ? request.Task.Substring(0, 200) + "..." 
+                    : request.Task,
+                TaskKeywords = ExtractTaskKeywords(request.Task),
+                Language = request.Language ?? "unknown",
+                FailurePhase = DetermineFailurePhase(validation),
+                ErrorMessage = validation.Summary ?? "Unknown error",
+                ErrorPattern = errorPattern,
+                ApproachesTried = approachesTried,
+                ModelsUsed = modelsUsed,
+                IterationsAttempted = iteration,
+                LessonsLearned = lessonsLearned,
+                Context = request.Context
+            };
+            
+            await _memoryAgent.RecordTaskFailureAsync(failure, cancellationToken);
+            _logger.LogInformation("📝 Recorded task failure for future learning: {Pattern}", errorPattern);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️ Failed to record task failure (non-critical)");
+        }
+    }
+    
+    /// <summary>
+    /// Extract keywords from task description for similarity matching
+    /// </summary>
+    private static List<string> ExtractTaskKeywords(string task)
+    {
+        // Common keywords to extract
+        var keywords = new List<string>();
+        
+        // Programming languages/frameworks
+        var techKeywords = new[] { "flutter", "blazor", "react", "maui", "wpf", "winforms", 
+            "csharp", "c#", "python", "typescript", "javascript", "kotlin", "swift", "dart",
+            "api", "rest", "grpc", "graphql", "websocket",
+            "sql", "nosql", "mongodb", "postgres", "neo4j",
+            "docker", "kubernetes", "azure", "aws" };
+        
+        // Task type keywords
+        var taskTypeKeywords = new[] { "crud", "game", "dashboard", "login", "auth", 
+            "payment", "shopping", "cart", "checkout", "search", "filter", 
+            "upload", "download", "email", "notification", "report" };
+        
+        var lowerTask = task.ToLowerInvariant();
+        
+        foreach (var keyword in techKeywords.Concat(taskTypeKeywords))
+        {
+            if (lowerTask.Contains(keyword))
+                keywords.Add(keyword);
+        }
+        
+        return keywords.Take(10).ToList();  // Limit to 10 keywords
+    }
+    
+    /// <summary>
+    /// Categorize the error pattern for grouping similar failures
+    /// </summary>
+    private static string CategorizeErrorPattern(ValidateCodeResponse validation)
+    {
+        var summary = (validation.Summary ?? "").ToLowerInvariant();
+        var issues = validation.Issues?.Select(i => i.Message.ToLowerInvariant()) ?? Array.Empty<string>();
+        var allText = summary + " " + string.Join(" ", issues);
+        
+        if (allText.Contains("docker") && allText.Contains("build"))
+            return "docker_build";
+        if (allText.Contains("docker") || allText.Contains("execution"))
+            return "docker_run";
+        if (allText.Contains("null") || allText.Contains("nullreference"))
+            return "null_reference";
+        if (allText.Contains("missing") && (allText.Contains("dependency") || allText.Contains("package")))
+            return "missing_dependency";
+        if (allText.Contains("type") && (allText.Contains("mismatch") || allText.Contains("cannot convert")))
+            return "type_mismatch";
+        if (allText.Contains("syntax") || allText.Contains("expected"))
+            return "syntax_error";
+        if (allText.Contains("not found") || allText.Contains("does not exist"))
+            return "missing_resource";
+        if (allText.Contains("timeout"))
+            return "timeout";
+        if (allText.Contains("auth") || allText.Contains("permission"))
+            return "auth_error";
+        
+        return "general_failure";
+    }
+    
+    /// <summary>
+    /// Determine which phase failed
+    /// </summary>
+    private static string DetermineFailurePhase(ValidateCodeResponse validation)
+    {
+        var summary = (validation.Summary ?? "").ToLowerInvariant();
+        
+        if (summary.Contains("docker build") || summary.Contains("compile"))
+            return "docker_build";
+        if (summary.Contains("docker") || summary.Contains("execution"))
+            return "docker_run";
+        if (summary.Contains("validation"))
+            return "validation";
+        if (validation.Score == 0)
+            return "code_generation";
+        
+        return "validation";
+    }
+    
+    /// <summary>
+    /// Build lessons learned from this failure
+    /// </summary>
+    private static string BuildLessonsLearned(ValidateCodeResponse validation, int iterations)
+    {
+        var lessons = new List<string>();
+        
+        if (iterations >= 5)
+            lessons.Add("Task may be too complex - consider breaking into smaller tasks");
+        
+        var criticalIssues = validation.Issues?
+            .Where(i => i.Severity?.ToLowerInvariant() == "critical")
+            .Select(i => i.Message)
+            .ToList() ?? new();
+        
+        if (criticalIssues.Any())
+            lessons.Add($"Critical issues: {string.Join("; ", criticalIssues.Take(3))}");
+        
+        if (validation.Score < 3)
+            lessons.Add("Very low score - approach fundamentally flawed");
+        
+        return string.Join(". ", lessons);
     }
 }
 
