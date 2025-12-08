@@ -94,7 +94,38 @@ alwaysApply: true
 
 ---
 
-## 🤖 Multi-Agent Code Generation (NEW!)
+## 🎨 Design Agent - Brand Guidelines & UI Validation
+
+The **Design Agent** manages brand systems, design tokens, and validates UI code against brand guidelines.
+
+### When to Use Design Tools
+**USE** Design tools for:
+- Creating brand/style guidelines for new projects
+- Validating UI code follows brand guidelines
+- Getting design tokens (colors, fonts, spacing)
+- Ensuring accessibility compliance (WCAG AA/AAA)
+
+### Design Tools (via CodingOrchestrator)
+| Tool | Description |
+|------|-------------|
+| `design_questionnaire` | Get brand builder questions |
+| `design_create_brand` | Create complete brand system from answers |
+| `design_get_brand` | Get brand by context name |
+| `design_list_brands` | List all available brands |
+| `design_validate` | Validate code against brand guidelines |
+| `design_update_brand` | Update brand settings |
+
+### Design Workflow
+```
+1. design_questionnaire → Get questions
+2. design_create_brand → Create brand with answers
+3. design_validate → Validate UI code (score >= 8)
+4. Fix issues → Re-validate
+```
+
+---
+
+## 🤖 Multi-Agent Code Generation
 
 The **CodingOrchestrator** provides multi-agent code generation with automatic validation:
 - **CodingAgent**: Generates/fixes code using LLM (deepseek-v2:16b)
@@ -117,9 +148,16 @@ The **CodingOrchestrator** provides multi-agent code generation with automatic v
 | Tool | Description |
 |------|-------------|
 | `orchestrate_task` | Start multi-agent coding (returns job ID) |
-| `get_task_status` | Check progress, get generated code when complete |
+| `get_task_status` | Check progress and validation scores |
+| `apply_task_files` | Get files with write instructions (when complete) |
 | `cancel_task` | Cancel a running task |
 | `list_tasks` | List all active/recent tasks |
+| `design_questionnaire` | Get brand builder questions |
+| `design_create_brand` | Create brand system from answers |
+| `design_get_brand` | Get existing brand definition |
+| `design_list_brands` | List all brands |
+| `design_validate` | Validate code against brand |
+| `design_update_brand` | Update brand settings |
 
 ### Example Workflow
 ```

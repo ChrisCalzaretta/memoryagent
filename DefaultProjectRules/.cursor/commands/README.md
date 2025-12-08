@@ -83,6 +83,19 @@ Detect and fix cursorrules.mdc violations.
 
 ---
 
+## 🎨 Design Agent Commands (NEW!)
+
+### `CreateBrand.md` - Create Brand Guidelines ⭐ NEW
+Create complete brand system with design tokens, components, themes, accessibility.
+
+### `ValidateDesign.md` - Validate UI Against Brand ⭐ NEW
+Validate UI code against brand guidelines. Must score >= 8/10.
+
+### `GetDesignTokens.md` - Get Design Tokens ⭐ NEW
+Get colors, fonts, spacing, and other tokens from brand.
+
+---
+
 ## 🎨 Blazor/Razor Transformation Commands
 
 ### `TransformPage.md` - Transform Blazor/Razor Page
@@ -176,6 +189,13 @@ Comprehensive validation after transformations (CSS quality, complexity, securit
 3. `ValidateTransformation.md` → verify improvements
 4. `RecordContext.md` → track changes
 
+### For UI with Brand Guidelines ⭐ NEW
+1. `CreateBrand.md` → create brand system (once per project)
+2. Build UI using design tokens from brand
+3. `ValidateDesign.md` → validate code against brand (score >= 8)
+4. Fix issues from validation feedback
+5. Re-validate until passing
+
 ### For Large Refactoring
 1. `LearnTransformPattern.md` → learn from examples
 2. `ApplyTransformPattern.md` → apply to similar files
@@ -190,15 +210,26 @@ Comprehensive validation after transformations (CSS quality, complexity, securit
 
 ---
 
-## 📋 COMPLETE MCP TOOL LIST (29 Tools)
+## 📋 COMPLETE MCP TOOL LIST (35 Tools)
 
-### 🤖 Multi-Agent Coding (4 tools) - `coding-orchestrator` MCP Server
+### 🤖 Multi-Agent Coding (5 tools) - `coding-orchestrator` MCP Server
 | Tool | Description | When to Use |
 |------|-------------|-------------|
 | `orchestrate_task` | Start multi-agent coding (CodingAgent + ValidationAgent loop) | New services, complex implementations |
 | `get_task_status` | Check progress, get generated files | After starting task |
+| `apply_task_files` | Get files with write instructions | When task is complete |
 | `cancel_task` | Cancel running task | When no longer needed |
 | `list_tasks` | List active/recent tasks | See what's running |
+
+### 🎨 Design Agent (6 tools) - `coding-orchestrator` MCP Server
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `design_questionnaire` | Get brand builder questions | Creating new brand |
+| `design_create_brand` | Create brand from answers | After answering questions |
+| `design_get_brand` | Get brand by context | Get design tokens |
+| `design_list_brands` | List all brands | See available brands |
+| `design_validate` | Validate code against brand | After UI changes |
+| `design_update_brand` | Update brand settings | Changing brand colors/fonts |
 
 ### 🔍 Search (1 tool)
 | Tool | Description | When to Use |
@@ -308,14 +339,25 @@ filePath: string (for domains)
 
 ---
 
-## ✨ What's New (v3.0)
+## ✨ What's New (v3.1)
 
-### 🤖 Multi-Agent Code Generation (NEW!)
+### 🎨 Design Agent (NEW!)
+- **Brand Builder**: Create complete brand systems with questionnaire
+- **Design Tokens**: Colors, typography, spacing, shadows, borders
+- **Component Specs**: Button, Input, Card, Modal, Alert patterns
+- **Theme Support**: Dark/light modes with semantic colors
+- **Accessibility Built-in**: WCAG AA/AAA compliance checks
+- **Design Validation**: Validate UI code against brand guidelines
+- **6 new tools**: `design_questionnaire`, `design_create_brand`, `design_get_brand`, `design_list_brands`, `design_validate`, `design_update_brand`
+
+### Previous (v3.0)
+
+### 🤖 Multi-Agent Code Generation
 - **CodingOrchestrator**: Coordinates multi-agent workflow
 - **CodingAgent**: Generates/fixes code using LLM with smart model rotation
 - **ValidationAgent**: Validates code quality using rules + LLM analysis
 - **Smart Model Rotation**: Uses different models on retry for fresh perspectives
-- **4 new tools**: `orchestrate_task`, `get_task_status`, `cancel_task`, `list_tasks`
+- **5 tools**: `orchestrate_task`, `get_task_status`, `apply_task_files`, `cancel_task`, `list_tasks`
 
 ### Previous (v2.0)
 **Consolidated from 73+ tools to 25 tools:**

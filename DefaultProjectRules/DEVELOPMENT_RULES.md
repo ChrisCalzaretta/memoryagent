@@ -130,6 +130,37 @@ public async Task MethodName_Should_HandleEdgeCase() { }
 | SQL injection risk | Add parameterized queries |
 | Code execution without sandbox | Add validation and sandboxing |
 
+## 🎨 Design Agent - Brand Guidelines & Validation
+
+When building UI components:
+
+### Before Building UI:
+1. **Check for brand** - Run `design_list_brands` to see existing brands
+2. **Get brand guidelines** - Run `design_get_brand(context)` if brand exists
+3. **Create brand** - Run `design_questionnaire` then `design_create_brand` if needed
+
+### During UI Development:
+- **Use design tokens** - Colors, fonts, spacing from brand
+- **Follow component specs** - Button, Input, Card styling patterns
+- **Accessibility first** - ARIA labels, focus states, alt text
+
+### After UI Changes:
+1. **Validate design** - Run `design_validate(context, code)` 
+2. **Check score** - Must be >= 8/10
+3. **Fix issues** - Hardcoded colors, missing accessibility, etc.
+
+### Design Tools:
+| Tool | Description |
+|------|-------------|
+| `design_questionnaire` | Get brand builder questions |
+| `design_create_brand` | Create brand from answers |
+| `design_get_brand` | Get brand by context |
+| `design_list_brands` | List all brands |
+| `design_validate` | Validate code against brand |
+| `design_update_brand` | Update brand settings |
+
+---
+
 ## 📝 Commands Available
 
 Use these commands to enforce rules:
@@ -139,6 +170,8 @@ Use these commands to enforce rules:
 - **ValidateWork** - Post-implementation validation
 - **FixBug** - Structured bug fix workflow
 - **RulesViolation** - When rules are broken
+- **CreateBrand** - Create new brand guidelines
+- **ValidateDesign** - Validate UI against brand
 
 Run commands with: `Ctrl+Shift+P` → Search command name
 
