@@ -259,7 +259,8 @@ public class IndexingService : IIndexingService
         string directoryPath,
         bool recursive = true,
         string? context = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<string>? progressCallback = null)
     {
         var stopwatch = Stopwatch.StartNew();
         var result = new IndexResult { Success = true };
@@ -323,7 +324,10 @@ public class IndexingService : IIndexingService
                 await semaphore.WaitAsync(cancellationToken);
                 try
                 {
-                    return await IndexFileAsync(file, context, cancellationToken);
+                    var fileResult = await IndexFileAsync(file, context, cancellationToken);
+                    // Report progress after each file
+                    progressCallback?.Invoke(file);
+                    return fileResult;
                 }
                 finally
                 {

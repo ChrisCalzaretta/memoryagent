@@ -9,6 +9,7 @@ namespace MemoryAgent.Server.Services.Mcp.Consolidated;
 /// Consolidated tool handler for all indexing operations.
 /// Tool: index
 /// Consolidates: index_file, index_directory, reindex
+/// Uses a queue to process one indexing job at a time (searches still work concurrently)
 /// </summary>
 public class IndexToolHandler : IMcpToolHandler
 {
@@ -19,6 +20,12 @@ public class IndexToolHandler : IMcpToolHandler
 
     // Track background indexing jobs
     private static readonly ConcurrentDictionary<string, BackgroundIndexJob> _backgroundJobs = new();
+    
+    // Queue for serializing indexing jobs (only one runs at a time)
+    private static readonly ConcurrentQueue<BackgroundIndexJob> _jobQueue = new();
+    private static readonly SemaphoreSlim _indexingSemaphore = new(1, 1);  // Only 1 job at a time
+    private static bool _queueProcessorRunning = false;
+    private static readonly object _processorLock = new();
 
     public IndexToolHandler(
         IIndexingService indexingService,
@@ -40,15 +47,20 @@ public class IndexToolHandler : IMcpToolHandler
         public string Context { get; set; } = "";
         public string Path { get; set; } = "";
         public string Scope { get; set; } = "";
-        public DateTime StartedAt { get; set; } = DateTime.UtcNow;
+        public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? StartedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
-        public string Status { get; set; } = "Running"; // Running, Completed, Failed
+        public string Status { get; set; } = "Queued"; // Queued, Running, Completed, Failed
+        public int QueuePosition { get; set; } = 0;
         public int FilesProcessed
         {
             get => _filesProcessed;
             set => _filesProcessed = value;
         }
         public List<string> Errors { get; set; } = new();
+        
+        // Store args for deferred execution
+        public Dictionary<string, object>? Args { get; set; }
 
         public void IncrementProcessed() => Interlocked.Increment(ref _filesProcessed);
     }
@@ -189,70 +201,42 @@ public class IndexToolHandler : IMcpToolHandler
 
     private McpToolResult StartBackgroundIndex(string path, string context, string scope, Dictionary<string, object>? args)
     {
+        // Calculate queue position
+        var queuePosition = _jobQueue.Count + (_backgroundJobs.Values.Any(j => j.Status == "Running") ? 1 : 0);
+        
         var job = new BackgroundIndexJob
         {
             Context = context,
             Path = path,
-            Scope = scope
+            Scope = scope,
+            Args = args,
+            QueuePosition = queuePosition,
+            Status = queuePosition == 0 ? "Running" : "Queued"
         };
 
         _backgroundJobs[job.Id] = job;
-        _logger.LogInformation("🚀 Starting background index job {JobId} for {Context}: {Scope} at {Path}", 
-            job.Id, context, scope, path);
+        _jobQueue.Enqueue(job);
+        
+        _logger.LogInformation("📋 Queued background index job {JobId} for {Context}: {Scope} at {Path} (position: {Position})", 
+            job.Id, context, scope, path, queuePosition);
 
-        // Start background task
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                using var scope2 = _serviceProvider.CreateScope();
-                var indexingService = scope2.ServiceProvider.GetRequiredService<IIndexingService>();
-                var reindexService = scope2.ServiceProvider.GetRequiredService<IReindexService>();
+        // Start queue processor if not running
+        EnsureQueueProcessorRunning();
 
-                if (scope == "directory")
-                {
-                    var recursive = SafeParseBool(args?.GetValueOrDefault("recursive"), true);
-                    var result = await indexingService.IndexDirectoryAsync(path, recursive, context, CancellationToken.None);
-                    job.FilesProcessed = result.FilesIndexed;
-                    job.Errors = result.Errors;
-                    job.Status = result.Success ? "Completed" : "Failed";
-                }
-                else if (scope == "reindex")
-                {
-                    var removeStale = SafeParseBool(args?.GetValueOrDefault("removeStale"), true);
-                    var result = await reindexService.ReindexAsync(
-                        context: context,
-                        path: path,
-                        removeStale: removeStale,
-                        cancellationToken: CancellationToken.None,
-                        progressCallback: _ => job.IncrementProcessed());
-                    job.FilesProcessed = result.FilesAdded + result.FilesUpdated + result.FilesRemoved;
-                    job.Errors = result.Errors;
-                    job.Status = result.Success ? "Completed" : "Failed";
-                }
-
-                job.CompletedAt = DateTime.UtcNow;
-                _logger.LogInformation("✅ Background job {JobId} completed: {Files} files processed", 
-                    job.Id, job.FilesProcessed);
-            }
-            catch (Exception ex)
-            {
-                job.Status = "Failed";
-                job.Errors.Add(ex.Message);
-                job.CompletedAt = DateTime.UtcNow;
-                _logger.LogError(ex, "❌ Background job {JobId} failed", job.Id);
-            }
-        });
-
-        var output = $"🚀 Background Index Started\n\n";
+        var output = queuePosition == 0 
+            ? $"🚀 Background Index Started\n\n"
+            : $"📋 Background Index Queued (Position: {queuePosition})\n\n";
         output += $"Job ID: {job.Id}\n";
         output += $"Context: {context}\n";
         output += $"Scope: {scope}\n";
         output += $"Path: {path}\n";
-        output += $"Started: {job.StartedAt:HH:mm:ss}\n\n";
-        output += $"💡 Check status with:\n";
+        output += $"Queued: {job.QueuedAt:HH:mm:ss}\n";
+        if (queuePosition > 0)
+            output += $"Queue Position: {queuePosition} (will start after current job completes)\n";
+        output += $"\n💡 Check status with:\n";
         output += $"   index(scope=\"status\", jobId=\"{job.Id}\", path=\".\", context=\"{context}\")\n\n";
         output += $"The indexing will continue even if this chat times out.\n";
+        output += $"⚡ Searches and queries work while indexing runs.\n";
 
         return new McpToolResult
         {
@@ -263,6 +247,102 @@ public class IndexToolHandler : IMcpToolHandler
         };
     }
 
+    private void EnsureQueueProcessorRunning()
+    {
+        lock (_processorLock)
+        {
+            if (_queueProcessorRunning) return;
+            _queueProcessorRunning = true;
+            
+            _ = Task.Run(ProcessJobQueueAsync);
+        }
+    }
+
+    private async Task ProcessJobQueueAsync()
+    {
+        _logger.LogInformation("🔄 Index job queue processor started");
+        
+        try
+        {
+            while (_jobQueue.TryDequeue(out var job))
+            {
+                // Wait for semaphore - only one job at a time
+                await _indexingSemaphore.WaitAsync();
+                
+                try
+                {
+                    job.Status = "Running";
+                    job.StartedAt = DateTime.UtcNow;
+                    job.QueuePosition = 0;
+                    
+                    // Update queue positions for remaining jobs
+                    var position = 1;
+                    foreach (var queuedJob in _jobQueue)
+                    {
+                        queuedJob.QueuePosition = position++;
+                    }
+                    
+                    _logger.LogInformation("🚀 Starting queued job {JobId} for {Context}: {Scope}", 
+                        job.Id, job.Context, job.Scope);
+
+                    using var scope = _serviceProvider.CreateScope();
+                    var indexingService = scope.ServiceProvider.GetRequiredService<IIndexingService>();
+                    var reindexService = scope.ServiceProvider.GetRequiredService<IReindexService>();
+
+                    if (job.Scope == "directory")
+                    {
+                        var recursive = SafeParseBool(job.Args?.GetValueOrDefault("recursive"), true);
+                        var result = await indexingService.IndexDirectoryAsync(
+                            job.Path, 
+                            recursive, 
+                            job.Context, 
+                            CancellationToken.None,
+                            progressCallback: _ => job.IncrementProcessed());
+                        job.FilesProcessed = result.FilesIndexed;
+                        job.Errors = result.Errors;
+                        job.Status = result.Success ? "Completed" : "Failed";
+                    }
+                    else if (job.Scope == "reindex")
+                    {
+                        var removeStale = SafeParseBool(job.Args?.GetValueOrDefault("removeStale"), true);
+                        var result = await reindexService.ReindexAsync(
+                            context: job.Context,
+                            path: job.Path,
+                            removeStale: removeStale,
+                            cancellationToken: CancellationToken.None,
+                            progressCallback: _ => job.IncrementProcessed());
+                        job.FilesProcessed = result.FilesAdded + result.FilesUpdated + result.FilesRemoved;
+                        job.Errors = result.Errors;
+                        job.Status = result.Success ? "Completed" : "Failed";
+                    }
+
+                    job.CompletedAt = DateTime.UtcNow;
+                    _logger.LogInformation("✅ Background job {JobId} completed: {Files} files processed", 
+                        job.Id, job.FilesProcessed);
+                }
+                catch (Exception ex)
+                {
+                    job.Status = "Failed";
+                    job.Errors.Add(ex.Message);
+                    job.CompletedAt = DateTime.UtcNow;
+                    _logger.LogError(ex, "❌ Background job {JobId} failed", job.Id);
+                }
+                finally
+                {
+                    _indexingSemaphore.Release();
+                }
+            }
+        }
+        finally
+        {
+            lock (_processorLock)
+            {
+                _queueProcessorRunning = false;
+            }
+            _logger.LogInformation("🔄 Index job queue processor stopped (queue empty)");
+        }
+    }
+
     private McpToolResult GetBackgroundJobStatus(string? jobId, string? context)
     {
         // List all jobs for context if no specific jobId
@@ -270,7 +350,9 @@ public class IndexToolHandler : IMcpToolHandler
         {
             var contextJobs = _backgroundJobs.Values
                 .Where(j => string.IsNullOrEmpty(context) || j.Context == context)
-                .OrderByDescending(j => j.StartedAt)
+                .OrderBy(j => j.Status == "Running" ? 0 : j.Status == "Queued" ? 1 : 2)  // Running first, then Queued, then others
+                .ThenBy(j => j.QueuePosition)  // By queue position for queued jobs
+                .ThenByDescending(j => j.QueuedAt)  // Most recent first for completed
                 .Take(10)
                 .ToList();
 
@@ -292,16 +374,22 @@ public class IndexToolHandler : IMcpToolHandler
             {
                 var statusIcon = j.Status switch
                 {
+                    "Queued" => "⏳",
                     "Running" => "🔄",
                     "Completed" => "✅",
                     "Failed" => "❌",
                     _ => "❓"
                 };
-                var duration = (j.CompletedAt ?? DateTime.UtcNow) - j.StartedAt;
+                var duration = j.StartedAt.HasValue 
+                    ? (j.CompletedAt ?? DateTime.UtcNow) - j.StartedAt.Value
+                    : TimeSpan.Zero;
                 
                 output += $"{statusIcon} Job {j.Id} ({j.Status})\n";
                 output += $"   Context: {j.Context}, Scope: {j.Scope}\n";
-                output += $"   Files: {j.FilesProcessed}, Duration: {duration:mm\\:ss}\n";
+                if (j.Status == "Queued")
+                    output += $"   Queue Position: {j.QueuePosition}\n";
+                else
+                    output += $"   Files: {j.FilesProcessed}, Duration: {duration:mm\\:ss}\n";
                 if (j.Errors.Any())
                     output += $"   Errors: {j.Errors.Count}\n";
                 output += "\n";
@@ -331,12 +419,12 @@ public class IndexToolHandler : IMcpToolHandler
 
         var statusEmoji = job.Status switch
         {
+            "Queued" => "⏳",
             "Running" => "🔄",
             "Completed" => "✅",
             "Failed" => "❌",
             _ => "❓"
         };
-        var dur = (job.CompletedAt ?? DateTime.UtcNow) - job.StartedAt;
 
         var result = $"{statusEmoji} Background Index Job: {job.Id}\n";
         result += $"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
@@ -344,11 +432,26 @@ public class IndexToolHandler : IMcpToolHandler
         result += $"Context: {job.Context}\n";
         result += $"Scope: {job.Scope}\n";
         result += $"Path: {job.Path}\n";
-        result += $"Started: {job.StartedAt:HH:mm:ss}\n";
-        if (job.CompletedAt.HasValue)
-            result += $"Completed: {job.CompletedAt:HH:mm:ss}\n";
-        result += $"Duration: {dur:mm\\:ss}\n";
-        result += $"Files Processed: {job.FilesProcessed}\n";
+        result += $"Queued: {job.QueuedAt:HH:mm:ss}\n";
+        
+        if (job.Status == "Queued")
+        {
+            result += $"Queue Position: {job.QueuePosition}\n";
+            result += $"⏳ Waiting for current job to complete...\n";
+        }
+        else
+        {
+            if (job.StartedAt.HasValue)
+                result += $"Started: {job.StartedAt:HH:mm:ss}\n";
+            if (job.CompletedAt.HasValue)
+                result += $"Completed: {job.CompletedAt:HH:mm:ss}\n";
+            
+            var dur = job.StartedAt.HasValue 
+                ? (job.CompletedAt ?? DateTime.UtcNow) - job.StartedAt.Value
+                : TimeSpan.Zero;
+            result += $"Duration: {dur:mm\\:ss}\n";
+            result += $"Files Processed: {job.FilesProcessed}\n";
+        }
 
         if (job.Errors.Any())
         {
