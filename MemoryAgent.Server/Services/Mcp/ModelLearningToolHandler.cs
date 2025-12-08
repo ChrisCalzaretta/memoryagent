@@ -108,6 +108,49 @@ public class ModelLearningToolHandler : IMcpToolHandler
                     },
                     required = Array.Empty<string>()
                 }
+            },
+            // 🧠 TASK FAILURE LEARNING TOOLS
+            new McpTool
+            {
+                Name = "store_task_failure",
+                Description = "Store detailed information about a failed task for future learning. Includes what failed, why, and approaches tried.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        taskDescription = new { type = "string", description = "Brief description of the task" },
+                        taskKeywords = new { type = "array", items = new { type = "string" }, description = "Keywords describing the task (e.g., ['flutter', 'blackjack', 'game'])" },
+                        language = new { type = "string", description = "Programming language/framework" },
+                        failurePhase = new { type = "string", description = "Where it failed: code_generation, validation, docker_build, docker_run, test" },
+                        errorMessage = new { type = "string", description = "The actual error message" },
+                        errorPattern = new { type = "string", description = "Categorized error pattern (e.g., 'missing_dependency', 'syntax_error', 'type_mismatch')" },
+                        approachesTried = new { type = "array", items = new { type = "string" }, description = "List of approaches/solutions that were attempted" },
+                        modelsUsed = new { type = "array", items = new { type = "string" }, description = "Models that were used" },
+                        iterationsAttempted = new { type = "integer", description = "Number of iterations attempted" },
+                        lessonsLearned = new { type = "string", description = "What should be avoided or done differently next time" },
+                        context = new { type = "string", description = "Project context" }
+                    },
+                    required = new[] { "taskDescription", "language", "failurePhase", "errorMessage" }
+                }
+            },
+            new McpTool
+            {
+                Name = "query_task_lessons",
+                Description = "Query lessons learned from similar failed tasks. Returns what to avoid and what approaches to try.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        taskDescription = new { type = "string", description = "Description of the task you're about to attempt" },
+                        taskKeywords = new { type = "array", items = new { type = "string" }, description = "Keywords describing the task" },
+                        language = new { type = "string", description = "Programming language/framework" },
+                        context = new { type = "string", description = "Project context" },
+                        limit = new { type = "integer", description = "Max number of lessons to return (default: 5)" }
+                    },
+                    required = new[] { "taskDescription" }
+                }
             }
         };
     }
@@ -128,6 +171,9 @@ public class ModelLearningToolHandler : IMcpToolHandler
             "query_best_model" => await HandleQueryBestModelAsync(arguments, cancellationToken),
             "get_model_stats" => await HandleGetModelStatsAsync(arguments, cancellationToken),
             "get_loaded_models" => await HandleGetLoadedModelsAsync(arguments, cancellationToken),
+            // Task failure learning
+            "store_task_failure" => await HandleStoreTaskFailureAsync(arguments, cancellationToken),
+            "query_task_lessons" => await HandleQueryTaskLessonsAsync(arguments, cancellationToken),
             _ => $"Unknown tool: {toolName}"
         };
         
@@ -534,6 +580,311 @@ public class ModelLearningToolHandler : IMcpToolHandler
     
     #endregion
     
+    #region Task Failure Learning
+    
+    /// <summary>
+    /// Store detailed information about a failed task for future learning
+    /// </summary>
+    private async Task<string> HandleStoreTaskFailureAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken)
+    {
+        var taskDescription = GetStringArg(arguments, "taskDescription");
+        var taskKeywords = GetListArg(arguments, "taskKeywords");
+        var language = GetStringArg(arguments, "language", "unknown");
+        var failurePhase = GetStringArg(arguments, "failurePhase", "unknown");
+        var errorMessage = GetStringArg(arguments, "errorMessage");
+        var errorPattern = GetStringArg(arguments, "errorPattern", "unknown");
+        var approachesTried = GetListArg(arguments, "approachesTried");
+        var modelsUsed = GetListArg(arguments, "modelsUsed");
+        var iterationsAttempted = GetIntArg(arguments, "iterationsAttempted", 1);
+        var lessonsLearned = GetStringArg(arguments, "lessonsLearned", "");
+        var context = GetStringArg(arguments, "context", "default");
+        
+        try
+        {
+            await using var session = _neo4jDriver.AsyncSession();
+            
+            await session.ExecuteWriteAsync(async tx =>
+            {
+                // Store task failure with rich relationships for learning
+                var query = @"
+                    MERGE (l:Language {name: $language})
+                    MERGE (p:FailurePhase {name: $failurePhase})
+                    MERGE (e:ErrorPattern {name: $errorPattern})
+                    
+                    CREATE (f:TaskFailure {
+                        taskDescription: $taskDescription,
+                        keywords: $taskKeywords,
+                        errorMessage: $errorMessage,
+                        approachesTried: $approachesTried,
+                        modelsUsed: $modelsUsed,
+                        iterationsAttempted: $iterationsAttempted,
+                        lessonsLearned: $lessonsLearned,
+                        context: $context,
+                        recordedAt: datetime()
+                    })
+                    
+                    CREATE (f)-[:IN_LANGUAGE]->(l)
+                    CREATE (f)-[:FAILED_AT]->(p)
+                    CREATE (f)-[:HAS_ERROR_PATTERN]->(e)
+                    
+                    RETURN id(f) as failureId";
+                
+                await tx.RunAsync(query, new
+                {
+                    language,
+                    failurePhase,
+                    errorPattern,
+                    taskDescription,
+                    taskKeywords,
+                    errorMessage,
+                    approachesTried,
+                    modelsUsed,
+                    iterationsAttempted,
+                    lessonsLearned,
+                    context
+                });
+            });
+            
+            _logger.LogInformation(
+                "📝 Stored task failure: {Phase} in {Language} - {ErrorPattern}",
+                failurePhase, language, errorPattern);
+            
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                message = $"Stored failure lesson: {failurePhase} in {language}",
+                errorPattern,
+                lessonsLearned
+            }, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to store task failure");
+            return JsonSerializer.Serialize(new { success = false, error = ex.Message }, JsonOptions);
+        }
+    }
+    
+    /// <summary>
+    /// Query lessons learned from similar failed tasks
+    /// </summary>
+    private async Task<string> HandleQueryTaskLessonsAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken)
+    {
+        var taskDescription = GetStringArg(arguments, "taskDescription");
+        var taskKeywords = GetListArg(arguments, "taskKeywords");
+        var language = GetStringArg(arguments, "language", "");
+        var context = GetStringArg(arguments, "context", "");
+        var limit = GetIntArg(arguments, "limit", 5);
+        
+        try
+        {
+            await using var session = _neo4jDriver.AsyncSession();
+            
+            var lessons = await session.ExecuteReadAsync(async tx =>
+            {
+                // Find similar failures based on keywords, language, and description
+                var query = @"
+                    MATCH (f:TaskFailure)
+                    WHERE 
+                        // Match by language if specified
+                        ($language = '' OR EXISTS {
+                            MATCH (f)-[:IN_LANGUAGE]->(l:Language {name: $language})
+                        })
+                        // Match by keywords overlap
+                        AND (size($keywords) = 0 OR ANY(k IN $keywords WHERE k IN f.keywords))
+                    
+                    OPTIONAL MATCH (f)-[:FAILED_AT]->(p:FailurePhase)
+                    OPTIONAL MATCH (f)-[:HAS_ERROR_PATTERN]->(e:ErrorPattern)
+                    OPTIONAL MATCH (f)-[:IN_LANGUAGE]->(l:Language)
+                    
+                    WITH f, p, e, l,
+                        // Calculate similarity score
+                        CASE 
+                            WHEN size($keywords) > 0 
+                            THEN size([k IN $keywords WHERE k IN f.keywords]) * 1.0 / size($keywords)
+                            ELSE 0 
+                        END AS keywordOverlap,
+                        // Boost recent failures
+                        CASE 
+                            WHEN f.recordedAt > datetime() - duration('P7D') THEN 2.0
+                            WHEN f.recordedAt > datetime() - duration('P30D') THEN 1.5
+                            ELSE 1.0
+                        END AS recencyBoost
+                    
+                    WITH f, p, e, l, (keywordOverlap + 0.5) * recencyBoost AS relevanceScore
+                    ORDER BY relevanceScore DESC
+                    LIMIT $limit
+                    
+                    RETURN 
+                        f.taskDescription AS taskDescription,
+                        f.keywords AS keywords,
+                        l.name AS language,
+                        p.name AS failurePhase,
+                        e.name AS errorPattern,
+                        f.errorMessage AS errorMessage,
+                        f.approachesTried AS approachesTried,
+                        f.lessonsLearned AS lessonsLearned,
+                        f.modelsUsed AS modelsUsed,
+                        relevanceScore";
+                
+                var result = await tx.RunAsync(query, new
+                {
+                    keywords = taskKeywords,
+                    language,
+                    context,
+                    limit
+                });
+                
+                var failureLessons = new List<TaskFailureLesson>();
+                await foreach (var record in result)
+                {
+                    failureLessons.Add(new TaskFailureLesson
+                    {
+                        TaskDescription = record["taskDescription"].As<string>(),
+                        Keywords = record["keywords"].As<List<string>>() ?? new(),
+                        Language = record["language"].As<string>() ?? "unknown",
+                        FailurePhase = record["failurePhase"].As<string>() ?? "unknown",
+                        ErrorPattern = record["errorPattern"].As<string>() ?? "unknown",
+                        ErrorMessage = record["errorMessage"].As<string>() ?? "",
+                        ApproachesTried = record["approachesTried"].As<List<string>>() ?? new(),
+                        LessonsLearned = record["lessonsLearned"].As<string>() ?? "",
+                        ModelsUsed = record["modelsUsed"].As<List<string>>() ?? new(),
+                        RelevanceScore = record["relevanceScore"].As<double>()
+                    });
+                }
+                
+                return failureLessons;
+            });
+            
+            // Build the "What NOT to do" prompt section
+            var avoidanceAdvice = BuildAvoidanceAdvice(lessons);
+            
+            _logger.LogInformation(
+                "🧠 Found {Count} relevant failure lessons for task",
+                lessons.Count);
+            
+            return JsonSerializer.Serialize(new TaskLessonsResponse
+            {
+                FoundLessons = lessons.Count,
+                Lessons = lessons,
+                AvoidanceAdvice = avoidanceAdvice,
+                SuggestedApproaches = BuildSuggestedApproaches(lessons)
+            }, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to query task lessons");
+            return JsonSerializer.Serialize(new TaskLessonsResponse
+            {
+                FoundLessons = 0,
+                AvoidanceAdvice = "No historical failure data available."
+            }, JsonOptions);
+        }
+    }
+    
+    /// <summary>
+    /// Build "What NOT to do" advice from failure lessons
+    /// </summary>
+    private string BuildAvoidanceAdvice(List<TaskFailureLesson> lessons)
+    {
+        if (!lessons.Any())
+            return "No historical failures found for similar tasks.";
+        
+        var advice = new List<string> { "⚠️ LESSONS FROM PAST FAILURES - AVOID THESE:" };
+        
+        // Group by error pattern
+        var byErrorPattern = lessons
+            .GroupBy(l => l.ErrorPattern)
+            .OrderByDescending(g => g.Count());
+        
+        foreach (var group in byErrorPattern.Take(5))
+        {
+            var mostRecent = group.First();
+            advice.Add($"\n🚫 {group.Key} ({group.Count()} occurrences):");
+            advice.Add($"   Error: {TruncateMessage(mostRecent.ErrorMessage, 100)}");
+            
+            if (!string.IsNullOrEmpty(mostRecent.LessonsLearned))
+                advice.Add($"   Lesson: {mostRecent.LessonsLearned}");
+            
+            if (mostRecent.ApproachesTried.Any())
+                advice.Add($"   Failed approaches: {string.Join(", ", mostRecent.ApproachesTried.Take(3))}");
+        }
+        
+        // Add specific avoidance list
+        var allApproachesTried = lessons
+            .SelectMany(l => l.ApproachesTried)
+            .GroupBy(a => a)
+            .OrderByDescending(g => g.Count())
+            .Take(5)
+            .Select(g => g.Key);
+        
+        if (allApproachesTried.Any())
+        {
+            advice.Add("\n❌ APPROACHES THAT HAVE FAILED BEFORE:");
+            foreach (var approach in allApproachesTried)
+            {
+                advice.Add($"   - {approach}");
+            }
+        }
+        
+        return string.Join("\n", advice);
+    }
+    
+    /// <summary>
+    /// Suggest alternative approaches based on what hasn't been tried
+    /// </summary>
+    private List<string> BuildSuggestedApproaches(List<TaskFailureLesson> lessons)
+    {
+        var suggestions = new List<string>();
+        
+        // Common alternative approaches based on failure patterns
+        var failurePatterns = lessons.Select(l => l.ErrorPattern.ToLowerInvariant()).Distinct();
+        
+        foreach (var pattern in failurePatterns)
+        {
+            switch (pattern)
+            {
+                case "missing_dependency":
+                    suggestions.Add("Ensure all package references are correctly specified in project file");
+                    suggestions.Add("Use explicit version pinning for dependencies");
+                    break;
+                case "syntax_error":
+                    suggestions.Add("Generate complete, compilable code blocks");
+                    suggestions.Add("Avoid partial code snippets - include full class/method definitions");
+                    break;
+                case "type_mismatch":
+                    suggestions.Add("Use explicit type annotations");
+                    suggestions.Add("Add proper null checks and type conversions");
+                    break;
+                case "docker_build":
+                    suggestions.Add("Ensure Dockerfile uses correct base image for the framework");
+                    suggestions.Add("Include all required platform-specific configurations");
+                    break;
+                case "runtime_error":
+                    suggestions.Add("Add proper exception handling");
+                    suggestions.Add("Initialize all required services and dependencies");
+                    break;
+            }
+        }
+        
+        // Add general suggestions
+        if (!suggestions.Any())
+        {
+            suggestions.Add("Start with a minimal working example and build up");
+            suggestions.Add("Test each component in isolation before integrating");
+            suggestions.Add("Use well-established patterns from official documentation");
+        }
+        
+        return suggestions.Distinct().ToList();
+    }
+    
+    private string TruncateMessage(string message, int maxLength)
+    {
+        if (string.IsNullOrEmpty(message)) return "";
+        return message.Length <= maxLength ? message : message.Substring(0, maxLength) + "...";
+    }
+    
+    #endregion
+    
     #region Helper Methods
     
     private static string GetStringArg(Dictionary<string, object> args, string key, string? defaultValue = null)
@@ -710,6 +1061,34 @@ internal class OllamaPsModel
     
     [System.Text.Json.Serialization.JsonPropertyName("expires_at")]
     public DateTime? ExpiresAt { get; set; }
+}
+
+/// <summary>
+/// A failure lesson learned from a past task
+/// </summary>
+internal class TaskFailureLesson
+{
+    public string TaskDescription { get; set; } = "";
+    public List<string> Keywords { get; set; } = new();
+    public string Language { get; set; } = "";
+    public string FailurePhase { get; set; } = "";
+    public string ErrorPattern { get; set; } = "";
+    public string ErrorMessage { get; set; } = "";
+    public List<string> ApproachesTried { get; set; } = new();
+    public string LessonsLearned { get; set; } = "";
+    public List<string> ModelsUsed { get; set; } = new();
+    public double RelevanceScore { get; set; }
+}
+
+/// <summary>
+/// Response from querying task lessons
+/// </summary>
+internal class TaskLessonsResponse
+{
+    public int FoundLessons { get; set; }
+    public List<TaskFailureLesson> Lessons { get; set; } = new();
+    public string AvoidanceAdvice { get; set; } = "";
+    public List<string> SuggestedApproaches { get; set; } = new();
 }
 
 #endregion
