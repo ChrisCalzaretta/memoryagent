@@ -406,22 +406,144 @@ public class McpHandler : IMcpHandler
         }
 
         var result = new System.Text.StringBuilder();
-        result.AppendLine($"📊 **Task Status: {status.Status}**");
+        
+        // Status header with emoji
+        var statusEmoji = status.Status switch
+        {
+            AgentContracts.Responses.TaskState.Running => "🔄",
+            AgentContracts.Responses.TaskState.Complete => "✅",
+            AgentContracts.Responses.TaskState.Failed => "❌",
+            AgentContracts.Responses.TaskState.Cancelled => "🚫",
+            _ => "⏳"
+        };
+        
+        result.AppendLine($"## {statusEmoji} Task Status: **{status.Status}**");
         result.AppendLine();
-        result.AppendLine($"**Job ID:** `{status.JobId}`");
-        result.AppendLine($"**Progress:** {status.Progress}%");
-        result.AppendLine($"**Current Phase:** {status.CurrentPhase}");
-        result.AppendLine($"**Iteration:** {status.Iteration}/{status.MaxIterations}");
+        result.AppendLine($"| Field | Value |");
+        result.AppendLine($"|-------|-------|");
+        result.AppendLine($"| **Job ID** | `{status.JobId}` |");
+        result.AppendLine($"| **Progress** | {status.Progress}% |");
+        result.AppendLine($"| **Current Phase** | {status.CurrentPhase} |");
+        result.AppendLine($"| **Iteration** | {status.Iteration}/{status.MaxIterations} |");
         result.AppendLine();
 
+        // Analyze timeline for statistics
         if (status.Timeline.Any())
         {
-            result.AppendLine("**Timeline:**");
-            foreach (var phase in status.Timeline)
+            var buildAttempts = status.Timeline.Where(t => t.Name == "docker_execution").ToList();
+            var validationAttempts = status.Timeline.Where(t => t.Name == "validation_agent").ToList();
+            var codingAttempts = status.Timeline.Where(t => t.Name == "coding_agent").ToList();
+            
+            // Build statistics
+            var buildSuccesses = buildAttempts.Count(t => t.Details?.TryGetValue("buildPassed", out var bp) == true && bp is bool b && b);
+            var buildFailures = buildAttempts.Count - buildSuccesses;
+            
+            // Validation statistics 
+            var validationScores = validationAttempts
+                .Where(t => t.Details?.TryGetValue("score", out _) == true)
+                .Select(t => {
+                    if (t.Details!.TryGetValue("score", out var s) && s is int score) return score;
+                    if (t.Details!.TryGetValue("score", out var s2) && s2 is long score2) return (int)score2;
+                    return 0;
+                })
+                .ToList();
+            
+            result.AppendLine("### 📈 Progress Statistics");
+            result.AppendLine();
+            result.AppendLine($"| Metric | Value |");
+            result.AppendLine($"|--------|-------|");
+            result.AppendLine($"| **Coding Attempts** | {codingAttempts.Count} |");
+            result.AppendLine($"| **Build Attempts** | {buildAttempts.Count} (✅ {buildSuccesses} / ❌ {buildFailures}) |");
+            result.AppendLine($"| **Validation Attempts** | {validationAttempts.Count} |");
+            if (validationScores.Any())
+            {
+                result.AppendLine($"| **Best Score** | {validationScores.Max()}/10 |");
+                result.AppendLine($"| **Latest Score** | {validationScores.Last()}/10 |");
+            }
+            result.AppendLine();
+            
+            // Show recent errors/failures
+            var recentFailures = status.Timeline
+                .Where(t => t.Name == "docker_execution" && 
+                           t.Details?.TryGetValue("buildPassed", out var bp) == true && 
+                           bp is bool b && !b)
+                .TakeLast(3)
+                .ToList();
+            
+            if (recentFailures.Any())
+            {
+                result.AppendLine("### ❌ Recent Build Failures");
+                result.AppendLine();
+                foreach (var failure in recentFailures)
+                {
+                    var iter = failure.Iteration ?? 0;
+                    result.AppendLine($"**Iteration {iter}:**");
+                    if (failure.Details?.TryGetValue("error", out var error) == true && error != null)
+                    {
+                        var errorStr = error.ToString();
+                        // Truncate long errors
+                        if (errorStr?.Length > 500)
+                            errorStr = errorStr.Substring(0, 500) + "...";
+                        result.AppendLine($"```");
+                        result.AppendLine(errorStr);
+                        result.AppendLine($"```");
+                    }
+                    else
+                    {
+                        result.AppendLine("- Build failed (no error details captured)");
+                    }
+                }
+                result.AppendLine();
+            }
+            
+            // Show validation feedback if any
+            var recentValidations = validationAttempts.TakeLast(2).ToList();
+            if (recentValidations.Any())
+            {
+                result.AppendLine("### 🔍 Recent Validation Results");
+                result.AppendLine();
+                foreach (var validation in recentValidations)
+                {
+                    var iter = validation.Iteration ?? 0;
+                    var score = 0;
+                    if (validation.Details?.TryGetValue("score", out var s) == true)
+                    {
+                        if (s is int si) score = si;
+                        else if (s is long sl) score = (int)sl;
+                    }
+                    var passed = validation.Details?.TryGetValue("passed", out var p) == true && p is bool pb && pb;
+                    var icon = passed ? "✅" : "❌";
+                    
+                    result.AppendLine($"**Iteration {iter}:** {icon} Score {score}/10");
+                    
+                    if (validation.Details?.TryGetValue("feedback", out var feedback) == true && feedback != null)
+                    {
+                        var feedbackStr = feedback.ToString();
+                        if (feedbackStr?.Length > 300)
+                            feedbackStr = feedbackStr.Substring(0, 300) + "...";
+                        result.AppendLine($"> {feedbackStr}");
+                    }
+                }
+                result.AppendLine();
+            }
+            
+            // Show last few timeline entries (condensed)
+            result.AppendLine("### 📋 Recent Activity (last 10 phases)");
+            result.AppendLine();
+            var recentPhases = status.Timeline.TakeLast(10).ToList();
+            foreach (var phase in recentPhases)
             {
                 var duration = phase.DurationMs.HasValue ? $" ({phase.DurationMs}ms)" : "";
                 var iterInfo = phase.Iteration.HasValue ? $" [iter {phase.Iteration}]" : "";
-                result.AppendLine($"- ✅ {phase.Name}{iterInfo}{duration}");
+                
+                // Add status indicator based on phase details
+                var phaseIcon = "✅";
+                if (phase.Name == "docker_execution" && phase.Details?.TryGetValue("buildPassed", out var bp) == true && bp is bool b && !b)
+                    phaseIcon = "❌";
+                else if (phase.Name == "validation_agent" && phase.Details?.TryGetValue("passed", out var vp) == true && vp is bool vb && !vb)
+                    phaseIcon = "⚠️";
+                    
+                result.AppendLine($"- {phaseIcon} {phase.Name}{iterInfo}{duration}");
             }
             result.AppendLine();
         }

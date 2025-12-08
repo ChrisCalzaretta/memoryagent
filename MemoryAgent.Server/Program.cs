@@ -51,6 +51,15 @@ builder.Services.AddHttpClient<IVectorService, VectorService>(client =>
 // Core Services
 builder.Services.AddSingleton<IPathTranslationService, PathTranslationService>();
 builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
+
+// Register Neo4j driver for direct access (used by ModelLearningToolHandler)
+builder.Services.AddSingleton<Neo4j.Driver.IDriver>(sp =>
+{
+    var neo4jUrl = builder.Configuration["Neo4j:Url"] ?? "bolt://localhost:7687";
+    var neo4jUser = builder.Configuration["Neo4j:User"] ?? "neo4j";
+    var neo4jPassword = builder.Configuration["Neo4j:Password"] ?? "memoryagent";
+    return Neo4j.Driver.GraphDatabase.Driver(neo4jUrl, Neo4j.Driver.AuthTokens.Basic(neo4jUser, neo4jPassword));
+});
 builder.Services.AddSingleton<IGraphService, GraphService>();
 // Multi-language AST parser support (NO REGEX - Production Quality!)
 builder.Services.AddSingleton<RoslynParser>();         // C# parser (Roslyn AST)
@@ -83,6 +92,9 @@ builder.Services.AddScoped<IMcpToolHandler, TransformToolHandler>();        // 2
 builder.Services.AddScoped<IMcpToolHandler, EvolvingToolHandler>();         // 22-24: prompts, patterns, feedback
 builder.Services.AddScoped<IMcpToolHandler, CodeUnderstandingToolHandler>();// 25: get_context, explain_code, find_examples
 // Design tools are now in separate DesignAgent.Server MCP server (port 5004)
+
+// 🧠 MODEL LEARNING: Internal tools for CodingAgent (NOT exposed to Cursor)
+builder.Services.AddScoped<IMcpToolHandler, ModelLearningToolHandler>();   // store_model_performance, query_best_model, get_model_stats
 
 // Workspace handler (kept separate - auto-called by wrapper, not visible to AI)
 builder.Services.AddScoped<IMcpToolHandler, WorkspaceToolHandler>();

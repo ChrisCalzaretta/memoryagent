@@ -34,7 +34,7 @@ public class SmartEmbeddingExtractionTests
         var code = await File.ReadAllTextAsync(filePath);
         var logger = NullLogger<RoslynParser>.Instance;
         var loggerFactory = NullLoggerFactory.Instance;
-        var parser = new RoslynParser(logger, loggerFactory);
+        var parser = new RoslynParser(logger, loggerFactory, null!);
 
         // Act
         var result = await parser.ParseCodeAsync(code, filePath, "test");
@@ -96,7 +96,7 @@ public class SmartEmbeddingExtractionTests
         var code = await File.ReadAllTextAsync(filePath);
         var logger = NullLogger<RoslynParser>.Instance;
         var loggerFactory = NullLoggerFactory.Instance;
-        var parser = new RoslynParser(logger, loggerFactory);
+        var parser = new RoslynParser(logger, loggerFactory, null!);
 
         // Act
         var result = await parser.ParseCodeAsync(code, filePath, "test");
@@ -218,7 +218,7 @@ public class SmartEmbeddingExtractionTests
         var code = await File.ReadAllTextAsync(filePath);
         var logger = NullLogger<RoslynParser>.Instance;
         var loggerFactory = NullLoggerFactory.Instance;
-        var parser = new RoslynParser(logger, loggerFactory);
+        var parser = new RoslynParser(logger, loggerFactory, null!);
 
         // Act
         var result = await parser.ParseCodeAsync(code, filePath, "test");
@@ -274,7 +274,7 @@ public class SmartEmbeddingExtractionTests
         var code = await File.ReadAllTextAsync(filePath);
         var logger = NullLogger<RoslynParser>.Instance;
         var loggerFactory = NullLoggerFactory.Instance;
-        var parser = new RoslynParser(logger, loggerFactory);
+        var parser = new RoslynParser(logger, loggerFactory, null!);
 
         // Act
         var result = await parser.ParseCodeAsync(code, filePath, "test");

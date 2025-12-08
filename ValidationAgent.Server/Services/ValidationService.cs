@@ -8,35 +8,43 @@ using ValidationAgent.Server.Clients;
 namespace ValidationAgent.Server.Services;
 
 /// <summary>
-/// Validates code quality using rules + LLM analysis - with smart model rotation
+/// Validates code quality using rules + LLM analysis - with smart model selection
+/// NOW WITH: LLM-based model selection + historical learning + exploration!
 /// </summary>
 public class ValidationService : IValidationService
 {
     private readonly IValidationPromptBuilder _promptBuilder;
     private readonly IOllamaClient _ollamaClient;
     private readonly IMemoryAgentClient _memoryAgent;
+    private readonly IValidationModelSelector _modelSelector;
     private readonly ILogger<ValidationService> _logger;
     private readonly IConfiguration _config;
     
     // Model configuration
-    private readonly string _validationModel;
+    private readonly string _defaultModel;
     private readonly int _ollamaPort;
+    
+    // Track which model was selected for this validation
+    private string _selectedModel = "";
+    private bool _isExploration = false;
 
     public ValidationService(
         IValidationPromptBuilder promptBuilder,
         IOllamaClient ollamaClient,
         IMemoryAgentClient memoryAgent,
+        IValidationModelSelector modelSelector,
         ILogger<ValidationService> logger,
         IConfiguration config)
     {
         _promptBuilder = promptBuilder;
         _ollamaClient = ollamaClient;
         _memoryAgent = memoryAgent;
+        _modelSelector = modelSelector;
         _logger = logger;
         _config = config;
         
-        // Load model configuration
-        _validationModel = config.GetValue<string>("Gpu:ValidationModel") ?? "phi4:latest";
+        // Load model configuration (fallback only)
+        _defaultModel = config.GetValue<string>("Gpu:ValidationModel") ?? "phi4:latest";
         _ollamaPort = config.GetValue<int>("Ollama:Port", 11434);
     }
 
@@ -44,6 +52,31 @@ public class ValidationService : IValidationService
     {
         _logger.LogInformation("Validating {FileCount} files with rules: {Rules}", 
             request.Files.Count, string.Join(", ", request.Rules));
+        
+        var startTime = DateTime.UtcNow;
+        
+        // 🧠 SMART MODEL SELECTION: Use LLM to pick best model based on task + history
+        var language = DetectLanguage(request.Files);
+        var taskDescription = $"Validate {request.Files.Count} {language} files. Rules: {string.Join(", ", request.Rules)}";
+        
+        try
+        {
+            var selection = await _modelSelector.SelectModelAsync(
+                taskDescription, language, request.Files.Count, cancellationToken);
+            
+            _selectedModel = selection.Model;
+            _isExploration = selection.IsExploration;
+            
+            _logger.LogInformation(
+                "🧠 Selected model for validation: {Model} (exploration={IsExploration})",
+                _selectedModel, _isExploration);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Model selection failed, using default: {Model}", _defaultModel);
+            _selectedModel = _defaultModel;
+            _isExploration = false;
+        }
         
         var response = new ValidateCodeResponse
         {
@@ -60,7 +93,7 @@ public class ValidationService : IValidationService
             response.Issues.AddRange(issues);
         }
 
-        // Phase 2: LLM validation (deep analysis, quality assessment)
+        // Phase 2: LLM validation (deep analysis, quality assessment) - using selected model
         var llmIssues = await ValidateWithLlmAsync(request, cancellationToken);
         response.Issues.AddRange(llmIssues);
 
@@ -77,7 +110,107 @@ public class ValidationService : IValidationService
         _logger.LogInformation("Validation complete: Score={Score}/10, Passed={Passed}, Issues={IssueCount}",
             response.Score, response.Passed, response.Issues.Count);
 
+        // 🧠 Record model performance for learning
+        await RecordModelPerformanceAsync(request, response, startTime, cancellationToken);
+
         return response;
+    }
+    
+    /// <summary>
+    /// 🧠 Record validation model performance for future smart selection
+    /// </summary>
+    private async Task RecordModelPerformanceAsync(
+        ValidateCodeRequest request,
+        ValidateCodeResponse response,
+        DateTime startTime,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Detect language from files
+            var language = DetectLanguage(request.Files);
+            var durationMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
+            
+            // Determine outcome based on whether validation produced useful results
+            var outcome = response.Score >= 8 ? "success" : 
+                         response.Score >= 5 ? "partial" : "failure";
+            
+            // Use the selected model (not the default) for accurate tracking
+            var modelUsed = !string.IsNullOrEmpty(_selectedModel) ? _selectedModel : _defaultModel;
+            
+            await _memoryAgent.RecordModelPerformanceAsync(
+                model: modelUsed,
+                taskType: "validation",
+                succeeded: response.Score >= 5, // Validation "succeeded" if it could analyze the code
+                score: response.Score,
+                language: language,
+                complexity: EstimateComplexity(request.Files),
+                iterations: 1,
+                durationMs: durationMs,
+                errorType: response.Issues.Any(i => i.Severity == "critical") ? "critical_issues" : null,
+                taskKeywords: ExtractKeywords(request),
+                context: request.Context ?? "default",
+                cancellationToken: cancellationToken);
+            
+            _logger.LogDebug("📊 Recorded validation performance: {Model} = {Outcome} ({Score}/10)",
+                modelUsed, outcome, response.Score);
+        }
+        catch (Exception ex)
+        {
+            // Non-critical - don't fail validation if recording fails
+            _logger.LogWarning(ex, "Failed to record validation model performance (non-critical)");
+        }
+    }
+    
+    private string DetectLanguage(List<CodeFile> files)
+    {
+        var extensions = files.Select(f => Path.GetExtension(f.Path).ToLowerInvariant()).ToList();
+        
+        if (extensions.Any(e => e == ".cs")) return "csharp";
+        if (extensions.Any(e => e == ".py")) return "python";
+        if (extensions.Any(e => e is ".ts" or ".tsx")) return "typescript";
+        if (extensions.Any(e => e is ".js" or ".jsx")) return "javascript";
+        if (extensions.Any(e => e == ".dart")) return "dart";
+        if (extensions.Any(e => e == ".java")) return "java";
+        if (extensions.Any(e => e == ".go")) return "go";
+        if (extensions.Any(e => e == ".rs")) return "rust";
+        if (extensions.Any(e => e == ".swift")) return "swift";
+        if (extensions.Any(e => e == ".kt")) return "kotlin";
+        
+        return "unknown";
+    }
+    
+    private string EstimateComplexity(List<CodeFile> files)
+    {
+        var totalLines = files.Sum(f => f.Content.Split('\n').Length);
+        var fileCount = files.Count;
+        
+        if (totalLines < 100 && fileCount <= 2) return "simple";
+        if (totalLines < 500 && fileCount <= 5) return "moderate";
+        if (totalLines < 1500 && fileCount <= 10) return "complex";
+        return "very_complex";
+    }
+    
+    private List<string> ExtractKeywords(ValidateCodeRequest request)
+    {
+        var keywords = new List<string>();
+        
+        // Add rule names as keywords
+        keywords.AddRange(request.Rules);
+        
+        // Extract from file paths
+        foreach (var file in request.Files)
+        {
+            var fileName = Path.GetFileNameWithoutExtension(file.Path);
+            if (fileName.Contains("Service")) keywords.Add("service");
+            if (fileName.Contains("Controller")) keywords.Add("controller");
+            if (fileName.Contains("Repository")) keywords.Add("repository");
+            if (fileName.Contains("Model")) keywords.Add("model");
+            if (fileName.Contains("Test")) keywords.Add("test");
+            if (fileName.Contains("Component")) keywords.Add("component");
+        }
+        
+        return keywords.Distinct().ToList();
     }
 
     /// <summary>
@@ -119,10 +252,13 @@ Be thorough but fair. Only report real issues.";
 
         try
         {
-            _logger.LogInformation("Calling LLM validation with model {Model}", _validationModel);
+            // Use the dynamically selected model
+            var modelToUse = !string.IsNullOrEmpty(_selectedModel) ? _selectedModel : _defaultModel;
+            _logger.LogInformation("Calling LLM validation with model {Model} (exploration={IsExploration})", 
+                modelToUse, _isExploration);
             
             var response = await _ollamaClient.GenerateAsync(
-                _validationModel,
+                modelToUse,
                 prompt,
                 systemPrompt,
                 _ollamaPort,

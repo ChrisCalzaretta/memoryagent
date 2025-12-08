@@ -188,6 +188,168 @@ public class MemoryAgentClient : IMemoryAgentClient
             return false;
         }
     }
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Record model performance for future selection
+    /// </summary>
+    public async Task RecordModelPerformanceAsync(
+        string model,
+        string taskType,
+        bool succeeded,
+        double score,
+        string? language = null,
+        string? complexity = null,
+        int iterations = 1,
+        long durationMs = 0,
+        string? errorType = null,
+        List<string>? taskKeywords = null,
+        string? context = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new
+            {
+                name = "store_model_performance",
+                arguments = new
+                {
+                    model = model,
+                    taskType = taskType,
+                    language = language ?? "unknown",
+                    complexity = complexity ?? "unknown",
+                    outcome = succeeded ? "success" : (score > 0 ? "partial" : "failure"),
+                    score = (int)score,
+                    durationMs = durationMs,
+                    iterations = iterations,
+                    errorType = errorType ?? "",
+                    context = context ?? "default",
+                    taskKeywords = taskKeywords ?? new List<string>()
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug(
+                    "📊 Recorded model performance: {Model} on {TaskType}/{Language} = {Outcome} ({Score}/10)",
+                    model, taskType, language ?? "unknown", succeeded ? "success" : "failed", score);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to record model performance: {Status}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error recording model performance for {Model} (non-critical)", model);
+        }
+    }
+    
+    /// <summary>
+    /// 🧠 MODEL LEARNING: Get historical stats for models
+    /// </summary>
+    public async Task<List<ModelPerformanceStats>> GetModelStatsAsync(
+        string? taskType,
+        string? language,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new
+            {
+                jsonrpc = "2.0",
+                method = "tools/call",
+                @params = new
+                {
+                    name = "get_model_stats",
+                    arguments = new
+                    {
+                        taskType = taskType ?? "",
+                        language = language ?? ""
+                    }
+                },
+                id = 1
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogDebug("Model stats response: {Content}", content);
+                
+                // Parse the markdown table response and extract stats
+                return ParseModelStatsFromMarkdown(content);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting model stats");
+        }
+        
+        return new List<ModelPerformanceStats>();
+    }
+    
+    /// <summary>
+    /// Parse model stats from the markdown table response
+    /// </summary>
+    private List<ModelPerformanceStats> ParseModelStatsFromMarkdown(string content)
+    {
+        var stats = new List<ModelPerformanceStats>();
+        
+        try
+        {
+            // The response contains a markdown table, extract the data
+            // Format: | Model | Task Type | Success Rate | Avg Score | Samples |
+            var lines = content.Split('\n');
+            
+            foreach (var line in lines)
+            {
+                if (line.StartsWith('|') && !line.Contains("---") && !line.Contains("Model"))
+                {
+                    var parts = line.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 5)
+                    {
+                        var stat = new ModelPerformanceStats
+                        {
+                            Model = parts[0].Trim(),
+                            TaskType = parts[1].Trim(),
+                            Language = "all" // Not in current format
+                        };
+                        
+                        // Parse success rate (e.g., "85%")
+                        if (double.TryParse(parts[2].Trim().TrimEnd('%'), out var successRate))
+                        {
+                            stat.TotalAttempts = 100; // Estimate
+                            stat.Successes = (int)(successRate);
+                        }
+                        
+                        // Parse avg score
+                        if (double.TryParse(parts[3].Trim(), out var avgScore))
+                        {
+                            stat.AverageScore = avgScore;
+                        }
+                        
+                        // Parse samples
+                        if (int.TryParse(parts[4].Trim(), out var samples))
+                        {
+                            stat.TotalAttempts = samples;
+                            stat.Successes = (int)(successRate / 100 * samples);
+                        }
+                        
+                        stats.Add(stat);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error parsing model stats markdown");
+        }
+        
+        return stats;
+    }
 
     private static string GetDefaultPrompt(string promptName) => promptName switch
     {

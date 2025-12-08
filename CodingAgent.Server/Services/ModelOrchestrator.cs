@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AgentContracts.Models;
 using AgentContracts.Services;
+using CodingAgent.Server.Clients;
 
 namespace CodingAgent.Server.Services;
 
@@ -10,11 +11,13 @@ namespace CodingAgent.Server.Services;
 /// - Never unloads pinned models
 /// - Rotates to fresh models when validation fails
 /// - Respects VRAM constraints
+/// - 🧠 NOW WITH LEARNING: Queries MemoryAgent for best model based on history!
 /// </summary>
 public partial class ModelOrchestrator : IModelOrchestrator
 {
     private readonly ILogger<ModelOrchestrator> _logger;
     private readonly HttpClient _httpClient;
+    private readonly IMemoryAgentClient? _memoryAgent;
     private readonly string _baseHost;
     
     public GpuConfig Config { get; }
@@ -27,10 +30,12 @@ public partial class ModelOrchestrator : IModelOrchestrator
     public ModelOrchestrator(
         IConfiguration config, 
         ILogger<ModelOrchestrator> logger,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        IMemoryAgentClient? memoryAgent = null)  // Optional - graceful degradation if unavailable
     {
         _logger = logger;
         _httpClient = httpClient;
+        _memoryAgent = memoryAgent;
         
         // Parse Ollama URL (support full URL or default to localhost)
         var configuredUrl = config.GetValue<string>("Ollama:Url");
@@ -396,21 +401,180 @@ public partial class ModelOrchestrator
     }
 
     /// <summary>
-    /// Record model performance for future optimization
+    /// Record model performance for future optimization - NOW STORES IN MEMORYAGENT!
     /// </summary>
-    public Task RecordModelPerformanceAsync(
+    public async Task RecordModelPerformanceAsync(
         string model, 
         string taskType, 
         bool succeeded, 
         double score,
+        string? language = null,
+        string? complexity = null,
+        int iterations = 1,
+        long durationMs = 0,
+        string? errorType = null,
+        List<string>? taskKeywords = null,
+        string? context = null,
         CancellationToken cancellationToken = default)
     {
-        // TODO: Store in MemoryAgent for learning
         _logger.LogInformation(
-            "Model {Model} performance on {TaskType}: {Success}, Score: {Score:F1}",
-            model, taskType, succeeded ? "SUCCESS" : "FAILED", score);
+            "📊 Recording model performance: {Model} on {TaskType}/{Language} = {Success}, Score: {Score:F1}",
+            model, taskType, language ?? "unknown", succeeded ? "SUCCESS" : "FAILED", score);
         
-        return Task.CompletedTask;
+        // Store in MemoryAgent for learning
+        if (_memoryAgent != null)
+        {
+            try
+            {
+                var record = new ModelPerformanceRecord
+                {
+                    Model = model,
+                    TaskType = taskType,
+                    Language = language ?? "unknown",
+                    Complexity = complexity ?? "unknown",
+                    Outcome = succeeded ? "success" : (score > 0 ? "partial" : "failure"),
+                    Score = (int)score,
+                    DurationMs = durationMs,
+                    Iterations = iterations,
+                    ErrorType = errorType,
+                    TaskKeywords = taskKeywords ?? new List<string>(),
+                    Context = context ?? "default"
+                };
+                
+                await _memoryAgent.RecordModelPerformanceAsync(record, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to store model performance in MemoryAgent (non-critical)");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// 🧠 SMART MODEL SELECTION: 
+    /// 1. Query historical stats from MemoryAgent
+    /// 2. Use LLM to confirm/adjust selection based on task + historical rates
+    /// 3. Falls back to priority-based selection if no data/LLM unavailable
+    /// </summary>
+    public async Task<(string Model, int Port)?> SelectBestModelAsync(
+        ModelPurpose purpose,
+        string? language,
+        string? complexity,
+        HashSet<string> excludeModels,
+        List<string>? taskKeywords = null,
+        string? context = null,
+        string? taskDescription = null,  // Task description for LLM analysis
+        object? llmSelector = null,  // ILlmModelSelector - use object to match interface
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        
+        var taskType = purpose == ModelPurpose.CodeGeneration ? "code_generation" : 
+                       purpose == ModelPurpose.Validation ? "validation" : "general";
+        
+        // Get available models (excluding already-tried ones)
+        var availableModels = _modelRegistry.Keys
+            .Where(m => !excludeModels.Contains(m))
+            .ToList();
+        
+        // STEP 1: Get historical stats from MemoryAgent
+        List<ModelStats> historicalStats = new();
+        if (_memoryAgent != null)
+        {
+            try
+            {
+                historicalStats = await _memoryAgent.GetModelStatsAsync(language, taskType, cancellationToken);
+                _logger.LogDebug("Got {Count} historical stats for {TaskType}/{Language}", 
+                    historicalStats.Count, taskType, language);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to get historical stats (continuing without)");
+            }
+        }
+        
+        // STEP 2: Use LLM to analyze task and confirm/adjust model selection
+        var typedLlmSelector = llmSelector as ILlmModelSelector;
+        if (typedLlmSelector != null && !string.IsNullOrEmpty(taskDescription))
+        {
+            try
+            {
+                var llmRecommendation = await typedLlmSelector.SelectModelAsync(
+                    taskDescription,
+                    taskType,
+                    language,
+                    historicalStats,
+                    availableModels,
+                    cancellationToken);
+                
+                if (!string.IsNullOrEmpty(llmRecommendation.RecommendedModel) && 
+                    _modelRegistry.TryGetValue(llmRecommendation.RecommendedModel, out var modelInfo))
+                {
+                    var port = DeterminePortForModel(modelInfo);
+                    if (CanLoadModel(llmRecommendation.RecommendedModel, port))
+                    {
+                        _logger.LogInformation(
+                            "🧠 LLM-confirmed model selection: {Model} (complexity={Complexity}, confidence={Confidence:P0})\n   Reasoning: {Reasoning}",
+                            llmRecommendation.RecommendedModel,
+                            llmRecommendation.TaskComplexity,
+                            llmRecommendation.Confidence,
+                            llmRecommendation.Reasoning);
+                        return (llmRecommendation.RecommendedModel, port);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "LLM model selection failed (falling back to historical/priority)");
+            }
+        }
+        
+        // STEP 3: Fall back to historical best performer
+        if (historicalStats.Any())
+        {
+            var bestHistorical = historicalStats
+                .Where(s => availableModels.Contains(s.Model))
+                .OrderByDescending(s => s.SuccessRate)
+                .ThenByDescending(s => s.AverageScore)
+                .FirstOrDefault();
+            
+            if (bestHistorical != null && _modelRegistry.TryGetValue(bestHistorical.Model, out var modelInfo))
+            {
+                var port = DeterminePortForModel(modelInfo);
+                if (CanLoadModel(bestHistorical.Model, port))
+                {
+                    _logger.LogInformation(
+                        "🧠 Using historical best: {Model} ({SuccessRate:F0}% success, {Score:F1} avg score)",
+                        bestHistorical.Model, bestHistorical.SuccessRate, bestHistorical.AverageScore);
+                    return (bestHistorical.Model, port);
+                }
+            }
+        }
+        
+        // STEP 4: Fall back to priority-based selection
+        _logger.LogDebug("No historical data or LLM recommendation, using priority-based selection");
+        return await SelectModelAsync(purpose, excludeModels, cancellationToken);
+    }
+    
+    /// <summary>
+    /// Determine which GPU port to use for a model based on size
+    /// </summary>
+    private int DeterminePortForModel(ModelInfo modelInfo)
+    {
+        if (!Config.DualGpu)
+            return Config.PinnedPort;
+        
+        // Big models go to swap GPU
+        if (modelInfo.SizeGb > 10)
+            return Config.SwapPort;
+        
+        // Small models go to pinned GPU if space available
+        var availableVram = Config.PinnedGpuVram - Config.PinnedModelsVram - 1;
+        if (modelInfo.SizeGb <= availableVram)
+            return Config.PinnedPort;
+        
+        // Otherwise swap GPU
+        return Config.SwapPort;
     }
     
     /// <summary>

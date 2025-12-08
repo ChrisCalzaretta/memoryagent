@@ -252,7 +252,18 @@ public class TaskOrchestrator : ITaskOrchestrator
                     ["executionPassed"] = executionResult.ExecutionPassed,
                     ["exitCode"] = executionResult.ExitCode,
                     ["durationMs"] = executionResult.DurationMs,
-                    ["dockerImage"] = executionResult.DockerImage
+                    ["dockerImage"] = executionResult.DockerImage,
+                    // 📝 Capture errors for status display
+                    ["error"] = !executionResult.Success 
+                        ? (executionResult.Errors?.Length > 1000 
+                            ? executionResult.Errors.Substring(0, 1000) + "..." 
+                            : executionResult.Errors ?? "Unknown error")
+                        : null,
+                    ["output"] = executionResult.Success 
+                        ? (executionResult.Output?.Length > 500 
+                            ? executionResult.Output.Substring(0, 500) + "..." 
+                            : executionResult.Output)
+                        : null
                 };
                 EndPhase(jobId, executionPhase);
                 response.Timeline.Add(executionPhase);
@@ -328,7 +339,14 @@ public class TaskOrchestrator : ITaskOrchestrator
                     ["score"] = lastValidation.Score,
                     ["passed"] = lastValidation.Passed,
                     ["issueCount"] = lastValidation.Issues.Count,
-                    ["executionOutput"] = executionResult.Output
+                    ["executionOutput"] = executionResult.Output?.Length > 200 
+                        ? executionResult.Output.Substring(0, 200) + "..." 
+                        : executionResult.Output,
+                    // 📝 Capture feedback for status display
+                    ["feedback"] = lastValidation.Summary?.Length > 500 
+                        ? lastValidation.Summary.Substring(0, 500) + "..." 
+                        : lastValidation.Summary,
+                    ["topIssues"] = lastValidation.Issues.Take(3).Select(i => $"{i.Severity}: {i.Message}").ToList()
                 };
                 EndPhase(jobId, validationPhase);
                 response.Timeline.Add(validationPhase);

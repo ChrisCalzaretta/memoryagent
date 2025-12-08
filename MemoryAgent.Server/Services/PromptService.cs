@@ -922,6 +922,36 @@ public class PromptService : IPromptService, IDisposable
                 new() { Name = "lineEnd", Description = "End line number", IsRequired = true }
             },
             cancellationToken);
+        
+        // 🧠 Model Selection Prompt for Code Generation
+        await CreatePromptIfNotExistsAsync("coding_model_selector",
+            GetCodingModelSelectorPrompt(),
+            "Selects the best LLM model for code generation tasks based on historical performance and task analysis",
+            new List<PromptVariable>
+            {
+                new() { Name = "taskType", Description = "Type of task (code_generation, fix, etc.)", IsRequired = true },
+                new() { Name = "language", Description = "Programming language", IsRequired = true },
+                new() { Name = "taskDescription", Description = "Description of the coding task", IsRequired = true },
+                new() { Name = "historicalStats", Description = "Historical performance data table", IsRequired = true },
+                new() { Name = "newModels", Description = "List of new/untried models", IsRequired = false },
+                new() { Name = "availableModels", Description = "All available models", IsRequired = true }
+            },
+            cancellationToken);
+        
+        // 🧠 Model Selection Prompt for Validation
+        await CreatePromptIfNotExistsAsync("validation_model_selector",
+            GetValidationModelSelectorPrompt(),
+            "Selects the best LLM model for code validation tasks based on historical performance and task analysis",
+            new List<PromptVariable>
+            {
+                new() { Name = "language", Description = "Programming language", IsRequired = true },
+                new() { Name = "taskDescription", Description = "Description of validation task", IsRequired = true },
+                new() { Name = "fileCount", Description = "Number of files to validate", IsRequired = true },
+                new() { Name = "historicalStats", Description = "Historical performance data table", IsRequired = true },
+                new() { Name = "newModels", Description = "List of new/untried models", IsRequired = false },
+                new() { Name = "availableModels", Description = "All available models", IsRequired = true }
+            },
+            cancellationToken);
 
         _logger.LogInformation("✅ Default prompts initialized");
     }
@@ -1146,6 +1176,81 @@ Return JSON:
       ""new_code"": ""<{{componentName}} ... />""
     }
   ]
+}";
+
+    private string GetCodingModelSelectorPrompt() => @"You are a model selection expert for code generation tasks.
+
+Your job is to select the best LLM model for a coding task.
+
+SELECTION CRITERIA (in priority order):
+1. **Historical Performance** - Use models with proven success rates for this language/task
+2. **Model Size vs Task Complexity** - Simple tasks can use smaller/faster models
+3. **Language Expertise** - Some models specialize in certain languages
+4. **VRAM/Resource Efficiency** - Prefer smaller models when task allows
+5. **Exploration** - Occasionally try NEW untested models on simple tasks
+
+EXPLORATION GUIDELINES:
+- For SIMPLE tasks: 20% chance to try a new untested model
+- For MODERATE tasks: 10% chance to explore
+- For COMPLEX tasks: Stick with proven models (no exploration)
+- New models should gather at least 5 samples before being trusted
+
+CROSS-LANGUAGE LEARNING:
+- If Model A works well for Python, it likely works for similar languages (TypeScript, JavaScript)
+- If Model B works well for C#, it likely works for Java, Go
+- Use this knowledge when no direct historical data exists
+
+TIME-DECAY WEIGHTING:
+- Recent performance (last 24h) counts 3x
+- Last week counts 2x
+- Older data counts 1x
+
+OUTPUT FORMAT - Return JSON only:
+{
+    ""selectedModel"": ""model_name"",
+    ""reasoning"": ""brief explanation including why this model fits the task"",
+    ""taskComplexity"": ""simple|moderate|complex|very_complex"",
+    ""confidence"": 0.0-1.0,
+    ""isExploration"": true/false
+}";
+
+    private string GetValidationModelSelectorPrompt() => @"You are a model selection expert for code validation tasks.
+
+Your job is to select the best LLM model for validating code quality.
+
+VALIDATION-SPECIFIC CRITERIA:
+1. **Analytical Capability** - Validation needs strong reasoning, not just generation
+2. **Consistency** - Prefer models that give consistent scores across similar code
+3. **Historical Validation Performance** - Use models proven good at finding real issues
+4. **Speed** - Validation runs on every iteration, so speed matters
+
+SELECTION CRITERIA (in priority order):
+1. **Historical Performance** - Use models with proven validation success rates
+2. **Speed vs Depth Trade-off** - Quick validations can use smaller models
+3. **Language Expertise** - Models may validate some languages better than others
+4. **Exploration** - Try NEW untested models on small/simple validations
+
+EXPLORATION GUIDELINES:
+- For 1-2 files: Good opportunity to try new model (20% chance)
+- For 3-5 files: Moderate exploration (10% chance)
+- For 6+ files: Use proven models only
+
+CROSS-LANGUAGE LEARNING:
+- Validation logic is often similar across languages
+- If a model validates Python well, it likely validates TypeScript well
+- Use this knowledge when direct data is missing
+
+TIME-DECAY WEIGHTING:
+- Recent performance (last 24h) counts 3x
+- Last week counts 2x
+- Older data counts 1x
+
+OUTPUT FORMAT - Return JSON only:
+{
+    ""selectedModel"": ""model_name"",
+    ""reasoning"": ""brief explanation including why this model fits the validation"",
+    ""isExploration"": true/false,
+    ""confidence"": 0.0-1.0
 }";
 
     #endregion
