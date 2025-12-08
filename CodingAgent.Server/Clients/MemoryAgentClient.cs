@@ -40,14 +40,21 @@ public class MemoryAgentClient : IMemoryAgentClient
 
         try
         {
+            // Use proper JSONRPC format
             var request = new
             {
-                name = "manage_prompts",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    action = "list",
-                    name = promptName,
-                    activeOnly = true
+                    name = "manage_prompts",
+                    arguments = new
+                    {
+                        action = "list",
+                        name = promptName,
+                        activeOnly = true
+                    }
                 }
             };
 
@@ -56,25 +63,20 @@ public class MemoryAgentClient : IMemoryAgentClient
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogDebug("Got prompt from Lightning: {Content}", content);
                 
-                // Parse the MCP response to extract prompt content
-                // For now, return a default - actual implementation would parse MCP response structure
-                var prompt = new PromptInfo
+                // Try to parse prompt from Lightning response
+                var extractedPrompt = ExtractPromptFromResponse(content, promptName);
+                
+                if (extractedPrompt != null)
                 {
-                    Name = promptName,
-                    Content = GetDefaultPrompt(promptName),
-                    Version = 1,
-                    IsActive = true
-                };
-                
-                // Cache the result
-                _promptCache[promptName] = (prompt, DateTime.UtcNow);
-                return prompt;
+                    _logger.LogInformation("✅ Got prompt {PromptName} v{Version} from Lightning", 
+                        promptName, extractedPrompt.Version);
+                    _promptCache[promptName] = (extractedPrompt, DateTime.UtcNow);
+                    return extractedPrompt;
+                }
             }
 
-            _logger.LogWarning("Failed to get prompt {PromptName} from Lightning: {Status}", 
-                promptName, response.StatusCode);
+            _logger.LogDebug("Prompt {PromptName} not in Lightning, using default", promptName);
         }
         catch (Exception ex)
         {
@@ -82,28 +84,122 @@ public class MemoryAgentClient : IMemoryAgentClient
         }
 
         // Fallback to default
-        return new PromptInfo
+        var defaultPrompt = new PromptInfo
         {
             Name = promptName,
             Content = GetDefaultPrompt(promptName),
             Version = 0,
             IsActive = true
         };
+        
+        _promptCache[promptName] = (defaultPrompt, DateTime.UtcNow);
+        return defaultPrompt;
+    }
+    
+    /// <summary>
+    /// Extract prompt content from JSONRPC response
+    /// </summary>
+    private PromptInfo? ExtractPromptFromResponse(string jsonResponse, string promptName)
+    {
+        try
+        {
+            var doc = JsonDocument.Parse(jsonResponse);
+            
+            if (doc.RootElement.TryGetProperty("result", out var result) &&
+                result.TryGetProperty("content", out var contentArray))
+            {
+                foreach (var item in contentArray.EnumerateArray())
+                {
+                    if (item.TryGetProperty("text", out var textElement))
+                    {
+                        var text = textElement.GetString();
+                        if (!string.IsNullOrEmpty(text))
+                        {
+                            // Try to parse as JSON containing prompts
+                            try
+                            {
+                                var promptDoc = JsonDocument.Parse(text);
+                                
+                                // Look for prompts array or direct prompt object
+                                if (promptDoc.RootElement.TryGetProperty("prompts", out var prompts))
+                                {
+                                    foreach (var p in prompts.EnumerateArray())
+                                    {
+                                        var name = p.TryGetProperty("name", out var n) ? n.GetString() : "";
+                                        if (name == promptName)
+                                        {
+                                            return new PromptInfo
+                                            {
+                                                Name = promptName,
+                                                Content = p.TryGetProperty("content", out var c) ? c.GetString() ?? "" : GetDefaultPrompt(promptName),
+                                                Version = p.TryGetProperty("version", out var v) ? v.GetInt32() : 1,
+                                                IsActive = true
+                                            };
+                                        }
+                                    }
+                                }
+                                
+                                // Maybe it's a direct content string
+                                if (promptDoc.RootElement.TryGetProperty("content", out var directContent))
+                                {
+                                    return new PromptInfo
+                                    {
+                                        Name = promptName,
+                                        Content = directContent.GetString() ?? GetDefaultPrompt(promptName),
+                                        Version = 1,
+                                        IsActive = true
+                                    };
+                                }
+                            }
+                            catch
+                            {
+                                // Text might not be JSON, could be the prompt itself
+                                if (text.Length > 50 && !text.StartsWith("{"))
+                                {
+                                    return new PromptInfo
+                                    {
+                                        Name = promptName,
+                                        Content = text,
+                                        Version = 1,
+                                        IsActive = true
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not parse prompt response");
+        }
+        
+        return null;
     }
 
     public async Task<List<SimilarSolution>> FindSimilarSolutionsAsync(
         string task, string context, CancellationToken cancellationToken)
     {
+        var solutions = new List<SimilarSolution>();
+        
         try
         {
+            // Use proper JSONRPC format
             var request = new
             {
-                name = "find_similar_questions",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    question = task,
-                    context = context,
-                    limit = 5
+                    name = "find_similar_questions",
+                    arguments = new
+                    {
+                        question = task,
+                        context = context,
+                        limit = 5
+                    }
                 }
             };
 
@@ -112,11 +208,12 @@ public class MemoryAgentClient : IMemoryAgentClient
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogDebug("Got similar solutions from Lightning: {Content}", content);
+                solutions.AddRange(ExtractSolutionsFromResponse(content));
                 
-                // Parse MCP response - actual implementation would extract Q&A pairs
-                // For now, return empty list
-                return new List<SimilarSolution>();
+                if (solutions.Any())
+                {
+                    _logger.LogInformation("🔍 Found {Count} similar solutions from Lightning", solutions.Count);
+                }
             }
         }
         catch (Exception ex)
@@ -124,24 +221,92 @@ public class MemoryAgentClient : IMemoryAgentClient
             _logger.LogWarning(ex, "Error finding similar solutions from Lightning");
         }
 
-        return new List<SimilarSolution>();
+        return solutions;
+    }
+    
+    /// <summary>
+    /// Extract solutions from JSONRPC response
+    /// </summary>
+    private List<SimilarSolution> ExtractSolutionsFromResponse(string jsonResponse)
+    {
+        var solutions = new List<SimilarSolution>();
+        
+        try
+        {
+            var doc = JsonDocument.Parse(jsonResponse);
+            
+            if (doc.RootElement.TryGetProperty("result", out var result) &&
+                result.TryGetProperty("content", out var contentArray))
+            {
+                foreach (var item in contentArray.EnumerateArray())
+                {
+                    if (item.TryGetProperty("text", out var textElement))
+                    {
+                        var text = textElement.GetString();
+                        if (!string.IsNullOrEmpty(text))
+                        {
+                            try
+                            {
+                                var qaDoc = JsonDocument.Parse(text);
+                                
+                                // Look for matches array
+                                if (qaDoc.RootElement.TryGetProperty("matches", out var matches))
+                                {
+                                    foreach (var match in matches.EnumerateArray())
+                                    {
+                                        var solution = new SimilarSolution
+                                        {
+                                            Question = match.TryGetProperty("question", out var q) ? q.GetString() ?? "" : "",
+                                            Answer = match.TryGetProperty("answer", out var a) ? a.GetString() ?? "" : "",
+                                            Similarity = match.TryGetProperty("similarity", out var s) ? s.GetDouble() : 0.5
+                                        };
+                                        
+                                        if (!string.IsNullOrEmpty(solution.Question))
+                                            solutions.Add(solution);
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Not valid JSON
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not parse solutions response");
+        }
+        
+        return solutions;
     }
 
     public async Task<List<PatternInfo>> GetPatternsAsync(
         string task, string context, CancellationToken cancellationToken)
     {
+        var patterns = new List<PatternInfo>();
+        
         try
         {
+            // Use proper JSONRPC format to call get_context
             var request = new
             {
-                name = "get_context",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    task = task,
-                    context = context,
-                    includePatterns = true,
-                    includeQA = false,
-                    limit = 5
+                    name = "get_context",
+                    arguments = new
+                    {
+                        task = task,
+                        context = context,
+                        includePatterns = true,
+                        includeQA = false,
+                        limit = 5
+                    }
                 }
             };
 
@@ -150,11 +315,34 @@ public class MemoryAgentClient : IMemoryAgentClient
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogDebug("Got patterns from Lightning: {Content}", content);
                 
-                // Parse MCP response - actual implementation would extract patterns
-                // For now, return empty list
-                return new List<PatternInfo>();
+                // Parse JSONRPC response
+                var jsonDoc = JsonDocument.Parse(content);
+                
+                if (jsonDoc.RootElement.TryGetProperty("result", out var result) &&
+                    result.TryGetProperty("content", out var contentArray))
+                {
+                    foreach (var item in contentArray.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("text", out var textElement))
+                        {
+                            var text = textElement.GetString();
+                            if (!string.IsNullOrEmpty(text))
+                            {
+                                // Try to parse patterns from the response text
+                                patterns.AddRange(ExtractPatternsFromResponse(text));
+                            }
+                        }
+                    }
+                }
+                
+                _logger.LogInformation("🎯 Got {Count} patterns from Lightning for task", patterns.Count);
+            }
+            
+            // If no patterns from get_context, try manage_patterns
+            if (!patterns.Any())
+            {
+                patterns.AddRange(await GetManagedPatternsAsync(task, context, cancellationToken));
             }
         }
         catch (Exception ex)
@@ -162,7 +350,108 @@ public class MemoryAgentClient : IMemoryAgentClient
             _logger.LogWarning(ex, "Error getting patterns from Lightning");
         }
 
-        return new List<PatternInfo>();
+        return patterns;
+    }
+    
+    /// <summary>
+    /// Extract patterns from the MCP response text
+    /// </summary>
+    private List<PatternInfo> ExtractPatternsFromResponse(string responseText)
+    {
+        var patterns = new List<PatternInfo>();
+        
+        try
+        {
+            // Try to parse as JSON
+            var doc = JsonDocument.Parse(responseText);
+            
+            // Look for patterns array
+            if (doc.RootElement.TryGetProperty("patterns", out var patternsArray))
+            {
+                foreach (var p in patternsArray.EnumerateArray())
+                {
+                    var pattern = new PatternInfo
+                    {
+                        Name = p.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+                        Description = p.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
+                        BestPractice = p.TryGetProperty("recommendation", out var rec) ? rec.GetString() ?? "" : "",
+                        CodeExample = p.TryGetProperty("codeExample", out var code) ? code.GetString() ?? "" : ""
+                    };
+                    
+                    if (!string.IsNullOrEmpty(pattern.Name))
+                        patterns.Add(pattern);
+                }
+            }
+        }
+        catch
+        {
+            // Not JSON or doesn't have patterns structure
+        }
+        
+        return patterns;
+    }
+    
+    /// <summary>
+    /// Get patterns from manage_patterns tool
+    /// </summary>
+    private async Task<List<PatternInfo>> GetManagedPatternsAsync(string task, string context, CancellationToken cancellationToken)
+    {
+        var patterns = new List<PatternInfo>();
+        
+        try
+        {
+            var request = new
+            {
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
+                {
+                    name = "manage_patterns",
+                    arguments = new
+                    {
+                        action = "get_useful",
+                        context = context,
+                        limit = 5
+                    }
+                }
+            };
+            
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                var jsonDoc = JsonDocument.Parse(content);
+                
+                if (jsonDoc.RootElement.TryGetProperty("result", out var result) &&
+                    result.TryGetProperty("content", out var contentArray))
+                {
+                    foreach (var item in contentArray.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("text", out var textElement))
+                        {
+                            var text = textElement.GetString();
+                            if (!string.IsNullOrEmpty(text))
+                            {
+                                patterns.AddRange(ExtractPatternsFromResponse(text));
+                            }
+                        }
+                    }
+                }
+                
+                if (patterns.Any())
+                {
+                    _logger.LogInformation("🎯 Got {Count} useful patterns from manage_patterns", patterns.Count);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not get managed patterns");
+        }
+        
+        return patterns;
     }
 
     public async Task RecordPromptFeedbackAsync(
