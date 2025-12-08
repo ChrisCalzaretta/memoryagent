@@ -50,6 +50,7 @@ public class ValidationModelSelector : IValidationModelSelector
     private readonly string _selectorModel;  // Model used to make selection decisions
     private readonly int _ollamaPort;
     private readonly double _explorationRate;
+    private readonly bool _useSmartModelSelection;  // Whether to use LLM for model selection
     
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -73,6 +74,12 @@ public class ValidationModelSelector : IValidationModelSelector
                          config.GetValue<string>("Gpu:ValidationModel") ?? "phi4:latest";
         _ollamaPort = config.GetValue<int>("Ollama:Port", 11434);
         _explorationRate = config.GetValue<double>("ModelSelection:ExplorationRate", 0.1); // 10% exploration
+        _useSmartModelSelection = config.GetValue<bool>("Gpu:UseSmartModelSelection", true);
+        
+        if (!_useSmartModelSelection)
+        {
+            _logger.LogInformation("⚡ Smart validation model selection DISABLED - using {Model} only (optimal for single GPU)", _selectorModel);
+        }
     }
 
     public async Task<ValidationModelSelection> SelectModelAsync(
@@ -81,6 +88,19 @@ public class ValidationModelSelector : IValidationModelSelector
         int fileCount,
         CancellationToken cancellationToken = default)
     {
+        // ⚡ Fast path: Skip LLM selection when disabled (avoids model swap on single GPU)
+        if (!_useSmartModelSelection)
+        {
+            _logger.LogDebug("⚡ Smart selection disabled - using default model {Model}", _selectorModel);
+            return new ValidationModelSelection
+            {
+                Model = _selectorModel,
+                Reasoning = "Smart selection disabled - using configured validation model",
+                Confidence = 1.0,
+                IsWarmModel = true  // Assume it's warm since we're not swapping
+            };
+        }
+        
         try
         {
             // 1. Get available models from Ollama
@@ -309,13 +329,16 @@ EXPLORATION GUIDELINES:
 - If task is COMPLEX, stick with proven models
 - New models should be tried on low-risk tasks first
 
-OUTPUT FORMAT - Return JSON only:
+🚨 CRITICAL: OUTPUT ONLY RAW JSON - NO EXPLANATION, NO MARKDOWN, NO CODE BLOCKS!
+
 {
-    ""selectedModel"": ""model_name"",
+    ""selectedModel"": ""model_name_here"",
     ""reasoning"": ""brief explanation"",
-    ""isExploration"": true/false,
-    ""confidence"": 0.0-1.0
-}";
+    ""isExploration"": false,
+    ""confidence"": 0.85
+}
+
+DO NOT wrap in ```json``` blocks. DO NOT add any text before or after the JSON.";
     }
 
     private string BuildSelectionPrompt(
@@ -417,14 +440,20 @@ OUTPUT FORMAT - Return JSON only:
     {
         try
         {
-            var jsonMatch = Regex.Match(response, @"\{[\s\S]*\}", RegexOptions.Singleline);
-            if (!jsonMatch.Success)
+            // Log raw response for debugging
+            _logger.LogDebug("Raw LLM response for validation model selection: {Response}", 
+                response.Length > 500 ? response[..500] + "..." : response);
+            
+            // Try multiple extraction methods
+            var json = ExtractJsonFromResponse(response);
+            if (string.IsNullOrEmpty(json))
             {
-                _logger.LogWarning("No JSON found in LLM response");
+                _logger.LogWarning("No JSON found in LLM response. Response preview: {Preview}", 
+                    response.Length > 200 ? response[..200] : response);
                 return new ValidationModelSelection { Model = _selectorModel, Reasoning = "Could not parse response" };
             }
             
-            var parsed = JsonSerializer.Deserialize<LlmSelectionResponse>(jsonMatch.Value, JsonOptions);
+            var parsed = JsonSerializer.Deserialize<LlmSelectionResponse>(json, JsonOptions);
             
             if (parsed != null && !string.IsNullOrEmpty(parsed.SelectedModel))
             {
@@ -451,6 +480,44 @@ OUTPUT FORMAT - Return JSON only:
         }
         
         return new ValidationModelSelection { Model = _selectorModel, Reasoning = "Parse failed - using default" };
+    }
+
+    /// <summary>
+    /// Extract JSON from LLM response, handling various formats:
+    /// - Raw JSON
+    /// - Markdown code blocks (```json ... ```)
+    /// - JSON with surrounding text
+    /// </summary>
+    private string? ExtractJsonFromResponse(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
+        
+        // Method 1: Try to find JSON in markdown code block
+        var markdownMatch = Regex.Match(response, @"```(?:json)?\s*\n?\s*(\{[\s\S]*?\})\s*\n?```", RegexOptions.Singleline);
+        if (markdownMatch.Success)
+        {
+            _logger.LogDebug("Extracted JSON from markdown code block");
+            return markdownMatch.Groups[1].Value.Trim();
+        }
+        
+        // Method 2: Find raw JSON object (greedy - takes first complete object)
+        var jsonMatch = Regex.Match(response, @"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", RegexOptions.Singleline);
+        if (jsonMatch.Success)
+        {
+            _logger.LogDebug("Extracted raw JSON object");
+            return jsonMatch.Value.Trim();
+        }
+        
+        // Method 3: Try the whole response if it looks like JSON
+        var trimmed = response.Trim();
+        if (trimmed.StartsWith("{") && trimmed.EndsWith("}"))
+        {
+            _logger.LogDebug("Response is raw JSON");
+            return trimmed;
+        }
+        
+        return null;
     }
 
     private ValidationModelSelection GetFallbackSelection(

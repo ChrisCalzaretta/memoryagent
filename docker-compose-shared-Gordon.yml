@@ -179,6 +179,8 @@ services:
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
       - Gpu__PrimaryModel=deepseek-coder-v2:16b
+      # ⚡ Single GPU: Disable smart selection to avoid model thrashing
+      - Gpu__UseSmartModelSelection=false
       # 🗂️ Path translation: Windows paths → container paths
       - PathMapping__HostRoot=h:\code\git
       - PathMapping__ContainerRoot=/workspace
@@ -209,10 +211,11 @@ services:
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       - Ollama__Url=http://10.10.1.114:11434
       - Gpu__ValidationModel=phi4:latest
-      # Dual GPU support (configure based on Gordon's GPU setup)
+      # Single GPU: Disable smart selection to avoid model thrashing
       - Gpu__DualGpu=false
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
+      - Gpu__UseSmartModelSelection=false
     depends_on:
       mcp-server:
         condition: service_healthy

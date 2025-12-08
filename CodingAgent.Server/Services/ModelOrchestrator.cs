@@ -61,12 +61,18 @@ public partial class ModelOrchestrator : IModelOrchestrator
             EmbeddingModel = config.GetValue<string>("Gpu:EmbeddingModel") ?? "mxbai-embed-large:latest",
             PinnedGpuVram = config.GetValue<int>("Gpu:PinnedGpuVram", 16),
             SwapGpuVram = config.GetValue<int>("Gpu:SwapGpuVram", 24),
-            PinnedModelsVram = config.GetValue<int>("Gpu:PinnedModelsVram", 11)
+            PinnedModelsVram = config.GetValue<int>("Gpu:PinnedModelsVram", 11),
+            UseSmartModelSelection = config.GetValue<bool>("Gpu:UseSmartModelSelection", true)
         };
         
         _logger.LogInformation(
-            "ModelOrchestrator initialized: BaseHost={BaseHost}, DualGpu={DualGpu}, Primary={Primary}, PinnedPort={PinnedPort}",
-            _baseHost, Config.DualGpu, Config.PrimaryModel, Config.PinnedPort);
+            "ModelOrchestrator initialized: BaseHost={BaseHost}, DualGpu={DualGpu}, Primary={Primary}, PinnedPort={PinnedPort}, SmartSelection={SmartSelection}",
+            _baseHost, Config.DualGpu, Config.PrimaryModel, Config.PinnedPort, Config.UseSmartModelSelection);
+        
+        if (!Config.UseSmartModelSelection)
+        {
+            _logger.LogInformation("⚡ Smart model selection DISABLED - using primary model only (optimal for single GPU)");
+        }
     }
     
     /// <summary>
@@ -477,6 +483,17 @@ public partial class ModelOrchestrator
             .Where(m => !excludeModels.Contains(m))
             .ToList();
         
+        // 🔧 FIX: If all models are excluded, fall back to primary model
+        // This prevents the "no available models" error when retrying with the only model
+        if (!availableModels.Any() && excludeModels.Any())
+        {
+            var (primaryModel, primaryPort) = GetPrimaryModel();
+            _logger.LogWarning(
+                "All models excluded ({Excluded}), falling back to primary model {Primary}",
+                string.Join(", ", excludeModels), primaryModel);
+            return (primaryModel, primaryPort);
+        }
+        
         // STEP 1: Get historical stats from MemoryAgent
         List<ModelStats> historicalStats = new();
         if (_memoryAgent != null)
@@ -494,8 +511,9 @@ public partial class ModelOrchestrator
         }
         
         // STEP 2: Use LLM to analyze task and confirm/adjust model selection
+        // Skip if UseSmartModelSelection is disabled (saves model swap on single GPU)
         var typedLlmSelector = llmSelector as ILlmModelSelector;
-        if (typedLlmSelector != null && !string.IsNullOrEmpty(taskDescription))
+        if (Config.UseSmartModelSelection && typedLlmSelector != null && !string.IsNullOrEmpty(taskDescription))
         {
             try
             {

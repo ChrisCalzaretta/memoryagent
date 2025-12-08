@@ -272,13 +272,16 @@ EXPLORATION GUIDELINES:
 - If task is COMPLEX, stick with proven models
 - New models should be tried on low-risk tasks first
 
-OUTPUT FORMAT - Return JSON only:
+🚨 CRITICAL: OUTPUT ONLY RAW JSON - NO EXPLANATION, NO MARKDOWN, NO CODE BLOCKS!
+
 {
-    ""selectedModel"": ""model_name"",
+    ""selectedModel"": ""model_name_here"",
     ""reasoning"": ""brief explanation"",
     ""taskComplexity"": ""simple|moderate|complex|very_complex"",
-    ""confidence"": 0.0-1.0
-}";
+    ""confidence"": 0.85
+}
+
+DO NOT wrap in ```json``` blocks. DO NOT add any text before or after the JSON.";
     }
 
     private string BuildSelectionPrompt(
@@ -398,15 +401,18 @@ OUTPUT FORMAT - Return JSON only:
     {
         try
         {
-            // Extract JSON from response (may have markdown formatting)
-            var jsonMatch = Regex.Match(response, @"\{[\s\S]*\}", RegexOptions.Singleline);
-            if (!jsonMatch.Success)
+            // Log raw response for debugging
+            _logger.LogDebug("Raw LLM response for model selection: {Response}", 
+                response.Length > 500 ? response[..500] + "..." : response);
+            
+            // Try multiple extraction methods
+            var json = ExtractJsonFromResponse(response);
+            if (string.IsNullOrEmpty(json))
             {
-                _logger.LogWarning("No JSON found in LLM response");
+                _logger.LogWarning("No JSON found in LLM response. Response preview: {Preview}", 
+                    response.Length > 200 ? response[..200] : response);
                 return GetDefaultRecommendation(historicalStats, availableModels, loadedModels);
             }
-            
-            var json = jsonMatch.Value;
             var parsed = JsonSerializer.Deserialize<LlmCodingSelectionResponse>(json, JsonOptions);
             
             if (parsed != null && !string.IsNullOrEmpty(parsed.SelectedModel))
@@ -439,6 +445,44 @@ OUTPUT FORMAT - Return JSON only:
         }
         
         return GetDefaultRecommendation(historicalStats, availableModels, loadedModels);
+    }
+
+    /// <summary>
+    /// Extract JSON from LLM response, handling various formats:
+    /// - Raw JSON
+    /// - Markdown code blocks (```json ... ```)
+    /// - JSON with surrounding text
+    /// </summary>
+    private string? ExtractJsonFromResponse(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
+        
+        // Method 1: Try to find JSON in markdown code block
+        var markdownMatch = Regex.Match(response, @"```(?:json)?\s*\n?\s*(\{[\s\S]*?\})\s*\n?```", RegexOptions.Singleline);
+        if (markdownMatch.Success)
+        {
+            _logger.LogDebug("Extracted JSON from markdown code block");
+            return markdownMatch.Groups[1].Value.Trim();
+        }
+        
+        // Method 2: Find raw JSON object (greedy - takes first complete object)
+        var jsonMatch = Regex.Match(response, @"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", RegexOptions.Singleline);
+        if (jsonMatch.Success)
+        {
+            _logger.LogDebug("Extracted raw JSON object");
+            return jsonMatch.Value.Trim();
+        }
+        
+        // Method 3: Try the whole response if it looks like JSON
+        var trimmed = response.Trim();
+        if (trimmed.StartsWith("{") && trimmed.EndsWith("}"))
+        {
+            _logger.LogDebug("Response is raw JSON");
+            return trimmed;
+        }
+        
+        return null;
     }
 
     private LlmModelRecommendation GetDefaultRecommendation(
