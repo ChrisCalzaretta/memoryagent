@@ -952,6 +952,42 @@ public class PromptService : IPromptService, IDisposable
                 new() { Name = "availableModels", Description = "All available models", IsRequired = true }
             },
             cancellationToken);
+        
+        // 🎨 Design Agent Prompts
+        await CreatePromptIfNotExistsAsync("brand_generation",
+            GetBrandGenerationPrompt(),
+            "Generates creative brand suggestions including colors, fonts, taglines, and voice guidelines",
+            new List<PromptVariable>
+            {
+                new() { Name = "brandName", Description = "Name of the brand", IsRequired = true },
+                new() { Name = "industry", Description = "Industry/sector", IsRequired = true },
+                new() { Name = "targetAudience", Description = "Target audience description", IsRequired = true },
+                new() { Name = "description", Description = "Brand description", IsRequired = true },
+                new() { Name = "stylePreferences", Description = "User style preferences", IsRequired = false }
+            },
+            cancellationToken);
+        
+        await CreatePromptIfNotExistsAsync("design_validation",
+            GetDesignValidationPrompt(),
+            "Validates UI code against brand guidelines and explains issues with fixes",
+            new List<PromptVariable>
+            {
+                new() { Name = "code", Description = "Code to validate", IsRequired = true },
+                new() { Name = "brand", Description = "Brand definition", IsRequired = true },
+                new() { Name = "issues", Description = "List of detected issues", IsRequired = true }
+            },
+            cancellationToken);
+        
+        await CreatePromptIfNotExistsAsync("design_model_selector",
+            GetDesignModelSelectorPrompt(),
+            "Selects the best LLM model for design tasks based on historical performance",
+            new List<PromptVariable>
+            {
+                new() { Name = "taskType", Description = "Type of design task", IsRequired = true },
+                new() { Name = "taskDescription", Description = "Description of the design task", IsRequired = true },
+                new() { Name = "historicalStats", Description = "Historical performance data", IsRequired = false }
+            },
+            cancellationToken);
 
         _logger.LogInformation("✅ Default prompts initialized");
     }
@@ -1212,6 +1248,83 @@ OUTPUT FORMAT - Return JSON only:
     ""taskComplexity"": ""simple|moderate|complex|very_complex"",
     ""confidence"": 0.0-1.0,
     ""isExploration"": true/false
+}";
+
+    private string GetBrandGenerationPrompt() => @"You are a creative brand strategist and UX designer.
+
+Your job is to generate creative, cohesive brand suggestions that:
+1. Align with the industry and target audience
+2. Create emotional resonance
+3. Are practical for UI implementation
+4. Stand out from competitors
+
+Be creative but practical. Suggest specific hex colors, real font names, and actionable guidelines.
+
+OUTPUT FORMAT - Return JSON:
+{
+    ""creativeTagline"": ""A memorable tagline"",
+    ""colorSuggestions"": [""#HEX1"", ""#HEX2"", ""#HEX3""],
+    ""fontSuggestions"": [""Primary Font"", ""Secondary Font""],
+    ""brandStory"": ""Brief brand narrative (2-3 sentences)"",
+    ""personalityTraits"": [""trait1"", ""trait2"", ""trait3""],
+    ""voiceTone"": ""Description of voice and tone"",
+    ""componentIdeas"": {
+        ""buttons"": ""style description"",
+        ""cards"": ""style description"",
+        ""navigation"": ""style description""
+    }
+}";
+
+    private string GetDesignValidationPrompt() => @"You are a UX design expert reviewing code against brand guidelines.
+
+Your job is to:
+1. Explain WHY each design issue matters (user impact, brand impact)
+2. Provide specific, actionable fixes with actual code
+3. Prioritize issues by impact
+4. Suggest quick wins for immediate improvement
+
+Be constructive and educational. Help developers understand design principles, not just rules.
+
+OUTPUT FORMAT - Return JSON:
+{
+    ""summary"": ""Overall assessment in 1-2 sentences"",
+    ""issueExplanations"": [
+        {
+            ""issue"": ""Issue description"",
+            ""whyItMatters"": ""Why this matters for users and brand"",
+            ""howToFix"": ""Step-by-step fix instructions"",
+            ""fixCode"": ""Corrected code snippet""
+        }
+    ],
+    ""overallRecommendation"": ""Final recommendation"",
+    ""quickWins"": [""Easy fix 1"", ""Easy fix 2"", ""Easy fix 3""]
+}";
+
+    private string GetDesignModelSelectorPrompt() => @"You are a model selection expert for UI/UX design tasks.
+
+Your job is to select the best LLM model for design-related tasks like:
+- Brand guideline generation
+- Design validation and suggestions
+- Color palette recommendations
+- Typography suggestions
+- Accessibility improvements
+
+SELECTION CRITERIA (in priority order):
+1. **🔥 WARM MODELS** - Strongly prefer already-loaded models (10-30s faster!)
+2. **Historical performance** - Use models with proven success for design tasks
+3. **Creative capability** - Design tasks benefit from creative/generative models
+4. **Speed** - Design feedback should be quick
+
+DESIGN-SPECIFIC CONSIDERATIONS:
+- Design tasks need good understanding of colors, typography, spacing
+- Models should be able to explain WHY design choices are good/bad
+- Larger models often better at nuanced design feedback
+
+OUTPUT FORMAT - Return JSON only:
+{
+    ""selectedModel"": ""model_name"",
+    ""reasoning"": ""brief explanation"",
+    ""confidence"": 0.0-1.0
 }";
 
     private string GetValidationModelSelectorPrompt() => @"You are a model selection expert for code validation tasks.
