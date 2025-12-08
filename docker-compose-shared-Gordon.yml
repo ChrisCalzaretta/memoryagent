@@ -9,7 +9,7 @@ services:
     volumes:
       - d:\Memory\shared\memory:/data/memory
       - d:\Memory\shared\logs:/data/logs
-      - h:\code\git:/workspace:ro
+      - h:\code\git:/workspace:rw
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5000
@@ -31,13 +31,22 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      # Ollama runs externally on localhost:11434
+      # Ollama runs externally at 10.10.1.114:11434
     deploy:
       resources:
         limits:
           memory: 108G
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # GRACEFUL SHUTDOWN: Stop MCP server FIRST before databases
+    # Gives .NET app 30s to close Neo4j/Qdrant connections cleanly
+    stop_grace_period: 30s
     restart: unless-stopped
 
   qdrant:
@@ -60,6 +69,8 @@ services:
           memory: 10G
     networks:
       - memory-net
+    # GRACEFUL SHUTDOWN: Give Qdrant 60s to flush data and close cleanly
+    stop_grace_period: 60s
     restart: unless-stopped
 
   neo4j:
@@ -93,12 +104,16 @@ services:
           memory: 10G
     networks:
       - memory-net
+    # GRACEFUL SHUTDOWN: Give Neo4j 120s to flush transactions and close cleanly
+    # Neo4j needs more time than Qdrant due to transaction log flushing
+    stop_grace_period: 120s
     restart: unless-stopped
 
-  # Ollama runs externally on localhost:11434
+  # Ollama runs externally at 10.10.1.114:11434
   # Start with: ollama serve (or your local Ollama setup)
 
   # CodingOrchestrator - Coordinates the multi-agent workflow
+  # 🐳 NOW WITH DOCKER EXECUTION - actually runs generated code!
   # 💾 NOW WITH JOB PERSISTENCE - survives container restarts!
   coding-orchestrator:
     build:
@@ -108,6 +123,10 @@ services:
     ports:
       - "5003:5003"
     volumes:
+      # 🐳 Docker socket for code execution in containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Temp directory for code execution
+      - /tmp:/tmp
       # 💾 Job persistence - survives container restarts
       - d:\Memory\shared\memory:/data/memory
       # 📁 Workspace access for reading/writing code files
@@ -124,12 +143,19 @@ services:
       - PathMapping__HostRoot=h:\code\git
       - PathMapping__ContainerRoot=/workspace
     depends_on:
-      - mcp-server
-      - coding-agent
-      - validation-agent
-      - design-agent
+      mcp-server:
+        condition: service_healthy
+      coding-agent:
+        condition: service_healthy
+      validation-agent:
+        condition: service_healthy
+      design-agent:
+        condition: service_healthy
     networks:
       - memory-net
+    # Need elevated permissions for Docker socket access
+    privileged: false
+    user: root
     restart: unless-stopped
 
   # CodingAgent - Generates and fixes code using LLM
@@ -147,17 +173,29 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5001
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - Ollama__Url=http://memory-agent-ollama:11434
+      - Ollama__Url=http://10.10.1.114:11434
+      # Dual GPU support (configure based on Gordon's GPU setup)
+      - Gpu__DualGpu=false
+      - Gpu__PinnedPort=11434
+      - Gpu__SwapPort=11435
+      - Gpu__PrimaryModel=qwen2.5-coder:14b
       # 🗂️ Path translation: Windows paths → container paths
       - PathMapping__HostRoot=h:\code\git
       - PathMapping__ContainerRoot=/workspace
     depends_on:
-      - mcp-server
+      mcp-server:
+        condition: service_healthy
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
-  # ValidationAgent - Validates code quality
+  # ValidationAgent - Validates code quality with LLM
   validation-agent:
     build:
       context: .
@@ -170,13 +208,25 @@ services:
       - ASPNETCORE_URLS=http://+:5002
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       - Ollama__Url=http://10.10.1.114:11434
+      - Gpu__ValidationModel=phi4:latest
+      # Dual GPU support (configure based on Gordon's GPU setup)
+      - Gpu__DualGpu=false
+      - Gpu__PinnedPort=11434
+      - Gpu__SwapPort=11435
     depends_on:
-      - mcp-server
+      mcp-server:
+        condition: service_healthy
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
-  # DesignAgent - UX Design system, brand guidelines, validation
+  # DesignAgent - UX Design system, brand guidelines, validation (now with LLM!)
   design-agent:
     build:
       context: .
@@ -188,14 +238,24 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5004
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+      # 🧠 LLM for creative brand generation and intelligent validation
+      - Ollama__Url=http://10.10.1.114:11434
+      - Ollama__Port=11434
+      - Ollama__DefaultModel=deepseek-coder-v2:16b
     depends_on:
-      - mcp-server
+      mcp-server:
+        condition: service_healthy
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
 networks:
   memory-net:
     name: memory-shared-net
     driver: bridge
-
