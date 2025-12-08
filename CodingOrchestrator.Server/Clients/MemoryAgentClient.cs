@@ -311,3 +311,18 @@ Be strict but fair. Focus on real issues, not style preferences.",
     };
 }
 
+/// <summary>
+/// MCP call response wrapper
+/// </summary>
+internal class McpCallResponse
+{
+    public List<McpContent>? Content { get; set; }
+    public bool IsError { get; set; }
+}
+
+internal class McpContent
+{
+    public string? Type { get; set; }
+    public string? Text { get; set; }
+}
+
