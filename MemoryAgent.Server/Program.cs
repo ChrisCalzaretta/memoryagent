@@ -96,6 +96,9 @@ builder.Services.AddScoped<IMcpToolHandler, CodeUnderstandingToolHandler>();// 2
 // 🧠 MODEL LEARNING: Internal tools for CodingAgent (NOT exposed to Cursor)
 builder.Services.AddScoped<IMcpToolHandler, ModelLearningToolHandler>();   // store_model_performance, query_best_model, get_model_stats
 
+// 🚀 SMART CODE GENERATION: Tools for intelligent code generation
+builder.Services.AddScoped<IMcpToolHandler, SmartCodegenToolHandler>();    // generate_task_plan, get_project_symbols, validate_imports, store_successful_task, query_similar_tasks
+
 // Workspace handler (kept separate - auto-called by wrapper, not visible to AI)
 builder.Services.AddScoped<IMcpToolHandler, WorkspaceToolHandler>();
 

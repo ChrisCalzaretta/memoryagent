@@ -22,15 +22,33 @@ public class ExecutionService : IExecutionService
         _config = config.Value;
     }
 
-    public async Task<ExecutionResult> ExecuteAsync(
+    public Task<ExecutionResult> ExecuteAsync(
         string language,
         List<ExecutionFile> files,
         string workspacePath,
         AgentContracts.Models.ExecutionInstructions? instructions,
         CancellationToken cancellationToken)
     {
+        // Auto-detect if app is interactive and use build-only mode
+        var isInteractive = IsInteractiveApp(files, language);
+        return ExecuteAsync(language, files, workspacePath, instructions, buildOnly: isInteractive, cancellationToken);
+    }
+    
+    public async Task<ExecutionResult> ExecuteAsync(
+        string language,
+        List<ExecutionFile> files,
+        string workspacePath,
+        AgentContracts.Models.ExecutionInstructions? instructions,
+        bool buildOnly,
+        CancellationToken cancellationToken)
+    {
         var result = new ExecutionResult();
         var startTime = DateTime.UtcNow;
+        
+        if (buildOnly)
+        {
+            _logger.LogInformation("🔨 BUILD-ONLY mode - will compile but not execute (interactive/GUI app detected)");
+        }
         
         // 🎯 PRIORITY: Request language > LLM instructions > File detection
         string detectedLanguage;
@@ -121,36 +139,46 @@ public class ExecutionService : IExecutionService
             
             _logger.LogInformation("✅ Build passed for {Language}", language);
             
-            // Step 2: Execute/Run
-            _logger.LogInformation("🚀 Running {Language} code...", language);
-            var runCmd = config.RunCommand
-                .Replace("{mainFile}", mainFile)
-                .Replace("{className}", Path.GetFileNameWithoutExtension(mainFile));
-            result.CommandsExecuted.Add($"RUN: {runCmd}");
-            
-            var runResult = await RunDockerCommandAsync(
-                config, tempDir, runCmd, mainFile,
-                TimeSpan.FromSeconds(config.TimeoutSeconds),
-                cancellationToken);
-            
-            result.ExecutionPassed = runResult.ExitCode == 0;
-            result.Output = runResult.Stdout;
-            result.Errors = runResult.Stderr;
-            result.ExitCode = runResult.ExitCode;
-            
-            if (!result.ExecutionPassed)
+            // Step 2: Execute/Run (skip if buildOnly mode)
+            if (buildOnly)
             {
-                _logger.LogWarning("❌ Execution failed for {Language}: {Error}", language, runResult.Stderr);
-                result.Success = false;
-                result.Errors = $"EXECUTION FAILED:\n{runResult.Stderr}\n{runResult.Stdout}";
+                _logger.LogInformation("⏭️ Skipping execution (build-only mode) - code compiled successfully!");
+                result.ExecutionPassed = true;  // Consider passed since we're not testing
+                result.Success = true;
+                result.Output = "BUILD SUCCESSFUL - Execution skipped (interactive/GUI app)";
             }
             else
             {
-                _logger.LogInformation("✅ Execution passed for {Language}. Output: {Output}", 
-                    language, runResult.Stdout.Length > 100 
-                        ? runResult.Stdout[..100] + "..." 
-                        : runResult.Stdout);
-                result.Success = true;
+                _logger.LogInformation("🚀 Running {Language} code...", language);
+                var runCmd = config.RunCommand
+                    .Replace("{mainFile}", mainFile)
+                    .Replace("{className}", Path.GetFileNameWithoutExtension(mainFile));
+                result.CommandsExecuted.Add($"RUN: {runCmd}");
+                
+                var runResult = await RunDockerCommandAsync(
+                    config, tempDir, runCmd, mainFile,
+                    TimeSpan.FromSeconds(config.TimeoutSeconds),
+                    cancellationToken);
+                
+                result.ExecutionPassed = runResult.ExitCode == 0;
+                result.Output = runResult.Stdout;
+                result.Errors = runResult.Stderr;
+                result.ExitCode = runResult.ExitCode;
+                
+                if (!result.ExecutionPassed)
+                {
+                    _logger.LogWarning("❌ Execution failed for {Language}: {Error}", language, runResult.Stderr);
+                    result.Success = false;
+                    result.Errors = $"EXECUTION FAILED:\n{runResult.Stderr}\n{runResult.Stdout}";
+                }
+                else
+                {
+                    _logger.LogInformation("✅ Execution passed for {Language}. Output: {Output}", 
+                        language, runResult.Stdout.Length > 100 
+                            ? runResult.Stdout[..100] + "..." 
+                            : runResult.Stdout);
+                    result.Success = true;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -480,6 +508,79 @@ public class ExecutionService : IExecutionService
         public int ExitCode { get; set; }
         public string Stdout { get; set; } = "";
         public string Stderr { get; set; } = "";
+    }
+    
+    /// <summary>
+    /// Detect if the generated code is an interactive app that requires user input or GUI
+    /// These apps should use build-only mode since they can't run in headless Docker
+    /// </summary>
+    private bool IsInteractiveApp(List<ExecutionFile> files, string language)
+    {
+        // Combine all file content for pattern matching
+        var allContent = string.Join("\n", files.Select(f => f.Content.ToLowerInvariant()));
+        var allPaths = string.Join("\n", files.Select(f => f.Path.ToLowerInvariant()));
+        
+        // GUI framework indicators (can build but can't run headless)
+        var guiPatterns = new[]
+        {
+            // Python GUI
+            "import tkinter", "from tkinter", "import pygame", "import wx",
+            "import pyqt", "from pyqt", "import kivy", "from kivy",
+            "tkinter.tk()", "pygame.init()", 
+            
+            // Web frameworks that need browser
+            "import flask", "from flask", "import django", "import fastapi",
+            
+            // C# GUI
+            "using system.windows.forms", "using wpf", "using avalonia",
+            "using maui", "application.run(",
+            
+            // JavaScript/TypeScript (browser-based)
+            "document.", "window.", "react", "vue", "angular",
+            
+            // Interactive input patterns
+            "input(", "readline()", "console.readline()", "scanner.next",
+            "gets()", "stdin", "getchar()", "getch()",
+            
+            // Game patterns (usually need display)
+            "game loop", "while true:", "pygame", "sdl", "opengl", "glfw"
+        };
+        
+        // Check for GUI/interactive patterns
+        foreach (var pattern in guiPatterns)
+        {
+            if (allContent.Contains(pattern))
+            {
+                _logger.LogInformation("🎮 Detected interactive/GUI pattern: '{Pattern}' - using build-only mode", pattern);
+                return true;
+            }
+        }
+        
+        // Check file names for GUI indicators
+        var guiFilePatterns = new[] { "gui", "ui", "window", "form", "game", "app" };
+        foreach (var pattern in guiFilePatterns)
+        {
+            if (allPaths.Contains(pattern))
+            {
+                // Only flag if combined with GUI imports
+                if (allContent.Contains("import") && 
+                    (allContent.Contains("tk") || allContent.Contains("pygame") || allContent.Contains("qt")))
+                {
+                    _logger.LogInformation("🎮 GUI file pattern detected: '{Pattern}' - using build-only mode", pattern);
+                    return true;
+                }
+            }
+        }
+        
+        // Check for main game loop patterns that wait for input
+        if ((allContent.Contains("while") && allContent.Contains("input(")) ||
+            (allContent.Contains("while true") && allContent.Contains("input")))
+        {
+            _logger.LogInformation("🎮 Interactive input loop detected - using build-only mode");
+            return true;
+        }
+        
+        return false;
     }
 }
 

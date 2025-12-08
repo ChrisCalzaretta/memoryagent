@@ -8,7 +8,7 @@
 
 param(
     [string]$PrimaryModel = "deepseek-coder-v2:16b",      # ~11GB - Code generation
-    [string]$ValidationModel = "phi3.5:3.8b",             # ~2.5GB - Validation (fast!)
+    [string]$ValidationModel = "phi4:latest",             # ~2.5GB - Validation (fast!)
     [string]$EmbeddingModel = "mxbai-embed-large:latest"  # ~0.7GB - Embeddings
 )
 

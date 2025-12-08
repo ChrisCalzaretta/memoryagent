@@ -160,6 +160,72 @@ public class TaskOrchestrator : ITaskOrchestrator
             
             // 🧠 TASK LEARNING: Query lessons from similar failed tasks
             var taskLessons = await QueryLessonsForTaskAsync(request, cancellationToken);
+            
+            // 📋 SMART CODEGEN Phase: Generate plan before coding
+            UpdateProgress(jobId, TaskState.Running, 12, "Generating task plan", 0);
+            var planPhase = StartPhase("plan_generation");
+            TaskPlan? taskPlan = null;
+            ProjectSymbols? projectSymbols = null;
+            SimilarTasksResult? similarTasks = null;
+            DesignContext? designContext = null;
+            
+            try
+            {
+                // 📋 Generate execution plan with checklist
+                taskPlan = await _memoryAgent.GeneratePlanAsync(
+                    request.Task, 
+                    request.Language ?? "python", 
+                    request.Context, 
+                    cancellationToken);
+                _logger.LogInformation("📋 Generated plan with {Steps} steps", taskPlan.Steps.Count);
+                
+                // 🔍 Get project symbols for context
+                projectSymbols = await _memoryAgent.GetProjectSymbolsAsync(request.Context, cancellationToken);
+                _logger.LogInformation("🔍 Retrieved {Classes} classes, {Functions} functions", 
+                    projectSymbols.Classes.Count, projectSymbols.Functions.Count);
+                
+                // 🔎 Query similar successful tasks
+                similarTasks = await _memoryAgent.QuerySimilarSuccessfulTasksAsync(
+                    request.Task, 
+                    request.Language ?? "python", 
+                    cancellationToken);
+                if (similarTasks.FoundTasks > 0)
+                {
+                    _logger.LogInformation("🔎 Found {Count} similar successful tasks", similarTasks.FoundTasks);
+                }
+                
+                // 🎨 Get design context for UI tasks
+                if (IsUITask(request.Task))
+                {
+                    designContext = await _memoryAgent.GetDesignContextAsync(request.Context, cancellationToken);
+                    if (designContext != null)
+                    {
+                        _logger.LogInformation("🎨 Retrieved design context: {Brand}", designContext.BrandName);
+                    }
+                }
+                
+                planPhase.Details = new Dictionary<string, object>
+                {
+                    ["planId"] = taskPlan.PlanId,
+                    ["stepsCount"] = taskPlan.Steps.Count,
+                    ["requiredClasses"] = taskPlan.RequiredClasses,
+                    ["dependencyOrder"] = taskPlan.DependencyOrder,
+                    ["symbolsCount"] = (projectSymbols?.Classes.Count ?? 0) + (projectSymbols?.Functions.Count ?? 0),
+                    ["similarTasksFound"] = similarTasks?.FoundTasks ?? 0,
+                    ["hasDesignContext"] = designContext != null
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "⚠️ Plan generation failed - proceeding without plan (degraded mode)");
+                planPhase.Details = new Dictionary<string, object>
+                {
+                    ["status"] = "degraded",
+                    ["error"] = ex.Message
+                };
+            }
+            EndPhase(jobId, planPhase);
+            response.Timeline.Add(planPhase);
 
             while (iteration < effectiveMaxIterations)
             {
@@ -191,9 +257,54 @@ public class TaskOrchestrator : ITaskOrchestrator
                     ? $"\n\n{taskLessons.AvoidanceAdvice}\n\n✅ SUGGESTED APPROACHES:\n{string.Join("\n", taskLessons.SuggestedApproaches.Select(a => $"- {a}"))}"
                     : "";
                 
+                // 📋 Include plan context
+                var planSection = "";
+                if (taskPlan != null && taskPlan.Steps.Any())
+                {
+                    planSection = $"\n\n📋 EXECUTION PLAN:\n";
+                    planSection += $"  Required Classes: {string.Join(", ", taskPlan.RequiredClasses)}\n";
+                    planSection += $"  File Order: {string.Join(" → ", taskPlan.DependencyOrder)}\n";
+                    planSection += $"  Semantic Breakdown:\n{taskPlan.SemanticBreakdown}\n";
+                }
+                
+                // 🔍 Include project symbols context (only relevant ones)
+                var symbolsSection = "";
+                if (projectSymbols != null && (projectSymbols.Classes.Any() || projectSymbols.Functions.Any()))
+                {
+                    symbolsSection = "\n\n🔍 AVAILABLE SYMBOLS IN PROJECT:\n";
+                    foreach (var cls in projectSymbols.Classes.Take(10))
+                    {
+                        symbolsSection += $"  • {cls.Name}: {cls.ImportStatement}\n";
+                        if (cls.Methods.Any())
+                            symbolsSection += $"    Methods: {string.Join(", ", cls.Methods.Take(5))}\n";
+                    }
+                }
+                
+                // 🔎 Include similar task guidance
+                var similarTasksSection = "";
+                if (similarTasks != null && similarTasks.FoundTasks > 0)
+                {
+                    similarTasksSection = $"\n\n🔎 SIMILAR SUCCESSFUL TASK APPROACH:\n";
+                    if (!string.IsNullOrEmpty(similarTasks.SuggestedApproach))
+                        similarTasksSection += $"  Approach: {similarTasks.SuggestedApproach}\n";
+                    if (!string.IsNullOrEmpty(similarTasks.SuggestedStructure))
+                        similarTasksSection += $"  Structure: {similarTasks.SuggestedStructure}\n";
+                }
+                
+                // 🎨 Include design context for UI tasks
+                var designSection = "";
+                if (designContext != null)
+                {
+                    designSection = $"\n\n🎨 DESIGN SYSTEM ({designContext.BrandName}):\n";
+                    if (designContext.Colors.Any())
+                        designSection += $"  Colors: {string.Join(", ", designContext.Colors.Take(5).Select(c => $"{c.Key}={c.Value}"))}\n";
+                    if (designContext.AccessibilityRules.Any())
+                        designSection += $"  Accessibility: {string.Join(", ", designContext.AccessibilityRules.Take(3))}\n";
+                }
+                
                 var generateRequest = new GenerateCodeRequest
                 {
-                    Task = request.Task + existingFilesList + lessonsSection,
+                    Task = request.Task + existingFilesList + lessonsSection + planSection + symbolsSection + similarTasksSection + designSection,
                     Language = request.Language,
                     Context = context,
                     WorkspacePath = request.WorkspacePath,
@@ -232,11 +343,90 @@ public class TaskOrchestrator : ITaskOrchestrator
                 {
                     accumulatedFiles[file.Path] = file;
                     _logger.LogDebug("📁 Accumulated file: {Path} (total: {Count})", file.Path, accumulatedFiles.Count);
+                    
+                    // 📊 INDEX IMMEDIATELY: Add to Qdrant+Neo4j for context awareness
+                    try
+                    {
+                        await _memoryAgent.IndexFileAsync(
+                            file.Path, 
+                            file.Content, 
+                            request.Language ?? "python", 
+                            request.Context, 
+                            cancellationToken);
+                        _logger.LogDebug("📊 Indexed file: {Path}", file.Path);
+                    }
+                    catch (Exception indexEx)
+                    {
+                        _logger.LogWarning(indexEx, "⚠️ Failed to index file (non-critical): {Path}", file.Path);
+                    }
                 }
                 
                 _logger.LogInformation("📁 Iteration {Iteration}: Generated {NewFiles} files, Total accumulated: {Total}",
                     iteration, lastGeneratedCode.FileChanges.Count, accumulatedFiles.Count);
 
+                // ✅ IMPORT VALIDATION: Check imports before Docker execution
+                var importValidationPhase = StartPhase("import_validation", iteration);
+                var allCode = string.Join("\n\n", accumulatedFiles.Values.Select(f => f.Content));
+                
+                try
+                {
+                    var importValidation = await _memoryAgent.ValidateImportsAsync(
+                        allCode,
+                        request.Language ?? "python",
+                        request.Context,
+                        cancellationToken);
+                    
+                    importValidationPhase.Details = new Dictionary<string, object>
+                    {
+                        ["isValid"] = importValidation.IsValid,
+                        ["importsChecked"] = importValidation.Imports.Count,
+                        ["summary"] = importValidation.Summary
+                    };
+                    
+                    if (!importValidation.IsValid)
+                    {
+                        var invalidImports = importValidation.Imports
+                            .Where(i => !i.IsValid)
+                            .Select(i => $"{i.Module}: {i.Reason}. {i.Suggestion}")
+                            .ToList();
+                        
+                        _logger.LogWarning("⚠️ Invalid imports detected: {Imports}", string.Join(", ", invalidImports.Take(5)));
+                        
+                        // Create feedback with import errors and loop back
+                        lastValidation = new ValidateCodeResponse
+                        {
+                            Score = 2,
+                            Passed = false,
+                            Issues = invalidImports.Select(i => new ValidationIssue
+                            {
+                                Severity = "critical",
+                                Message = $"Import error: {i}",
+                                File = accumulatedFiles.Keys.FirstOrDefault() ?? "unknown",
+                                Line = 1,
+                                Suggestion = "Fix the import statement"
+                            }).ToList(),
+                            Summary = $"Import validation failed:\n{string.Join("\n", invalidImports)}"
+                        };
+                        
+                        EndPhase(jobId, importValidationPhase);
+                        response.Timeline.Add(importValidationPhase);
+                        
+                        _logger.LogInformation("Iteration {Iteration}: Import validation FAILED, looping back", iteration);
+                        continue;
+                    }
+                }
+                catch (Exception importEx)
+                {
+                    _logger.LogWarning(importEx, "⚠️ Import validation failed (proceeding anyway)");
+                    importValidationPhase.Details = new Dictionary<string, object>
+                    {
+                        ["status"] = "skipped",
+                        ["error"] = importEx.Message
+                    };
+                }
+                EndPhase(jobId, importValidationPhase);
+                response.Timeline.Add(importValidationPhase);
+                
                 // 🐳 EXECUTION PHASE: Actually run the code in Docker!
                 var executionProgress = codingProgress + 5;
                 UpdateProgress(jobId, TaskState.Running, executionProgress, $"Docker Execution (iteration {iteration})", iteration);
@@ -431,6 +621,23 @@ public class TaskOrchestrator : ITaskOrchestrator
                             wasSuccessful: true,
                             rating: lastValidation.Score,
                             cancellationToken);
+                        
+                        // 🎉 STORE SUCCESSFUL TASK for cross-workspace learning
+                        await _memoryAgent.StoreSuccessfulTaskAsync(new TaskSuccessRecord
+                        {
+                            TaskDescription = request.Task,
+                            Language = request.Language ?? "python",
+                            Context = request.Context,
+                            ApproachUsed = $"Generated code in {iteration} iteration(s) with {lastGeneratedCode.ModelUsed}",
+                            PatternsUsed = taskPlan?.RequiredClasses ?? new List<string>(),
+                            FilesGenerated = accumulatedFiles.Keys.ToList(),
+                            Keywords = ExtractKeywords(request.Task),
+                            IterationsNeeded = iteration,
+                            FinalScore = lastValidation.Score,
+                            ModelUsed = lastGeneratedCode.ModelUsed ?? "",
+                            SemanticStructure = taskPlan?.SemanticBreakdown ?? ""
+                        }, cancellationToken);
+                        _logger.LogInformation("🎉 Stored successful task for future learning");
                     }
                     catch (Exception ex)
                     {
@@ -790,6 +997,46 @@ public class TaskOrchestrator : ITaskOrchestrator
             lessons.Add("Very low score - approach fundamentally flawed");
         
         return string.Join(". ", lessons);
+    }
+    
+    /// <summary>
+    /// Check if this is a UI-related task
+    /// </summary>
+    private static bool IsUITask(string task)
+    {
+        var uiKeywords = new[] { "gui", "ui", "interface", "window", "button", "form", "page", 
+            "component", "widget", "screen", "view", "layout", "menu", "dialog", "modal",
+            "frontend", "blazor", "react", "vue", "angular", "wpf", "winforms", "maui", "flutter" };
+        
+        var lowerTask = task.ToLowerInvariant();
+        return uiKeywords.Any(k => lowerTask.Contains(k));
+    }
+    
+    /// <summary>
+    /// Extract keywords from task for storage
+    /// </summary>
+    private static List<string> ExtractKeywords(string task)
+    {
+        // Common keywords to extract
+        var keywords = new List<string>();
+        
+        // Programming languages/frameworks
+        var techKeywords = new[] { "flutter", "blazor", "react", "maui", "wpf", "winforms", 
+            "csharp", "c#", "python", "typescript", "javascript", "kotlin", "swift", "dart",
+            "api", "rest", "grpc", "graphql", "websocket",
+            "sql", "nosql", "mongodb", "postgres", "neo4j",
+            "docker", "kubernetes", "azure", "aws",
+            "game", "blackjack", "todo", "chat", "calculator" };
+        
+        var lowerTask = task.ToLowerInvariant();
+        
+        foreach (var keyword in techKeywords)
+        {
+            if (lowerTask.Contains(keyword))
+                keywords.Add(keyword);
+        }
+        
+        return keywords.Take(10).ToList();
     }
 }
 
