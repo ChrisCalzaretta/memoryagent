@@ -18,7 +18,7 @@ services:
       - Neo4j__Url=bolt://memory-agent-neo4j:7687
       - Neo4j__User=neo4j
       - Neo4j__Password=memoryagent
-      - Ollama__Url=http://memory-agent-ollama:11434
+      - Ollama__Url=http://10.10.1.114:11434
       - PathMapping__HostRoot=h:\code\git
       - PathMapping__ContainerRoot=/workspace
       - AutoReindex__Enabled=true
@@ -31,8 +31,7 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
+      # Ollama runs externally on localhost:11434
     deploy:
       resources:
         limits:
@@ -96,31 +95,8 @@ services:
       - memory-net
     restart: unless-stopped
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: memory-agent-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - d:\Memory\shared\ollama:/root/.ollama
-      - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
-    entrypoint: ["/bin/bash", "/usr/local/bin/ollama-entrypoint.sh"]
-    healthcheck:
-      test: ["CMD", "bash", "-c", "ollama list | grep -q mxbai-embed-large"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    networks:
-      - memory-net
-    restart: unless-stopped
+  # Ollama runs externally on localhost:11434
+  # Start with: ollama serve (or your local Ollama setup)
 
   # CodingOrchestrator - Coordinates the multi-agent workflow
   # 💾 NOW WITH JOB PERSISTENCE - survives container restarts!
@@ -163,10 +139,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5001
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - Ollama__Url=http://memory-agent-ollama:11434
+      - Ollama__Url=http://10.10.1.114:11434
     depends_on:
       - mcp-server
-      - ollama
     networks:
       - memory-net
     restart: unless-stopped
@@ -183,10 +158,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5002
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - Ollama__Url=http://memory-agent-ollama:11434
+      - Ollama__Url=http://10.10.1.114:11434
     depends_on:
       - mcp-server
-      - ollama
     networks:
       - memory-net
     restart: unless-stopped
