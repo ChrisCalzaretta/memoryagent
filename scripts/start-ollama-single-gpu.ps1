@@ -34,7 +34,7 @@ Write-Host "  CUDA_VISIBLE_DEVICES = $env:CUDA_VISIBLE_DEVICES"
 Write-Host "  OLLAMA_KEEP_ALIVE = $env:OLLAMA_KEEP_ALIVE"
 Write-Host "  OLLAMA_HOST = $env:OLLAMA_HOST"
 Write-Host ""
-
+C:\windows\system32\taskkill.exe /im ollama.exe /f 2>$null
 # Start Ollama server in background
 Write-Host "Starting Ollama server..." -ForegroundColor Green
 $ollamaProcess = Start-Process -FilePath "ollama" -ArgumentList "serve" -PassThru -NoNewWindow
