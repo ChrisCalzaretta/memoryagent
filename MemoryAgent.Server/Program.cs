@@ -19,6 +19,14 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
 
 // HTTP Clients
+// HttpClient for CodingOrchestrator (auto test generation)
+builder.Services.AddHttpClient("CodingOrchestrator", client =>
+{
+    var orchestratorUrl = builder.Configuration["CodingOrchestrator:BaseUrl"] ?? "http://localhost:5003";
+    client.BaseAddress = new Uri(orchestratorUrl);
+    client.Timeout = TimeSpan.FromMinutes(10); // Test generation can take a while
+});
+
 builder.Services.AddHttpClient("Ollama", client =>
 {
     var ollamaUrl = builder.Configuration["Ollama:Url"] ?? "http://localhost:11434";
@@ -86,9 +94,13 @@ builder.Services.AddScoped<IRecommendationService, RecommendationService>();
 
 // Learning Service (Agent Lightning) - Session tracking, Q&A learning, importance scoring
 builder.Services.AddSingleton<ILearningService, LearningService>();
+// Auto-reindex service (file watcher)
+builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.ITestGenerationQueue, MemoryAgent.Server.FileWatcher.TestGenerationQueue>();
+builder.Services.AddScoped<MemoryAgent.Server.FileWatcher.TestGenerationHelper>();
 builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.AutoReindexService>();
 builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.IAutoReindexService>(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
+builder.Services.AddHostedService<MemoryAgent.Server.FileWatcher.TestGenerationBackgroundService>();
 
 // Pattern Validators (refactored from single 2913-line file into 17 focused validators)
 builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.CachingPatternValidator>();

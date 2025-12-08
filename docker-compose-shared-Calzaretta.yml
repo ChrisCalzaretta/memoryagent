@@ -24,6 +24,8 @@ services:
       - AutoReindex__Enabled=true
       - AutoReindex__WorkspacePath=
       - AutoReindex__Context=
+      - CodingOrchestrator__BaseUrl=http://memory-coding-orchestrator:5003
+      - AutoTestGeneration__Enabled=true
     depends_on:
       qdrant:
         condition: service_healthy

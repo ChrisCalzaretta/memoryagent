@@ -24,6 +24,8 @@ services:
       - AutoReindex__Enabled=true
       - AutoReindex__WorkspacePath=
       - AutoReindex__Context=
+      - CodingOrchestrator__BaseUrl=http://memory-coding-orchestrator:5003
+      - AutoTestGeneration__Enabled=true
     depends_on:
       qdrant:
         condition: service_healthy
@@ -138,11 +140,13 @@ services:
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       - CodingAgent__BaseUrl=http://memory-coding-agent:5001
       - ValidationAgent__BaseUrl=http://memory-validation-agent:5002
+      - DesignAgent__BaseUrl=http://memory-design-agent:5004
       - JobPersistence__Path=/data/memory/orchestrator/jobs
     depends_on:
       - mcp-server
       - coding-agent
       - validation-agent
+      - design-agent
     networks:
       - memory-net
     restart: unless-stopped
@@ -183,6 +187,24 @@ services:
     depends_on:
       - mcp-server
       - ollama
+    networks:
+      - memory-net
+    restart: unless-stopped
+
+  # DesignAgent - UX Design system, brand guidelines, validation
+  design-agent:
+    build:
+      context: .
+      dockerfile: DesignAgent.Server/Dockerfile
+    container_name: memory-design-agent
+    ports:
+      - "5004:5004"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5004
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+    depends_on:
+      - mcp-server
     networks:
       - memory-net
     restart: unless-stopped

@@ -12,6 +12,7 @@ public class AutoReindexService : BackgroundService, IAutoReindexService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<AutoReindexService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly ITestGenerationQueue _testQueue;
     
     // Multi-workspace support
     private readonly ConcurrentDictionary<string, WorkspaceWatcher> _activeWatchers = new();
@@ -37,11 +38,13 @@ public class AutoReindexService : BackgroundService, IAutoReindexService
     public AutoReindexService(
         IServiceProvider serviceProvider,
         ILogger<AutoReindexService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ITestGenerationQueue testQueue)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
         _configuration = configuration;
+        _testQueue = testQueue;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -335,6 +338,14 @@ public class AutoReindexService : BackgroundService, IAutoReindexService
                                 "✅ Auto-reindex completed for {Context}: +{Added} -{Removed} ~{Updated} files in {Duration:F1}s",
                                 context, result.FilesAdded, result.FilesRemoved, 
                                 result.FilesUpdated, result.Duration.TotalSeconds);
+                            
+                            // Queue test generation for files without tests
+                            var testGenEnabled = _configuration.GetValue<bool>("AutoTestGeneration:Enabled", false);
+                            if (testGenEnabled)
+                            {
+                                var testHelper = scope.ServiceProvider.GetRequiredService<TestGenerationHelper>();
+                                testHelper.ProcessChangedFiles(files, context, workspace.WorkspacePath);
+                            }
                         }
                         else
                         {
