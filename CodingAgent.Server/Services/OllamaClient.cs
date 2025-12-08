@@ -225,6 +225,11 @@ internal class OllamaGenerateRequest
     public bool Stream { get; set; }
     [JsonPropertyName("keep_alive")]
     public int KeepAlive { get; set; }
+    /// <summary>
+    /// If true, no formatting will be applied to the prompt and no context will be returned.
+    /// Prevents double BOS token warning.
+    /// </summary>
+    public bool Raw { get; set; } = false;
 }
 
 internal class OllamaGenerateResponse

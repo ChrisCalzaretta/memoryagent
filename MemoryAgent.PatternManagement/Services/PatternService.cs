@@ -498,3 +498,4 @@ public class PatternService : IPatternService
     }
 }
 
+

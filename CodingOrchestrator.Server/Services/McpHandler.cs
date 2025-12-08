@@ -56,7 +56,7 @@ public class McpHandler : IMcpHandler
                         ["context"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Project context name for Lightning memory" },
                         ["workspacePath"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Path to the workspace root" },
                         ["background"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Run as background job (default: true)", ["default"] = true },
-                        ["maxIterations"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Maximum coding/validation iterations. Default: 50", ["default"] = 50 },
+                        ["maxIterations"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Maximum coding/validation iterations. Default: 100", ["default"] = 100 },
                         ["minValidationScore"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Minimum score to pass validation (default: 8)", ["default"] = 8 },
                         ["autoWriteFiles"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Automatically write generated files to workspace (default: false). When false, files are returned for manual review.", ["default"] = false }
                     },
@@ -263,7 +263,7 @@ public class McpHandler : IMcpHandler
             Context = context,
             WorkspacePath = workspacePath,
             Background = GetBoolArg(arguments, "background", true),
-            MaxIterations = GetIntArg(arguments, "maxIterations", 50),  // Default 50
+            MaxIterations = GetIntArg(arguments, "maxIterations", 100),  // Default 100
             MinValidationScore = GetIntArg(arguments, "minValidationScore", 8),
             AutoWriteFiles = GetBoolArg(arguments, "autoWriteFiles", false)
         };

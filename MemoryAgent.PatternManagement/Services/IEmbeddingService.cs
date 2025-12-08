@@ -16,3 +16,4 @@ public interface IEmbeddingService
     Task<List<float[]>> EmbedBatchAsync(List<string> texts, CancellationToken ct = default);
 }
 
+

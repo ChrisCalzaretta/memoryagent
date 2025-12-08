@@ -341,6 +341,30 @@ Be thorough but fair. Only report real issues.";
 
         await Task.Delay(10, cancellationToken); // Simulate processing
 
+        // 🌐 LANGUAGE-AWARE VALIDATION: Only run language-specific rules
+        var extension = Path.GetExtension(file.Path).ToLowerInvariant();
+        var isCSharp = extension == ".cs";
+        var isPython = extension == ".py";
+        var isJavaScript = extension is ".js" or ".jsx";
+        var isTypeScript = extension is ".ts" or ".tsx";
+        
+        // Skip C# rules for non-C# files - let LLM handle language-specific validation
+        if (!isCSharp)
+        {
+            _logger.LogDebug("Skipping C# rule-based validation for {Extension} file: {Path}", extension, file.Path);
+            
+            // Add basic universal checks that apply to ALL languages
+            issues.AddRange(ValidateUniversalRules(file, content, lines, rules));
+            
+            return issues;
+        }
+        
+        _logger.LogDebug("Running C# rule-based validation for: {Path}", file.Path);
+
+        // ============================================
+        // C# SPECIFIC RULES (only for .cs files)
+        // ============================================
+        
         // Best practices checks
         if (rules.Contains("best_practices"))
         {
@@ -517,7 +541,7 @@ Be thorough but fair. Only report real issues.";
         {
             if (group.Key == "best_practices" && group.Count() > 2)
             {
-                suggestions.Add("Review C# best practices guidelines for common patterns");
+                suggestions.Add("Review best practices guidelines for common patterns");
             }
             if (group.Key == "security" && group.Any(i => i.Severity == "critical"))
             {
@@ -535,6 +559,114 @@ Be thorough but fair. Only report real issues.";
         }
 
         return suggestions;
+    }
+    
+    /// <summary>
+    /// 🌐 Universal validation rules that apply to ALL languages
+    /// These are language-agnostic security and quality checks
+    /// </summary>
+    private List<ValidationIssue> ValidateUniversalRules(
+        CodeFile file, 
+        string content, 
+        string[] lines,
+        List<string> rules)
+    {
+        var issues = new List<ValidationIssue>();
+        
+        // Security checks (universal)
+        if (rules.Contains("security"))
+        {
+            // Check for hardcoded secrets (applies to all languages)
+            var secretPatterns = new[]
+            {
+                (@"(?i)(password|passwd|pwd)\s*[=:]\s*[""'][^""']+[""']", "Potential hardcoded password"),
+                (@"(?i)(api[_-]?key|apikey)\s*[=:]\s*[""'][^""']+[""']", "Potential hardcoded API key"),
+                (@"(?i)(secret|token)\s*[=:]\s*[""'][^""']+[""']", "Potential hardcoded secret/token"),
+                (@"(?i)(aws_access_key|aws_secret)", "Potential AWS credentials"),
+            };
+            
+            foreach (var (pattern, message) in secretPatterns)
+            {
+                if (Regex.IsMatch(content, pattern))
+                {
+                    // Skip if it's in a comment or looks like a placeholder
+                    var match = Regex.Match(content, pattern);
+                    if (match.Success && 
+                        !match.Value.Contains("your_") && 
+                        !match.Value.Contains("xxx") &&
+                        !match.Value.Contains("***") &&
+                        !match.Value.Contains("PLACEHOLDER"))
+                    {
+                        issues.Add(new ValidationIssue
+                        {
+                            Severity = "warning",
+                            File = file.Path,
+                            Message = message,
+                            Suggestion = "Use environment variables or a secrets manager",
+                            Rule = "security"
+                        });
+                    }
+                }
+            }
+            
+            // SQL injection check (universal - applies to any language using SQL)
+            if (content.Contains("SELECT") || content.Contains("INSERT") || content.Contains("UPDATE") || content.Contains("DELETE"))
+            {
+                // Check for string concatenation in SQL
+                if (Regex.IsMatch(content, @"(SELECT|INSERT|UPDATE|DELETE).*\+\s*[""']?\w+[""']?\s*\+"))
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "critical",
+                        File = file.Path,
+                        Message = "Potential SQL injection vulnerability - string concatenation in SQL query",
+                        Suggestion = "Use parameterized queries or an ORM",
+                        Rule = "security"
+                    });
+                }
+            }
+        }
+        
+        // Basic quality checks (universal)
+        if (rules.Contains("best_practices"))
+        {
+            // Check for very long lines (applies to all languages)
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Length > 200)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "info",
+                        File = file.Path,
+                        Line = i + 1,
+                        Message = "Line exceeds 200 characters",
+                        Suggestion = "Consider breaking into multiple lines for readability",
+                        Rule = "best_practices"
+                    });
+                    break; // Only report once per file
+                }
+            }
+            
+            // Check for TODO/FIXME comments (informational)
+            if (Regex.IsMatch(content, @"(?i)(TODO|FIXME|HACK|XXX):?\s+"))
+            {
+                var todoCount = Regex.Matches(content, @"(?i)(TODO|FIXME|HACK|XXX):?\s+").Count;
+                if (todoCount > 3)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "info",
+                        File = file.Path,
+                        Message = $"Found {todoCount} TODO/FIXME comments",
+                        Suggestion = "Consider addressing these before finalizing",
+                        Rule = "best_practices"
+                    });
+                }
+            }
+        }
+        
+        return issues;
     }
 }
 
