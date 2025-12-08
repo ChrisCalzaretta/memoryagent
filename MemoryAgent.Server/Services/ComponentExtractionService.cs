@@ -13,15 +13,18 @@ public class ComponentExtractionService : IComponentExtractionService
 {
     private readonly ILLMService _llmService;
     private readonly IPromptService _promptService;
+    private readonly IPathTranslationService _pathTranslation;
     private readonly ILogger<ComponentExtractionService> _logger;
     
     public ComponentExtractionService(
         ILLMService llmService,
         IPromptService promptService,
+        IPathTranslationService pathTranslation,
         ILogger<ComponentExtractionService> logger)
     {
         _llmService = llmService;
         _promptService = promptService;
+        _pathTranslation = pathTranslation;
         _logger = logger;
     }
     
@@ -33,8 +36,12 @@ public class ComponentExtractionService : IComponentExtractionService
     {
         _logger.LogInformation("Detecting reusable components in {ProjectPath}", projectPath);
         
+        // Translate Windows path to container path
+        var containerPath = _pathTranslation.TranslateToContainerPath(projectPath);
+        _logger.LogDebug("Path translation: {OriginalPath} -> {ContainerPath}", projectPath, containerPath);
+        
         // 1. Scan all .razor files
-        var razorFiles = Directory.GetFiles(projectPath, "*.razor", SearchOption.AllDirectories);
+        var razorFiles = Directory.GetFiles(containerPath, "*.razor", SearchOption.AllDirectories);
         _logger.LogInformation("Found {Count} Razor files to analyze", razorFiles.Length);
         
         // 2. Extract HTML blocks from each file

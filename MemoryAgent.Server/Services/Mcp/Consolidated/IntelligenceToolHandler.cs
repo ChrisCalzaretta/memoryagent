@@ -13,6 +13,7 @@ public class IntelligenceToolHandler : IMcpToolHandler
     private readonly ILearningService _learningService;
     private readonly IPromptService _promptService;
     private readonly IEvolvingPatternCatalogService _patternCatalogService;
+    private readonly IPathTranslationService _pathTranslation;
     private readonly ILogger<IntelligenceToolHandler> _logger;
 
     public IntelligenceToolHandler(
@@ -20,12 +21,14 @@ public class IntelligenceToolHandler : IMcpToolHandler
         ILearningService learningService,
         IPromptService promptService,
         IEvolvingPatternCatalogService patternCatalogService,
+        IPathTranslationService pathTranslation,
         ILogger<IntelligenceToolHandler> logger)
     {
         _recommendationService = recommendationService;
         _learningService = learningService;
         _promptService = promptService;
         _patternCatalogService = patternCatalogService;
+        _pathTranslation = pathTranslation;
         _logger = logger;
     }
 
@@ -488,8 +491,10 @@ public class IntelligenceToolHandler : IMcpToolHandler
         {
             try
             {
-                if (File.Exists(filePath))
-                    content = await File.ReadAllTextAsync(filePath, ct);
+                // Translate Windows path to container path
+                var containerPath = _pathTranslation.TranslateToContainerPath(filePath);
+                if (File.Exists(containerPath))
+                    content = await File.ReadAllTextAsync(containerPath, ct);
             }
             catch
             {

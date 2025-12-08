@@ -17,6 +17,7 @@ public class PageTransformationService : IPageTransformationService
     private readonly RazorParser _razorParser;
     private readonly ICSSTransformationService _cssService;
     private readonly IComponentExtractionService _componentService;
+    private readonly IPathTranslationService _pathTranslation;
     private readonly ILogger<PageTransformationService> _logger;
     
     // In-memory pattern storage (in production, use database)
@@ -28,6 +29,7 @@ public class PageTransformationService : IPageTransformationService
         RazorParser razorParser,
         ICSSTransformationService cssService,
         IComponentExtractionService componentService,
+        IPathTranslationService pathTranslation,
         ILogger<PageTransformationService> logger)
     {
         _llmService = llmService;
@@ -35,6 +37,7 @@ public class PageTransformationService : IPageTransformationService
         _razorParser = razorParser;
         _cssService = cssService;
         _componentService = componentService;
+        _pathTranslation = pathTranslation;
         _logger = logger;
     }
     
@@ -54,9 +57,12 @@ public class PageTransformationService : IPageTransformationService
         {
             _logger.LogInformation("Starting transformation for {FilePath}", sourceFilePath);
             
-            // 1. Parse source file
-            var sourceCode = await File.ReadAllTextAsync(sourceFilePath, cancellationToken);
-            var parsed = RazorParser.ParseRazorFile(sourceFilePath, "default", null);
+            // 1. Parse source file (translate Windows path to container path)
+            var containerPath = _pathTranslation.TranslateToContainerPath(sourceFilePath);
+            _logger.LogDebug("Path translation: {OriginalPath} -> {ContainerPath}", sourceFilePath, containerPath);
+            
+            var sourceCode = await File.ReadAllTextAsync(containerPath, cancellationToken);
+            var parsed = RazorParser.ParseRazorFile(containerPath, "default", null);
             
             transformation.OriginalLines = sourceCode.Split('\n').Length;
             
@@ -111,13 +117,17 @@ public class PageTransformationService : IPageTransformationService
         _logger.LogInformation("Learning transformation pattern from {OldPath} → {NewPath}", 
             exampleOldPath, exampleNewPath);
         
+        // Translate Windows paths to container paths
+        var oldContainerPath = _pathTranslation.TranslateToContainerPath(exampleOldPath);
+        var newContainerPath = _pathTranslation.TranslateToContainerPath(exampleNewPath);
+        
         // Read both files
-        var oldCode = await File.ReadAllTextAsync(exampleOldPath, cancellationToken);
-        var newCode = await File.ReadAllTextAsync(exampleNewPath, cancellationToken);
+        var oldCode = await File.ReadAllTextAsync(oldContainerPath, cancellationToken);
+        var newCode = await File.ReadAllTextAsync(newContainerPath, cancellationToken);
         
         // Parse both
-        var oldParsed = RazorParser.ParseRazorFile(exampleOldPath, "default", null);
-        var newParsed = RazorParser.ParseRazorFile(exampleNewPath, "default", null);
+        var oldParsed = RazorParser.ParseRazorFile(oldContainerPath, "default", null);
+        var newParsed = RazorParser.ParseRazorFile(newContainerPath, "default", null);
         
         // Use LLM to learn transformation
         var pattern = await LearnTransformationPatternWithLLMAsync(
@@ -153,9 +163,12 @@ public class PageTransformationService : IPageTransformationService
         _logger.LogInformation("Applying pattern '{PatternName}' to {FilePath}",
             pattern.Name, targetFilePath);
         
+        // Translate Windows path to container path
+        var containerPath = _pathTranslation.TranslateToContainerPath(targetFilePath);
+        
         // Read target file
-        var targetCode = await File.ReadAllTextAsync(targetFilePath, cancellationToken);
-        var parsed = RazorParser.ParseRazorFile(targetFilePath, "default", null);
+        var targetCode = await File.ReadAllTextAsync(containerPath, cancellationToken);
+        var parsed = RazorParser.ParseRazorFile(containerPath, "default", null);
         
         // Apply pattern with LLM
         var transformation = await ApplyPatternWithLLMAsync(

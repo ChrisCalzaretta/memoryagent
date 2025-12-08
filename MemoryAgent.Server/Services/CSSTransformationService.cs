@@ -13,15 +13,18 @@ public class CSSTransformationService : ICSSTransformationService
 {
     private readonly ILLMService _llmService;
     private readonly IPromptService _promptService;
+    private readonly IPathTranslationService _pathTranslation;
     private readonly ILogger<CSSTransformationService> _logger;
     
     public CSSTransformationService(
         ILLMService llmService,
         IPromptService promptService,
+        IPathTranslationService pathTranslation,
         ILogger<CSSTransformationService> logger)
     {
         _llmService = llmService;
         _promptService = promptService;
+        _pathTranslation = pathTranslation;
         _logger = logger;
     }
     
@@ -36,7 +39,11 @@ public class CSSTransformationService : ICSSTransformationService
             Context = ExtractContextFromPath(sourceFilePath)
         };
         
-        var sourceCode = await File.ReadAllTextAsync(sourceFilePath, cancellationToken);
+        // Translate Windows path to container path
+        var containerPath = _pathTranslation.TranslateToContainerPath(sourceFilePath);
+        _logger.LogDebug("Path translation: {OriginalPath} -> {ContainerPath}", sourceFilePath, containerPath);
+        
+        var sourceCode = await File.ReadAllTextAsync(containerPath, cancellationToken);
         
         _logger.LogInformation("Transforming CSS for {FilePath}", sourceFilePath);
         
@@ -83,7 +90,11 @@ public class CSSTransformationService : ICSSTransformationService
             IssueBreakdown = new Dictionary<string, int>()
         };
         
-        var sourceCode = await File.ReadAllTextAsync(sourceFilePath, cancellationToken);
+        // Translate Windows path to container path
+        var containerPath = _pathTranslation.TranslateToContainerPath(sourceFilePath);
+        _logger.LogDebug("CSS Analysis path translation: {OriginalPath} -> {ContainerPath}", sourceFilePath, containerPath);
+        
+        var sourceCode = await File.ReadAllTextAsync(containerPath, cancellationToken);
         
         // Check inline styles
         var inlineStyles = Regex.Matches(sourceCode, @"style=""[^""]+""");
