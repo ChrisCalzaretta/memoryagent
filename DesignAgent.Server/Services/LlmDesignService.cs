@@ -112,7 +112,7 @@ public class LlmDesignService : ILlmDesignService
         _logger.LogInformation("🎨 Generating brand suggestions with {Model}", selection.Model);
         
         // Get prompt from Lightning
-        var systemPrompt = await GetPromptAsync("brand_generation", GetDefaultBrandPrompt(), cancellationToken);
+        var systemPrompt = await GetPromptAsync("brand_generation", cancellationToken);
         var userPrompt = BuildBrandPrompt(input);
         
         var response = await _ollamaClient.GenerateAsync(
@@ -161,7 +161,7 @@ public class LlmDesignService : ILlmDesignService
         
         _logger.LogInformation("🔍 Generating validation feedback with {Model}", selection.Model);
         
-        var systemPrompt = await GetPromptAsync("design_validation", GetDefaultValidationPrompt(), cancellationToken);
+        var systemPrompt = await GetPromptAsync("design_validation", cancellationToken);
         var userPrompt = BuildValidationPrompt(code, brand, issues);
         
         var response = await _ollamaClient.GenerateAsync(
@@ -196,7 +196,7 @@ public class LlmDesignService : ILlmDesignService
             "fix_suggestion",
             cancellationToken);
         
-        var systemPrompt = await GetPromptAsync("design_fix", GetDefaultFixPrompt(), cancellationToken);
+        var systemPrompt = await GetPromptAsync("design_fix", cancellationToken);
         var userPrompt = $@"## Design Issue to Fix
 
 **Issue Type:** {issue.Type}
@@ -468,92 +468,22 @@ Return as JSON.";
 
     #region Lightning Prompts
 
-    private async Task<string> GetPromptAsync(string promptName, string defaultPrompt, CancellationToken cancellationToken)
+    private async Task<string> GetPromptAsync(string promptName, CancellationToken cancellationToken)
     {
-        try
+        // This will throw if prompt not found - NO FALLBACK
+        var prompt = await _memoryAgent.GetPromptAsync(promptName, cancellationToken);
+        if (prompt == null || string.IsNullOrEmpty(prompt.Content))
         {
-            var prompt = await _memoryAgent.GetPromptAsync(promptName, cancellationToken);
-            if (prompt != null && !string.IsNullOrEmpty(prompt.Content))
-            {
-                _logger.LogDebug("Using Lightning prompt: {Name} v{Version}", prompt.Name, prompt.Version);
-                return prompt.Content;
-            }
+            throw new InvalidOperationException($"Required prompt '{promptName}' not found or empty in Lightning. Run PromptSeedService.");
         }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Could not get prompt from Lightning, using default");
-        }
-        return defaultPrompt;
+        
+        _logger.LogDebug("Using Lightning prompt: {Name} v{Version}", prompt.Name, prompt.Version);
+        return prompt.Content;
     }
 
-    private string GetDefaultBrandPrompt()
-    {
-        return @"You are a creative brand strategist and UX designer.
-
-Your job is to generate creative, cohesive brand suggestions that:
-1. Align with the industry and target audience
-2. Create emotional resonance
-3. Are practical for UI implementation
-4. Stand out from competitors
-
-Be creative but practical. Suggest specific hex colors, real font names, and actionable guidelines.
-
-CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory text before or after.
-
-Return this exact JSON structure:
-{
-    ""creativeTagline"": ""A memorable tagline"",
-    ""colorSuggestions"": [""#HEX1"", ""#HEX2""],
-    ""fontSuggestions"": [""Font Name 1"", ""Font Name 2""],
-    ""brandStory"": ""Brief brand narrative"",
-    ""personalityTraits"": [""trait1"", ""trait2""],
-    ""voiceTone"": ""Description of voice and tone"",
-    ""componentIdeas"": {""buttons"": ""style description"", ""cards"": ""style description""}
-}";
-    }
-
-    private string GetDefaultValidationPrompt()
-    {
-        return @"You are a UX design expert reviewing code against brand guidelines.
-
-Your job is to:
-1. Explain WHY each design issue matters (user impact, brand impact)
-2. Provide specific, actionable fixes
-3. Prioritize issues by impact
-4. Suggest quick wins for immediate improvement
-
-Be constructive and educational. Help developers understand design principles.
-
-CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory text before or after.
-
-Return this exact JSON structure:
-{
-    ""summary"": ""Overall assessment"",
-    ""issueExplanations"": [
-        {
-            ""issue"": ""Issue description"",
-            ""whyItMatters"": ""Why this matters for users/brand"",
-            ""howToFix"": ""Step-by-step fix instructions"",
-            ""fixCode"": ""Corrected code snippet""
-        }
-    ],
-    ""overallRecommendation"": ""Final recommendation"",
-    ""quickWins"": [""Easy fix 1"", ""Easy fix 2""]
-}";
-    }
-
-    private string GetDefaultFixPrompt()
-    {
-        return @"You are a CSS/UI expert who generates brand-compliant code fixes.
-
-Your job is to:
-1. Take the problematic code
-2. Apply the brand guidelines
-3. Generate corrected code
-4. Keep the fix minimal and focused
-
-Return ONLY the corrected code, properly formatted.";
-    }
+    // NO FALLBACK PROMPTS - All prompts MUST come from Lightning
+    // If a prompt is missing, the system will throw an error
+    // Run PromptSeedService to seed required prompts into Neo4j
 
     #endregion
 

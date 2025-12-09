@@ -531,7 +531,8 @@ public class TaskOrchestrator : ITaskOrchestrator
                     Context = request.Context,
                     Language = request.Language,
                     OriginalTask = request.Task,
-                    WorkspacePath = request.WorkspacePath
+                    WorkspacePath = request.WorkspacePath,
+                    ValidationMode = request.ValidationMode // "standard" (default) or "enterprise"
                 };
 
                 lastValidation = await _validationAgent.ValidateAsync(validateRequest, cancellationToken);

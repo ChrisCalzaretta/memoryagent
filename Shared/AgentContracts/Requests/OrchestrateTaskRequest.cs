@@ -46,14 +46,22 @@ public class OrchestrateTaskRequest : IValidatableObject
     /// <summary>
     /// Maximum iterations before giving up (default: 10 for robust retry)
     /// </summary>
-    [Range(1, 50, ErrorMessage = "MaxIterations must be between 1 and 50")]
-    public int MaxIterations { get; set; } = 50;
+    [Range(1, 1000, ErrorMessage = "MaxIterations must be between 1 and 1000")]
+    public int MaxIterations { get; set; } = 100;
 
     /// <summary>
     /// Minimum validation score to pass (0-10)
     /// </summary>
     [Range(0, 10, ErrorMessage = "MinValidationScore must be between 0 and 10")]
     public int MinValidationScore { get; set; } = 8;
+    
+    /// <summary>
+    /// Validation strictness mode:
+    /// - "standard" (default): Relaxed rules - only bugs, security issues, and syntax errors
+    /// - "enterprise": Full strict mode - XML docs, CancellationToken, DI patterns, etc.
+    /// </summary>
+    [RegularExpression(@"^(standard|enterprise)?$", ErrorMessage = "ValidationMode must be 'standard' or 'enterprise'")]
+    public string ValidationMode { get; set; } = "standard";
     
     /// <summary>
     /// If true, automatically write generated files to workspace (default: false)

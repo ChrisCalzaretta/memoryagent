@@ -57,35 +57,102 @@ public class MemoryAgentClient : IMemoryAgentClient
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogDebug("Got prompt from Lightning: {Content}", content);
                 
-                var prompt = new PromptInfo
+                // Parse the actual prompt content from Lightning response
+                var extractedPrompt = ExtractPromptFromResponse(content, promptName);
+                if (extractedPrompt != null)
                 {
-                    Name = promptName,
-                    Content = GetDefaultPrompt(promptName),
-                    Version = 1,
-                    IsActive = true
-                };
-                
-                // Cache the result
-                _promptCache[promptName] = (prompt, DateTime.UtcNow);
-                return prompt;
+                    _logger.LogInformation("✅ Got prompt {PromptName} v{Version} from Lightning", 
+                        promptName, extractedPrompt.Version);
+                    _promptCache[promptName] = (extractedPrompt, DateTime.UtcNow);
+                    return extractedPrompt;
+                }
             }
 
-            _logger.LogWarning("Failed to get prompt {PromptName} from Lightning: {Status}", 
-                promptName, response.StatusCode);
+            _logger.LogError("❌ CRITICAL: Prompt '{PromptName}' not found in Lightning. Ensure prompts are seeded.", promptName);
+            throw new InvalidOperationException($"Required prompt '{promptName}' not found in Lightning. Run PromptSeedService or check Neo4j connection.");
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "❌ CRITICAL: Cannot connect to Lightning to get prompt '{PromptName}'", promptName);
+            throw new InvalidOperationException($"Cannot connect to Lightning to get required prompt '{promptName}'. Ensure MemoryAgent is running.", ex);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            _logger.LogError(ex, "❌ CRITICAL: Error getting prompt '{PromptName}' from Lightning", promptName);
+            throw new InvalidOperationException($"Failed to get required prompt '{promptName}' from Lightning: {ex.Message}", ex);
+        }
+    }
+
+    private PromptInfo? ExtractPromptFromResponse(string jsonResponse, string promptName)
+    {
+        try
+        {
+            var doc = JsonDocument.Parse(jsonResponse);
+            
+            if (doc.RootElement.TryGetProperty("result", out var result) &&
+                result.TryGetProperty("content", out var contentArray))
+            {
+                foreach (var item in contentArray.EnumerateArray())
+                {
+                    if (item.TryGetProperty("text", out var textElement))
+                    {
+                        var text = textElement.GetString();
+                        if (!string.IsNullOrEmpty(text))
+                        {
+                            // Try to parse as JSON containing prompts
+                            try
+                            {
+                                var promptDoc = JsonDocument.Parse(text);
+                                if (promptDoc.RootElement.TryGetProperty("prompts", out var prompts))
+                                {
+                                    foreach (var p in prompts.EnumerateArray())
+                                    {
+                                        var name = p.TryGetProperty("name", out var n) ? n.GetString() : null;
+                                        if (name == promptName)
+                                        {
+                                            return new PromptInfo
+                                            {
+                                                Name = promptName,
+                                                Content = p.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "",
+                                                Version = p.TryGetProperty("version", out var v) ? v.GetInt32() : 1,
+                                                IsActive = true
+                                            };
+                                        }
+                                    }
+                                }
+                                // Direct prompt content
+                                else if (promptDoc.RootElement.TryGetProperty("content", out var directContent))
+                                {
+                                    return new PromptInfo
+                                    {
+                                        Name = promptName,
+                                        Content = directContent.GetString() ?? "",
+                                        Version = promptDoc.RootElement.TryGetProperty("version", out var v) ? v.GetInt32() : 1,
+                                        IsActive = true
+                                    };
+                                }
+                            }
+                            catch
+                            {
+                                // Text might be the prompt content directly
+                                return new PromptInfo
+                                {
+                                    Name = promptName,
+                                    Content = text,
+                                    Version = 1,
+                                    IsActive = true
+                                };
+                            }
+                        }
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error getting prompt {PromptName} from Lightning", promptName);
+            _logger.LogWarning(ex, "Failed to extract prompt from response");
         }
-
-        // Fallback to default
-        return new PromptInfo
-        {
-            Name = promptName,
-            Content = GetDefaultPrompt(promptName),
-            Version = 0,
-            IsActive = true
-        };
+        return null;
     }
 
     public async Task<List<ValidationRuleInfo>> GetValidationRulesAsync(string context, CancellationToken cancellationToken)
@@ -351,43 +418,9 @@ public class MemoryAgentClient : IMemoryAgentClient
         return stats;
     }
 
-    private static string GetDefaultPrompt(string promptName) => promptName switch
-    {
-        "validation_agent_system" => @"You are an expert code reviewer. Your task is to review code for quality, security, and best practices.
-
-VALIDATION RULES:
-1. Check for null reference vulnerabilities
-2. Check for proper error handling
-3. Check for security issues (SQL injection, hardcoded secrets, etc.)
-4. Check for proper async patterns
-5. Check for proper resource disposal
-6. Check for code maintainability
-7. Check for proper naming conventions
-
-SCORING:
-- 10: Perfect, no issues
-- 8-9: Good, minor suggestions only
-- 6-7: Acceptable, needs some fixes
-- 4-5: Poor, significant issues
-- 0-3: Critical, major problems
-
-Be strict but fair. Focus on real issues, not style preferences.",
-
-        "validation_agent_security" => @"You are a security-focused code reviewer. Your primary concern is finding security vulnerabilities.
-
-CRITICAL SECURITY CHECKS:
-1. SQL Injection - Check for parameterized queries
-2. XSS - Check for output encoding
-3. CSRF - Check for anti-forgery tokens
-4. Hardcoded secrets - Check for API keys, passwords in code
-5. Insecure deserialization
-6. Path traversal vulnerabilities
-7. Improper authentication/authorization
-
-Score HARSHLY for security issues. A single critical vulnerability should result in score < 5.",
-
-        _ => "You are a helpful AI code reviewer."
-    };
+    // NO FALLBACK PROMPTS - All prompts MUST come from Lightning
+    // If a prompt is missing, the system will throw an error
+    // Run PromptSeedService to seed required prompts into Neo4j
 
     private static List<ValidationRuleInfo> GetDefaultValidationRules() => new()
     {

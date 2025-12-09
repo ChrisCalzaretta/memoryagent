@@ -227,62 +227,29 @@ public class LlmModelSelector : ILlmModelSelector
     }
 
     /// <summary>
-    /// Get selection prompt from Lightning or use default
+    /// Get selection prompt from Lightning - NO FALLBACK
     /// </summary>
     private async Task<string> GetSelectionPromptAsync(CancellationToken cancellationToken)
     {
-        if (_memoryAgent != null)
+        if (_memoryAgent == null)
         {
-            try
-            {
-                var prompt = await _memoryAgent.GetPromptAsync("coding_model_selector", cancellationToken);
-                if (prompt != null && !string.IsNullOrEmpty(prompt.Content))
-                {
-                    _logger.LogDebug("Using prompt from Lightning: {PromptName} v{Version}", 
-                        prompt.Name, prompt.Version);
-                    return prompt.Content;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Could not get prompt from Lightning, using default");
-            }
+            throw new InvalidOperationException("MemoryAgent client not available. Cannot get model selection prompt.");
         }
         
-        return GetDefaultSelectionPrompt();
+        // This will throw if prompt not found - NO FALLBACK
+        var prompt = await _memoryAgent.GetPromptAsync("coding_model_selector", cancellationToken);
+        if (prompt == null || string.IsNullOrEmpty(prompt.Content))
+        {
+            throw new InvalidOperationException("Required prompt 'coding_model_selector' not found or empty in Lightning. Run PromptSeedService.");
+        }
+        
+        _logger.LogDebug("Using prompt from Lightning: {PromptName} v{Version}", prompt.Name, prompt.Version);
+        return prompt.Content;
     }
     
-    /// <summary>
-    /// Default selection prompt (used when Lightning not available)
-    /// </summary>
-    private string GetDefaultSelectionPrompt()
-    {
-        return @"You are a model selection expert for code generation tasks.
-
-Your job is to select the best LLM model for a coding task.
-
-SELECTION CRITERIA:
-1. Historical performance - prefer models with higher success rates
-2. Task complexity - simple tasks can use smaller/faster models
-3. Language expertise - some models work better with certain languages
-4. Exploration - occasionally try NEW models to gather data (especially for simple tasks)
-
-EXPLORATION GUIDELINES:
-- If task is SIMPLE and there are untried models, consider exploring (20% chance)
-- If task is COMPLEX, stick with proven models
-- New models should be tried on low-risk tasks first
-
-🚨 CRITICAL: OUTPUT ONLY RAW JSON - NO EXPLANATION, NO MARKDOWN, NO CODE BLOCKS!
-
-{
-    ""selectedModel"": ""model_name_here"",
-    ""reasoning"": ""brief explanation"",
-    ""taskComplexity"": ""simple|moderate|complex|very_complex"",
-    ""confidence"": 0.85
-}
-
-DO NOT wrap in ```json``` blocks. DO NOT add any text before or after the JSON.";
-    }
+    // NO FALLBACK PROMPTS - All prompts MUST come from Lightning
+    // If a prompt is missing, the system will throw an error
+    // Run PromptSeedService to seed required prompts into Neo4j
 
     private string BuildSelectionPrompt(
         string taskDescription,

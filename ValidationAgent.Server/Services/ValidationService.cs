@@ -87,9 +87,12 @@ public class ValidationService : IValidationService
         };
 
         // Phase 1: Rule-based validation (fast, deterministic)
+        // ValidationMode: "standard" (default) = relaxed, "enterprise" = strict
+        _logger.LogInformation("Using validation mode: {Mode}", request.ValidationMode);
+        
         foreach (var file in request.Files)
         {
-            var issues = await ValidateFileWithRulesAsync(file, request.Rules, cancellationToken);
+            var issues = await ValidateFileWithRulesAsync(file, request.Rules, request.ValidationMode, cancellationToken);
             response.Issues.AddRange(issues);
         }
 
@@ -333,6 +336,7 @@ Be thorough but fair. Only report real issues.";
     private async Task<List<ValidationIssue>> ValidateFileWithRulesAsync(
         CodeFile file, 
         List<string> rules,
+        string validationMode,
         CancellationToken cancellationToken)
     {
         var issues = new List<ValidationIssue>();
@@ -359,78 +363,22 @@ Be thorough but fair. Only report real issues.";
             return issues;
         }
         
-        _logger.LogDebug("Running C# rule-based validation for: {Path}", file.Path);
+        _logger.LogDebug("Running C# rule-based validation for: {Path} (mode={Mode})", file.Path, validationMode);
 
         // ============================================
         // C# SPECIFIC RULES (only for .cs files)
         // ============================================
+        // TIERED VALIDATION:
+        // - "standard" (default): Only critical issues - bugs, security, syntax errors
+        // - "enterprise": Full strict mode with all best practices
+        var isEnterprise = validationMode == "enterprise";
         
-        // Best practices checks
-        if (rules.Contains("best_practices"))
-        {
-            // Check for null checks
-            if (content.Contains("public") && !content.Contains("null"))
-            {
-                if (content.Contains("string ") || content.Contains("object ") || content.Contains("?"))
-                {
-                    if (!content.Contains("ArgumentNullException") && !content.Contains("?? throw"))
-                    {
-                        issues.Add(new ValidationIssue
-                        {
-                            Severity = "warning",
-                            File = file.Path,
-                            Message = "Consider adding null checks for nullable parameters",
-                            Suggestion = "Use 'ArgumentNullException.ThrowIfNull()' or null-coalescing operators",
-                            Rule = "best_practices"
-                        });
-                    }
-                }
-            }
-
-            // Check for XML documentation
-            if (content.Contains("public class") || content.Contains("public interface"))
-            {
-                if (!content.Contains("/// <summary>"))
-                {
-                    issues.Add(new ValidationIssue
-                    {
-                        Severity = "info",
-                        File = file.Path,
-                        Message = "Public types should have XML documentation",
-                        Suggestion = "Add /// <summary> comments to public classes and methods",
-                        Rule = "best_practices"
-                    });
-                }
-            }
-
-            // Check for async without CancellationToken
-            if (content.Contains("async Task") && !content.Contains("CancellationToken"))
-            {
-                issues.Add(new ValidationIssue
-                {
-                    Severity = "warning",
-                    File = file.Path,
-                    Message = "Async methods should accept CancellationToken",
-                    Suggestion = "Add 'CancellationToken cancellationToken = default' parameter",
-                    Rule = "best_practices"
-                });
-            }
-
-            // Check for proper using statements
-            if (content.Contains("IDisposable") && !content.Contains("using ") && !content.Contains("await using"))
-            {
-                issues.Add(new ValidationIssue
-                {
-                    Severity = "warning",
-                    File = file.Path,
-                    Message = "IDisposable resources should be properly disposed",
-                    Suggestion = "Use 'using' or 'await using' statements",
-                    Rule = "best_practices"
-                });
-            }
-        }
-
-        // Security checks
+        // ════════════════════════════════════════════════════════════════════
+        // STANDARD MODE: Critical issues only (bugs, security, syntax errors)
+        // These checks run in BOTH modes
+        // ════════════════════════════════════════════════════════════════════
+        
+        // Security checks (ALWAYS run - critical)
         if (rules.Contains("security"))
         {
             // Check for SQL injection vulnerabilities
@@ -468,12 +416,112 @@ Be thorough but fair. Only report real issues.";
                     });
                 }
             }
+            
+            // Check for Process.Start with user input (command injection)
+            if (content.Contains("Process.Start") && (content.Contains("+ ") || content.Contains("$\"")))
+            {
+                issues.Add(new ValidationIssue
+                {
+                    Severity = "critical",
+                    File = file.Path,
+                    Message = "Potential command injection vulnerability",
+                    Suggestion = "Sanitize user input before passing to Process.Start",
+                    Rule = "security"
+                });
+            }
+        }
+        
+        // Syntax/Bug checks (ALWAYS run - these catch real bugs)
+        if (rules.Contains("best_practices"))
+        {
+            // Check for proper using statements (resource leaks are bugs)
+            if (content.Contains("IDisposable") && !content.Contains("using ") && !content.Contains("await using") && !content.Contains("Dispose()"))
+            {
+                issues.Add(new ValidationIssue
+                {
+                    Severity = "warning",
+                    File = file.Path,
+                    Message = "IDisposable resources should be properly disposed",
+                    Suggestion = "Use 'using' or 'await using' statements, or implement IDisposable pattern",
+                    Rule = "best_practices"
+                });
+            }
+            
+            // Check for empty catch blocks (swallowed exceptions are bugs)
+            if (System.Text.RegularExpressions.Regex.IsMatch(content, @"catch\s*\([^)]*\)\s*\{\s*\}"))
+            {
+                issues.Add(new ValidationIssue
+                {
+                    Severity = "warning",
+                    File = file.Path,
+                    Message = "Empty catch block swallows exceptions",
+                    Suggestion = "Log the exception or rethrow it. Avoid empty catch blocks.",
+                    Rule = "best_practices"
+                });
+            }
         }
 
-        // Pattern checks
-        if (rules.Contains("patterns"))
+        // ════════════════════════════════════════════════════════════════════
+        // ENTERPRISE MODE ONLY: Best practice checks (strict)
+        // These only run when ValidationMode = "enterprise"
+        // ════════════════════════════════════════════════════════════════════
+        if (isEnterprise && rules.Contains("best_practices"))
         {
-            // Check for proper DI
+            _logger.LogDebug("Running ENTERPRISE validation rules for: {Path}", file.Path);
+            
+            // Check for null checks (enterprise only)
+            if (content.Contains("public") && !content.Contains("null"))
+            {
+                if (content.Contains("string ") || content.Contains("object ") || content.Contains("?"))
+                {
+                    if (!content.Contains("ArgumentNullException") && !content.Contains("?? throw"))
+                    {
+                        issues.Add(new ValidationIssue
+                        {
+                            Severity = "warning",
+                            File = file.Path,
+                            Message = "[Enterprise] Consider adding null checks for nullable parameters",
+                            Suggestion = "Use 'ArgumentNullException.ThrowIfNull()' or null-coalescing operators",
+                            Rule = "best_practices"
+                        });
+                    }
+                }
+            }
+
+            // Check for XML documentation (enterprise only)
+            if (content.Contains("public class") || content.Contains("public interface"))
+            {
+                if (!content.Contains("/// <summary>"))
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "info",
+                        File = file.Path,
+                        Message = "[Enterprise] Public types should have XML documentation",
+                        Suggestion = "Add /// <summary> comments to public classes and methods",
+                        Rule = "best_practices"
+                    });
+                }
+            }
+
+            // Check for async without CancellationToken (enterprise only)
+            if (content.Contains("async Task") && !content.Contains("CancellationToken"))
+            {
+                issues.Add(new ValidationIssue
+                {
+                    Severity = "warning",
+                    File = file.Path,
+                    Message = "[Enterprise] Async methods should accept CancellationToken",
+                    Suggestion = "Add 'CancellationToken cancellationToken = default' parameter",
+                    Rule = "best_practices"
+                });
+            }
+        }
+
+        // ENTERPRISE MODE ONLY: Pattern checks
+        if (isEnterprise && rules.Contains("patterns"))
+        {
+            // Check for proper DI (enterprise only)
             if (content.Contains("new ") && content.Contains("Service(") && !content.Contains("Test"))
             {
                 if (!file.Path.Contains("Test") && !file.Path.Contains("Program.cs"))
@@ -482,7 +530,7 @@ Be thorough but fair. Only report real issues.";
                     {
                         Severity = "info",
                         File = file.Path,
-                        Message = "Consider using dependency injection instead of direct instantiation",
+                        Message = "[Enterprise] Consider using dependency injection instead of direct instantiation",
                         Suggestion = "Inject dependencies through constructor",
                         Rule = "patterns"
                     });

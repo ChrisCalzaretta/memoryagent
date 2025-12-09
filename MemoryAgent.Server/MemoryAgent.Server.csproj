@@ -16,4 +16,9 @@
     <PackageReference Include="pythonnet" Version="3.0.3" />
   </ItemGroup>
 
+  <!-- Copy seed data files to output -->
+  <ItemGroup>
+    <None Include="Data\Seeds\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

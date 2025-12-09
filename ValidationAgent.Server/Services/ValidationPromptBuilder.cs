@@ -13,37 +13,13 @@ public class ValidationPromptBuilder : IValidationPromptBuilder
     private readonly IMemoryAgentClient _memoryAgent;
     private readonly ILogger<ValidationPromptBuilder> _logger;
 
-    private const string DefaultSystemPrompt = @"You are an expert code reviewer. Your task is to review code for:
-1. TASK COMPLIANCE - Does the code implement ALL requirements from the original task?
-2. FUNCTIONALITY - Will the code actually work as intended?
-3. QUALITY - Is the code well-written and maintainable?
+    // NO FALLBACK - All prompts MUST come from Lightning
+    // If Lightning is unavailable, the system will throw an error
+    private const string DefaultSystemPrompt = ""; // Not used - will throw if Lightning unavailable
 
-CRITICAL: TASK COMPLIANCE IS THE MOST IMPORTANT CHECK!
-- Read the ORIGINAL TASK carefully
-- Verify EVERY requirement is implemented
-- If ANY requirement is missing or broken, score CANNOT exceed 5
-- If core functionality doesn't work, score CANNOT exceed 3
-
-VALIDATION RULES:
-1. ⭐ TASK COMPLIANCE: All requirements from original task must be implemented
-2. ⭐ FUNCTIONALITY: Code must actually work (correct logic, no runtime errors)
-3. Check for proper error handling (language-appropriate)
-4. Check for security issues (injection, hardcoded secrets, etc.)
-5. Check for proper async patterns (if applicable)
-6. Check for proper resource management
-7. Check for code maintainability
-
-SCORING:
-- 10: Perfect - ALL task requirements met, code works, high quality
-- 8-9: Good - All requirements met, minor quality suggestions
-- 6-7: Acceptable - Most requirements met, needs some fixes
-- 4-5: Poor - Missing requirements OR significant bugs
-- 0-3: Critical - Core functionality broken or major requirements missing
-
-BE STRICT ON TASK COMPLIANCE. The code MUST do what was asked.
-Validate according to the TARGET LANGUAGE's best practices and idioms.";
-
-    // Language-specific validation rules
+    // NO FALLBACK - All language validation prompts MUST come from Lightning
+    // These legacy defaults are kept for reference only but are NOT used
+    [Obsolete("Not used - all validation prompts must come from Lightning")]
     private static readonly Dictionary<string, string> LanguageValidationRules = new()
     {
         ["python"] = @"PYTHON VALIDATION RULES:
@@ -176,14 +152,26 @@ Validate according to the TARGET LANGUAGE's best practices and idioms.";
         sb.AppendLine(systemPrompt);
         sb.AppendLine();
         
-        // 🌐 LANGUAGE-SPECIFIC VALIDATION
+        // 🌐 LANGUAGE-SPECIFIC VALIDATION FROM LIGHTNING
         var language = DetectLanguage(request);
-        if (LanguageValidationRules.TryGetValue(language, out var langRules))
+        if (!string.IsNullOrEmpty(language))
         {
-            sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
-            sb.AppendLine(langRules);
-            sb.AppendLine();
-            _logger.LogInformation("Using language-specific validation rules for: {Language}", language);
+            var languagePromptName = $"validation_{language}";
+            var languagePrompt = await _memoryAgent.GetPromptAsync(languagePromptName, cancellationToken);
+            
+            if (languagePrompt != null)
+            {
+                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} (from Lightning v{languagePrompt.Version}) ===");
+                sb.AppendLine(languagePrompt.Content);
+                sb.AppendLine();
+                _logger.LogInformation("✨ Using Lightning validation prompt for {Language} (v{Version})", language, languagePrompt.Version);
+            }
+            else
+            {
+                // NO FALLBACK - language validation prompt MUST exist in Lightning
+                _logger.LogError("❌ CRITICAL: Language validation prompt 'validation_{Language}' not found in Lightning. Ensure prompts are seeded.", language);
+                throw new InvalidOperationException($"Required language validation prompt 'validation_{language}' not found in Lightning. Run PromptSeedService or add the validation prompt.");
+            }
         }
         
         if (!string.IsNullOrEmpty(request.OriginalTask))

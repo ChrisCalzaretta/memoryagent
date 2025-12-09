@@ -117,6 +117,9 @@ builder.Services.AddSingleton<MemoryAgent.Server.FileWatcher.IAutoReindexService
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MemoryAgent.Server.FileWatcher.AutoReindexService>());
 builder.Services.AddHostedService<MemoryAgent.Server.FileWatcher.TestGenerationBackgroundService>();
 
+// 📝 PROMPT SEEDING: Seeds prompts from JSON on startup
+builder.Services.AddHostedService<MemoryAgent.Server.Services.PromptSeedService>();
+
 // Pattern Validators (refactored from single 2913-line file into 17 focused validators)
 builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.CachingPatternValidator>();
 builder.Services.AddSingleton<IPatternValidator, MemoryAgent.Server.Services.PatternValidation.ResiliencePatternValidator>();

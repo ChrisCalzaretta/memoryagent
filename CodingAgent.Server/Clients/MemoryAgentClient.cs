@@ -76,24 +76,19 @@ public class MemoryAgentClient : IMemoryAgentClient
                 }
             }
 
-            _logger.LogDebug("Prompt {PromptName} not in Lightning, using default", promptName);
+            _logger.LogError("❌ CRITICAL: Prompt '{PromptName}' not found in Lightning. Ensure prompts are seeded.", promptName);
+            throw new InvalidOperationException($"Required prompt '{promptName}' not found in Lightning. Run PromptSeedService or check Neo4j connection.");
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "Error getting prompt {PromptName} from Lightning", promptName);
+            _logger.LogError(ex, "❌ CRITICAL: Cannot connect to Lightning to get prompt '{PromptName}'", promptName);
+            throw new InvalidOperationException($"Cannot connect to Lightning to get required prompt '{promptName}'. Ensure MemoryAgent is running.", ex);
         }
-
-        // Fallback to default
-        var defaultPrompt = new PromptInfo
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            Name = promptName,
-            Content = GetDefaultPrompt(promptName),
-            Version = 0,
-            IsActive = true
-        };
-        
-        _promptCache[promptName] = (defaultPrompt, DateTime.UtcNow);
-        return defaultPrompt;
+            _logger.LogError(ex, "❌ CRITICAL: Error getting prompt '{PromptName}' from Lightning", promptName);
+            throw new InvalidOperationException($"Failed to get required prompt '{promptName}' from Lightning: {ex.Message}", ex);
+        }
     }
     
     /// <summary>
@@ -131,7 +126,7 @@ public class MemoryAgentClient : IMemoryAgentClient
                                             return new PromptInfo
                                             {
                                                 Name = promptName,
-                                                Content = p.TryGetProperty("content", out var c) ? c.GetString() ?? "" : GetDefaultPrompt(promptName),
+                                                Content = p.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "",
                                                 Version = p.TryGetProperty("version", out var v) ? v.GetInt32() : 1,
                                                 IsActive = true
                                             };
@@ -145,7 +140,7 @@ public class MemoryAgentClient : IMemoryAgentClient
                                     return new PromptInfo
                                     {
                                         Name = promptName,
-                                        Content = directContent.GetString() ?? GetDefaultPrompt(promptName),
+                                        Content = directContent.GetString() ?? "",
                                         Version = 1,
                                         IsActive = true
                                     };
@@ -874,43 +869,9 @@ public class MemoryAgentClient : IMemoryAgentClient
         return new List<ModelStats>();
     }
 
-    private static string GetDefaultPrompt(string promptName) => promptName switch
-    {
-        "coding_agent_system" => @"You are an expert coding agent. Your task is to write production-quality code.
-
-STRICT RULES:
-1. ONLY create/modify files directly necessary for the requested task
-2. Do NOT ""improve"" or refactor unrelated code
-3. Do NOT add features that weren't requested
-4. You MAY add package references if needed for your implementation
-5. You MUST include proper error handling and null checks
-6. You MUST include XML documentation on public methods
-7. Follow C# naming conventions and best practices
-
-REQUIREMENTS:
-- Always check for null before accessing properties
-- Use async/await for I/O operations
-- Prefer IOptions<T> over raw configuration strings
-- Include CancellationToken support for async methods
-- Use dependency injection for services
-- Log important operations",
-
-        "coding_agent_fix" => @"You are an expert coding agent fixing validation issues.
-
-FIX PRIORITY:
-1. CRITICAL: Security vulnerabilities, null reference bugs
-2. HIGH: Missing error handling, resource leaks
-3. MEDIUM: Code style, naming conventions
-4. LOW: Documentation, minor improvements
-
-RULES:
-- Fix ALL issues listed in the validation feedback
-- Do NOT introduce new features while fixing
-- Preserve existing functionality
-- Add tests for fixed issues if appropriate",
-
-        _ => "You are a helpful AI coding assistant."
-    };
+    // NO FALLBACK PROMPTS - All prompts MUST come from Lightning
+    // If a prompt is missing, the system will throw an error
+    // Run PromptSeedService to seed required prompts into Neo4j
 }
 
 /// <summary>

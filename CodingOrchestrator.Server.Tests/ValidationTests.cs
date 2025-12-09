@@ -121,10 +121,10 @@ public class ValidationTests
     }
 
     [Theory]
-    [InlineData(0)]   // Too low
-    [InlineData(-1)]  // Negative
-    [InlineData(51)]  // Too high
-    [InlineData(100)] // Way too high
+    [InlineData(0)]     // Too low
+    [InlineData(-1)]    // Negative
+    [InlineData(1001)]  // Too high
+    [InlineData(5000)]  // Way too high
     public void OrchestrateTaskRequest_InvalidMaxIterations_FailsValidation(int iterations)
     {
         // Arrange
@@ -145,8 +145,9 @@ public class ValidationTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(10)]
     [InlineData(50)]
+    [InlineData(100)]
+    [InlineData(1000)]
     public void OrchestrateTaskRequest_ValidMaxIterations_PassesValidation(int iterations)
     {
         // Arrange

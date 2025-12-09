@@ -107,25 +107,98 @@ public class MemoryAgentClient : IMemoryAgentClient
             
             if (response.IsSuccessStatusCode)
             {
-                // Parse the response to extract prompt content
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                // For now, return a default - actual implementation would parse MCP response
-                return new PromptInfo
+                var extractedPrompt = ExtractPromptFromResponse(content, promptName);
+                if (extractedPrompt != null)
+                {
+                    _logger.LogInformation("✅ Got prompt {PromptName} v{Version} from Lightning", 
+                        promptName, extractedPrompt.Version);
+                    return extractedPrompt;
+                }
+            }
+
+            _logger.LogError("❌ CRITICAL: Prompt '{PromptName}' not found in Lightning. Ensure prompts are seeded.", promptName);
+            throw new InvalidOperationException($"Required prompt '{promptName}' not found in Lightning. Run PromptSeedService or check Neo4j connection.");
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "❌ CRITICAL: Cannot connect to Lightning to get prompt '{PromptName}'", promptName);
+            throw new InvalidOperationException($"Cannot connect to Lightning to get required prompt '{promptName}'. Ensure MemoryAgent is running.", ex);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            _logger.LogError(ex, "❌ CRITICAL: Error getting prompt '{PromptName}' from Lightning", promptName);
+            throw new InvalidOperationException($"Failed to get required prompt '{promptName}' from Lightning: {ex.Message}", ex);
+        }
+    }
+
+    private PromptInfo? ExtractPromptFromResponse(string jsonResponse, string promptName)
+    {
+        try
+        {
+            var doc = JsonDocument.Parse(jsonResponse);
+            
+            if (doc.RootElement.TryGetProperty("result", out var result) &&
+                result.TryGetProperty("content", out var contentArray))
+            {
+                foreach (var item in contentArray.EnumerateArray())
+                {
+                    if (item.TryGetProperty("text", out var textElement))
+                    {
+                        var text = textElement.GetString();
+                        if (!string.IsNullOrEmpty(text))
+                        {
+                            try
+                            {
+                                var promptDoc = JsonDocument.Parse(text);
+                                if (promptDoc.RootElement.TryGetProperty("prompts", out var prompts))
+                                {
+                                    foreach (var p in prompts.EnumerateArray())
+                                    {
+                                        var name = p.TryGetProperty("name", out var n) ? n.GetString() : null;
+                                        if (name == promptName)
+                                        {
+                                            return new PromptInfo
+                                            {
+                                                Name = promptName,
+                                                Content = p.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "",
+                                                Version = p.TryGetProperty("version", out var v) ? v.GetInt32() : 1,
+                                                IsActive = true
+                                            };
+                                        }
+                                    }
+                                }
+                                else if (promptDoc.RootElement.TryGetProperty("content", out var directContent))
+                                {
+                                    return new PromptInfo
+                                    {
+                                        Name = promptName,
+                                        Content = directContent.GetString() ?? "",
+                                        Version = promptDoc.RootElement.TryGetProperty("version", out var v) ? v.GetInt32() : 1,
+                                        IsActive = true
+                                    };
+                                }
+                            }
+                            catch
+                            {
+                                return new PromptInfo
                 {
                     Name = promptName,
-                    Content = GetDefaultPrompt(promptName),
+                                    Content = text,
                     Version = 1,
                     IsActive = true
                 };
             }
-
-            return null;
+                        }
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error getting prompt from MemoryAgent");
-            return null;
+            _logger.LogWarning(ex, "Failed to extract prompt from response");
         }
+        return null;
     }
 
     public async Task RecordPromptFeedbackAsync(string promptName, bool wasSuccessful, int? rating, CancellationToken cancellationToken)
@@ -678,47 +751,9 @@ public class MemoryAgentClient : IMemoryAgentClient
         };
     }
 
-    private static string GetDefaultPrompt(string promptName) => promptName switch
-    {
-        "coding_agent_system" => @"You are an expert coding agent. Your task is to write production-quality code.
-
-STRICT RULES:
-1. ONLY create/modify files directly necessary for the requested task
-2. Do NOT ""improve"" or refactor unrelated code
-3. Do NOT add features that weren't requested
-4. You MAY add package references if needed for your implementation
-5. You MUST include proper error handling and null checks
-6. You MUST include XML documentation on public methods
-7. Follow C# naming conventions and best practices
-
-REQUIREMENTS:
-- Always check for null before accessing properties
-- Use async/await for I/O operations
-- Prefer IOptions<T> over raw configuration strings
-- Include CancellationToken support for async methods",
-
-        "validation_agent_system" => @"You are an expert code reviewer. Your task is to review code for quality, security, and best practices.
-
-VALIDATION RULES:
-1. Check for null reference vulnerabilities
-2. Check for proper error handling
-3. Check for security issues (SQL injection, hardcoded secrets, etc.)
-4. Check for proper async patterns
-5. Check for proper resource disposal
-6. Check for code maintainability
-7. Check for proper naming conventions
-
-SCORING:
-- 10: Perfect, no issues
-- 8-9: Good, minor suggestions only
-- 6-7: Acceptable, needs some fixes
-- 4-5: Poor, significant issues
-- 0-3: Critical, major problems
-
-Be strict but fair. Focus on real issues, not style preferences.",
-
-        _ => "You are a helpful AI assistant."
-    };
+    // NO FALLBACK PROMPTS - All prompts MUST come from Lightning
+    // If a prompt is missing, the system will throw an error
+    // Run PromptSeedService to seed required prompts into Neo4j
 }
 
 /// <summary>

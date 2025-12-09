@@ -37,6 +37,14 @@ public class ValidateCodeRequest : IValidatableObject
     public List<string> Rules { get; set; } = new() { "best_practices", "security", "patterns" };
 
     /// <summary>
+    /// Validation strictness mode:
+    /// - "standard" (default): Relaxed rules, focus on bugs/security. Good for generated code.
+    /// - "enterprise": Full strict mode with all best practices (XML docs, DI, CancellationToken, etc.)
+    /// </summary>
+    [RegularExpression(@"^(standard|enterprise)?$", ErrorMessage = "ValidationMode must be 'standard' or 'enterprise'")]
+    public string ValidationMode { get; set; } = "standard";
+
+    /// <summary>
     /// The original task (for context)
     /// </summary>
     [StringLength(10000, ErrorMessage = "OriginalTask cannot exceed 10000 characters")]

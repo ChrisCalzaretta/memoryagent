@@ -14,33 +14,14 @@ public class PromptBuilder : IPromptBuilder
     private readonly IMemoryAgentClient _memoryAgent;
     private readonly ILogger<PromptBuilder> _logger;
 
-    // Default fallback if Lightning is unavailable (generic, multi-language)
-    private const string DefaultSystemPrompt = @"You are an expert coding agent. Your task is to write production-quality code.
+    // NO FALLBACK - All prompts MUST come from Lightning
+    // If Lightning is unavailable, the system will throw an error
+    private const string DefaultSystemPrompt = ""; // Not used - will throw if Lightning unavailable
 
-🔴 CRITICAL - SEARCH BEFORE WRITE:
-1. ALWAYS check if the functionality already exists
-2. NEVER recreate services, methods, or patterns that exist
-3. EXTEND existing code instead of creating duplicates
-4. REUSE existing interfaces and implementations
-5. If similar code exists, INTEGRATE with it, don't duplicate
-
-STRICT RULES:
-1. ONLY create/modify files directly necessary for the requested task
-2. Do NOT ""improve"" or refactor unrelated code
-3. Do NOT add features that weren't requested
-4. You MAY add package references if needed for your implementation
-5. You MUST include proper error handling
-6. You MUST include documentation comments
-7. Follow naming conventions and best practices for the target language
-
-REQUIREMENTS:
-- Include proper error handling for the target language
-- Use async patterns where appropriate
-- Follow idiomatic patterns for the target language
-- Include type hints/annotations where the language supports them";
-
-    // Language-specific guidance - FALLBACK DEFAULTS (Lightning prompts take priority!)
-    // These are used only if Lightning doesn't have a prompt for the language
+    // NO FALLBACK DEFAULTS - All language prompts MUST come from Lightning
+    // These legacy defaults are kept for reference only but are NOT used
+    // If a language prompt is missing, the system will throw an error
+    [Obsolete("Not used - all prompts must come from Lightning")]
     private static readonly Dictionary<string, LanguageGuidance> DefaultLanguageGuidelines = new()
     {
         ["python"] = new LanguageGuidance
@@ -374,29 +355,17 @@ CRITICAL RULES:
             
             if (languagePrompt != null)
             {
-                // Use Lightning's learned prompt for this language
+                // Use Lightning's prompt for this language
                 sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} (from Lightning v{languagePrompt.Version}) ===");
                 sb.AppendLine(languagePrompt.Content);
                 sb.AppendLine();
-                _logger.LogInformation("✨ Using LEARNED prompt for {Language} (v{Version})", language, languagePrompt.Version);
-            }
-            else if (DefaultLanguageGuidelines.TryGetValue(language, out var guidance))
-            {
-                // Fall back to hardcoded defaults
-                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} (default) ===");
-                sb.AppendLine($"File Extension: {guidance.FileExtension}");
-                sb.AppendLine($"Documentation Style: {guidance.DocStyle}");
-                sb.AppendLine();
-                sb.AppendLine(guidance.Guidelines);
-                sb.AppendLine();
-                _logger.LogInformation("Using DEFAULT guidance for: {Language} (not yet in Lightning)", language);
+                _logger.LogInformation("✨ Using Lightning prompt for {Language} (v{Version})", language, languagePrompt.Version);
             }
             else
             {
-                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
-                sb.AppendLine("Follow best practices and idiomatic patterns for this language.");
-                sb.AppendLine();
-                _logger.LogWarning("No guidance found for language: {Language}", language);
+                // NO FALLBACK - language prompt MUST exist in Lightning
+                _logger.LogError("❌ CRITICAL: Language prompt 'coding_agent_{Language}' not found in Lightning. Ensure prompts are seeded.", language);
+                throw new InvalidOperationException($"Required language prompt 'coding_agent_{language}' not found in Lightning. Run PromptSeedService or add the language prompt.");
             }
         }
         
@@ -555,16 +524,15 @@ CRITICAL RULES:
             
             if (languagePrompt != null)
             {
-                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} (from Lightning) ===");
+                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} (from Lightning v{languagePrompt.Version}) ===");
                 sb.AppendLine(languagePrompt.Content);
                 sb.AppendLine();
             }
-            else if (DefaultLanguageGuidelines.TryGetValue(language, out var guidance))
+            else
             {
-                sb.AppendLine($"=== 🎯 TARGET LANGUAGE: {language.ToUpperInvariant()} ===");
-                sb.AppendLine($"File Extension: {guidance.FileExtension}");
-                sb.AppendLine(guidance.Guidelines);
-                sb.AppendLine();
+                // NO FALLBACK - language prompt MUST exist in Lightning
+                _logger.LogError("❌ CRITICAL: Language prompt 'coding_agent_{Language}' not found in Lightning. Ensure prompts are seeded.", language);
+                throw new InvalidOperationException($"Required language prompt 'coding_agent_{language}' not found in Lightning. Run PromptSeedService or add the language prompt.");
             }
         }
         

@@ -58,6 +58,7 @@ public class McpHandler : IMcpHandler
                         ["background"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Run as background job (default: true)", ["default"] = true },
                         ["maxIterations"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Maximum coding/validation iterations. Default: 100", ["default"] = 100 },
                         ["minValidationScore"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Minimum score to pass validation (default: 8)", ["default"] = 8 },
+                        ["validationMode"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Validation strictness: 'standard' (default, relaxed - only bugs/security) or 'enterprise' (strict - XML docs, CancellationToken, DI, etc.)", ["default"] = "standard", ["enum"] = new[] { "standard", "enterprise" } },
                         ["autoWriteFiles"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Automatically write generated files to workspace (default: false). When false, files are returned for manual review.", ["default"] = false }
                     },
                     ["required"] = new[] { "task" }
@@ -265,6 +266,7 @@ public class McpHandler : IMcpHandler
             Background = GetBoolArg(arguments, "background", true),
             MaxIterations = GetIntArg(arguments, "maxIterations", 100),  // Default 100
             MinValidationScore = GetIntArg(arguments, "minValidationScore", 8),
+            ValidationMode = GetStringArg(arguments, "validationMode", "standard"), // "standard" or "enterprise"
             AutoWriteFiles = GetBoolArg(arguments, "autoWriteFiles", false)
         };
 
@@ -657,17 +659,17 @@ public class McpHandler : IMcpHandler
         return result.ToString();
     }
 
-    private static string GetStringArg(Dictionary<string, object> args, string key)
+    private static string GetStringArg(Dictionary<string, object> args, string key, string defaultValue = "")
     {
         if (args.TryGetValue(key, out var value))
         {
             if (value is JsonElement jsonElement)
             {
-                return jsonElement.GetString() ?? "";
+                return jsonElement.GetString() ?? defaultValue;
             }
-            return value?.ToString() ?? "";
+            return value?.ToString() ?? defaultValue;
         }
-        return "";
+        return defaultValue;
     }
 
     private static bool GetBoolArg(Dictionary<string, object> args, string key, bool defaultValue)

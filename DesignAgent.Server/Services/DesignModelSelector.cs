@@ -161,53 +161,20 @@ public class DesignModelSelector : IDesignModelSelector
 
     private async Task<string> GetSelectionPromptAsync(CancellationToken cancellationToken)
     {
-        try
+        // This will throw if prompt not found - NO FALLBACK
+        var prompt = await _memoryAgent.GetPromptAsync("design_model_selector", cancellationToken);
+        if (prompt == null || string.IsNullOrEmpty(prompt.Content))
         {
-            var prompt = await _memoryAgent.GetPromptAsync("design_model_selector", cancellationToken);
-            if (prompt != null && !string.IsNullOrEmpty(prompt.Content))
-            {
-                _logger.LogDebug("Using prompt from Lightning: {PromptName} v{Version}", 
-                    prompt.Name, prompt.Version);
-                return prompt.Content;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Could not get prompt from Lightning, using default");
+            throw new InvalidOperationException("Required prompt 'design_model_selector' not found or empty in Lightning. Run PromptSeedService.");
         }
         
-        return GetDefaultSelectionPrompt();
+        _logger.LogDebug("Using prompt from Lightning: {PromptName} v{Version}", prompt.Name, prompt.Version);
+        return prompt.Content;
     }
 
-    private string GetDefaultSelectionPrompt()
-    {
-        return @"You are a model selection expert for UI/UX design tasks.
-
-Your job is to select the best LLM model for design-related tasks like:
-- Brand guideline generation
-- Design validation and suggestions
-- Color palette recommendations
-- Typography suggestions
-- Accessibility improvements
-
-SELECTION CRITERIA:
-1. **🔥 WARM MODELS** - Strongly prefer already-loaded models (10-30s faster!)
-2. **Historical performance** - Use models with proven success for design tasks
-3. **Creative capability** - Design tasks benefit from creative/generative models
-4. **Speed** - Design feedback should be quick
-
-DESIGN-SPECIFIC CONSIDERATIONS:
-- Design tasks need good understanding of colors, typography, spacing
-- Models should be able to explain WHY design choices are good/bad
-- Larger models often better at nuanced design feedback
-
-OUTPUT FORMAT - Return JSON only:
-{
-    ""selectedModel"": ""model_name"",
-    ""reasoning"": ""brief explanation"",
-    ""confidence"": 0.0-1.0
-}";
-    }
+    // NO FALLBACK PROMPTS - All prompts MUST come from Lightning
+    // If a prompt is missing, the system will throw an error
+    // Run PromptSeedService to seed required prompts into Neo4j
 
     private string BuildSelectionPrompt(
         string taskDescription,
