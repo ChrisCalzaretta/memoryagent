@@ -129,12 +129,12 @@ public class ExecutionInstructions
     /// <summary>
     /// Primary language of the generated code
     /// </summary>
-    public required string Language { get; set; }
+    public string Language { get; set; } = "unknown";
     
     /// <summary>
-    /// The main file to execute
+    /// The main file to execute (auto-detected if not provided)
     /// </summary>
-    public required string MainFile { get; set; }
+    public string MainFile { get; set; } = "";
     
     /// <summary>
     /// Command to build/compile (optional)
@@ -142,9 +142,9 @@ public class ExecutionInstructions
     public string? BuildCommand { get; set; }
     
     /// <summary>
-    /// Command to run the code
+    /// Command to run the code (auto-generated if not provided)
     /// </summary>
-    public required string RunCommand { get; set; }
+    public string RunCommand { get; set; } = "";
     
     /// <summary>
     /// Expected output (for validation)

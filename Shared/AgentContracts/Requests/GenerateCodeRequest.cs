@@ -40,6 +40,12 @@ public class GenerateCodeRequest : IValidatableObject
     public List<string>? TargetFiles { get; set; }
 
     /// <summary>
+    /// Existing/accumulated files from previous steps (step-by-step mode)
+    /// These are files generated in earlier steps that the LLM should reference
+    /// </summary>
+    public List<ExistingFile>? ExistingFiles { get; set; }
+
+    /// <summary>
     /// The workspace path
     /// </summary>
     [Required(ErrorMessage = "WorkspacePath is required")]
@@ -124,6 +130,22 @@ public class CodePattern
 }
 
 /// <summary>
+/// An existing file from previous generation steps
+/// </summary>
+public class ExistingFile
+{
+    /// <summary>
+    /// File path (e.g., "Card.cs", "Models/Hand.cs")
+    /// </summary>
+    public required string Path { get; set; }
+    
+    /// <summary>
+    /// Full file content
+    /// </summary>
+    public required string Content { get; set; }
+}
+
+/// <summary>
 /// Feedback from validation agent
 /// </summary>
 public class ValidationFeedback
@@ -136,5 +158,16 @@ public class ValidationFeedback
     /// Models that have already been tried (for smart rotation)
     /// </summary>
     public HashSet<string> TriedModels { get; set; } = new();
+    
+    /// <summary>
+    /// Raw build errors from Docker execution (if any)
+    /// When set, indicates this is a BUILD failure that needs focused fix prompt
+    /// </summary>
+    public string? BuildErrors { get; set; }
+    
+    /// <summary>
+    /// Check if this feedback is specifically for build errors (not validation)
+    /// </summary>
+    public bool HasBuildErrors => !string.IsNullOrEmpty(BuildErrors);
 }
 

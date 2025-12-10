@@ -68,6 +68,15 @@ public class OrchestrateTaskRequest : IValidatableObject
     /// When false, files are returned in the response for manual review
     /// </summary>
     public bool AutoWriteFiles { get; set; } = false;
+    
+    /// <summary>
+    /// Execution mode for multi-step tasks:
+    /// - "batch" (default): Generate all code at once, then validate
+    /// - "stepbystep": Generate each plan step separately, validate after each step
+    /// Step-by-step mode is better for complex multi-file tasks with dependencies
+    /// </summary>
+    [RegularExpression(@"^(batch|stepbystep)?$", ErrorMessage = "ExecutionMode must be 'batch' or 'stepbystep'")]
+    public string ExecutionMode { get; set; } = "batch";
 
     /// <summary>
     /// Custom validation for security checks

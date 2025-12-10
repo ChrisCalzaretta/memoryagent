@@ -4,14 +4,15 @@ using AgentContracts.Models;
 using AgentContracts.Requests;
 using AgentContracts.Responses;
 using AgentContracts.Services;
+using CodingAgent.Server.Clients;
 
 namespace CodingAgent.Server.Services;
 
 /// <summary>
 /// Code generation service using Ollama LLM with smart model orchestration
-/// - Uses pinned primary model for first attempt
-/// - Rotates to different models on validation failure
-/// - Dynamically discovers available models from Ollama
+/// - Uses Anthropic Claude for code generation when ANTHROPIC_API_KEY is configured
+/// - Falls back to local Ollama models for code generation if no cloud key
+/// - Uses local models for validation, complexity estimation, and planning (cost savings)
 /// - Supports ALL programming languages (not just C#!)
 /// </summary>
 public class CodeGenerationService : ICodeGenerationService
@@ -20,6 +21,7 @@ public class CodeGenerationService : ICodeGenerationService
     private readonly IOllamaClient _ollamaClient;
     private readonly IModelOrchestrator _modelOrchestrator;
     private readonly ILlmModelSelector? _llmModelSelector;
+    private readonly IAnthropicClient? _anthropicClient;
     private readonly ILogger<CodeGenerationService> _logger;
     
     /// <summary>
@@ -102,13 +104,25 @@ public class CodeGenerationService : ICodeGenerationService
         IOllamaClient ollamaClient,
         IModelOrchestrator modelOrchestrator,
         ILogger<CodeGenerationService> logger,
-        ILlmModelSelector? llmModelSelector = null)  // Optional - graceful degradation
+        ILlmModelSelector? llmModelSelector = null,       // Optional - graceful degradation
+        IAnthropicClient? anthropicClient = null)         // Optional - cloud code gen
     {
         _promptBuilder = promptBuilder;
         _ollamaClient = ollamaClient;
         _modelOrchestrator = modelOrchestrator;
         _logger = logger;
         _llmModelSelector = llmModelSelector;
+        _anthropicClient = anthropicClient;
+        
+        if (_anthropicClient?.IsConfigured == true)
+        {
+            _logger.LogInformation("CODE GENERATION: Using Claude ({Model}) for code generation", 
+                _anthropicClient.ModelId);
+        }
+        else
+        {
+            _logger.LogInformation("CODE GENERATION: Using local Ollama models (no ANTHROPIC_API_KEY)");
+        }
     }
 
     public async Task<GenerateCodeResponse> GenerateAsync(GenerateCodeRequest request, CancellationToken cancellationToken)
@@ -119,6 +133,12 @@ public class CodeGenerationService : ICodeGenerationService
         // Build prompt from Lightning (includes context, patterns, similar solutions)
         var prompt = await _promptBuilder.BuildGeneratePromptAsync(request, cancellationToken);
         _logger.LogDebug("Built prompt with {Length} characters", prompt.Length);
+
+        // ☁️ Use Anthropic Claude for code generation if configured
+        if (_anthropicClient?.IsConfigured == true)
+        {
+            return await GenerateWithAnthropicAsync(prompt, request, cancellationToken);
+        }
 
         // 🧠 INTELLIGENT MODEL SELECTION based on task complexity and language
         var (model, port) = await SelectBestModelForTaskAsync(request, cancellationToken);
@@ -178,11 +198,34 @@ public class CodeGenerationService : ICodeGenerationService
 
     public async Task<GenerateCodeResponse> FixAsync(GenerateCodeRequest request, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Fixing code for task: {Task}, Issues: {IssueCount}", 
-            request.Task, request.PreviousFeedback?.Issues.Count ?? 0);
+        _logger.LogInformation("Fixing code for task: {Task}, Issues: {IssueCount}, HasBuildErrors: {HasBuildErrors}", 
+            request.Task, request.PreviousFeedback?.Issues.Count ?? 0, request.PreviousFeedback?.HasBuildErrors ?? false);
 
-        // Build fix prompt from Lightning
-        var prompt = await _promptBuilder.BuildFixPromptAsync(request, cancellationToken);
+        string prompt;
+        
+        // 🔧 USE FOCUSED PROMPT FOR BUILD ERRORS - much smaller, errors at top!
+        if (request.PreviousFeedback?.HasBuildErrors == true && request.ExistingFiles?.Any() == true)
+        {
+            _logger.LogInformation("[BUILD-FIX] Using focused build error fix prompt");
+            
+            var brokenFiles = request.ExistingFiles.ToDictionary(f => f.Path, f => f.Content);
+            prompt = await _promptBuilder.BuildBuildErrorFixPromptAsync(
+                request.PreviousFeedback.BuildErrors!,
+                brokenFiles,
+                request.Language ?? "csharp",
+                cancellationToken);
+        }
+        else
+        {
+            // Regular fix prompt for validation issues
+            prompt = await _promptBuilder.BuildFixPromptAsync(request, cancellationToken);
+        }
+
+        // ☁️ Use Anthropic Claude for code fixes if configured
+        if (_anthropicClient?.IsConfigured == true)
+        {
+            return await GenerateWithAnthropicAsync(prompt, request, cancellationToken);
+        }
 
         // Get models that have already been tried (from previous feedback)
         var triedModels = request.PreviousFeedback?.TriedModels ?? new HashSet<string>();
@@ -190,7 +233,7 @@ public class CodeGenerationService : ICodeGenerationService
         var language = request.Language?.ToLowerInvariant() ?? "auto";
         var taskKeywords = ExtractTaskKeywords(request.Task);
         
-        // 🧠 Use SMART model selection for fixes too (with tried models excluded)
+        // Local model selection for fixes (with tried models excluded)
         var selection = await _modelOrchestrator.SelectBestModelAsync(
             ModelPurpose.CodeGeneration, 
             language,
@@ -199,7 +242,7 @@ public class CodeGenerationService : ICodeGenerationService
             taskKeywords,
             context: null,
             request.Task,
-            _llmModelSelector,  // Pass LLM selector for smart selection
+            _llmModelSelector,
             cancellationToken);
         
         if (selection == null)
@@ -211,10 +254,133 @@ public class CodeGenerationService : ICodeGenerationService
         }
         
         var (selectedModel, selectedPort) = selection.Value;
-        _logger.LogInformation("🧠 Smart selection for fix: {Model} (previously tried: {Tried})",
+        _logger.LogInformation("Smart selection for fix: {Model} (previously tried: {Tried})",
             selectedModel, string.Join(", ", triedModels));
         
         return await GenerateWithModelAsync(selectedModel, selectedPort, prompt, request, cancellationToken);
+    }
+    
+    /// <summary>
+    /// ☁️ Generate code using Anthropic Claude API (highest quality)
+    /// Automatically escalates to premium model (Opus) after 2 failed attempts with Sonnet
+    /// </summary>
+    private async Task<GenerateCodeResponse> GenerateWithAnthropicAsync(
+        string prompt,
+        GenerateCodeRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_anthropicClient == null || !_anthropicClient.IsConfigured)
+        {
+            throw new InvalidOperationException("Anthropic client not configured");
+        }
+        
+        // Check if we should escalate to premium model
+        // Count how many times we've already tried with Claude (any model)
+        var claudeAttempts = request.PreviousFeedback?.TriedModels?
+            .Count(m => m.StartsWith("claude:", StringComparison.OrdinalIgnoreCase)) ?? 0;
+        
+        var usePremium = claudeAttempts >= 2 && _anthropicClient.HasPremiumModel;
+        
+        if (usePremium)
+        {
+            _logger.LogWarning("[CLAUDE-ESCALATION] After {Attempts} failed attempts, escalating to premium model", claudeAttempts);
+        }
+        
+        var requestedLang = request.Language?.ToLowerInvariant() ?? "auto";
+        var langExamples = GetLanguageExamples(requestedLang);
+        
+        var systemPrompt = $@"You are Claude, an expert software engineer. Generate production-quality code.
+
+TARGET LANGUAGE: {requestedLang.ToUpperInvariant()}
+You MUST generate code in {requestedLang}. Do NOT use any other language.
+
+OUTPUT FORMAT - You MUST respond with:
+1. A brief explanation of your approach (2-3 sentences max)
+2. One or more code blocks in this EXACT format:
+
+```{requestedLang}:path/to/file.ext
+// code here
+```
+
+{langExamples}
+
+CRITICAL RULES:
+- ALWAYS include the file path after the language tag (e.g., ```csharp:Calculator.cs)
+- ONLY generate {requestedLang} code - NO other languages
+- Use proper conventions for {requestedLang}
+- Include error handling appropriate for {requestedLang}
+- Generate complete, working code (no placeholders or TODOs)
+- For C#: Use class-based structure with namespace, class, and Main method
+- Do NOT use top-level statements for C#";
+
+        var modelBeingUsed = usePremium ? _anthropicClient.PremiumModelId : _anthropicClient.ModelId;
+        _logger.LogInformation("[CLAUDE] Generating code with {Model}{Premium}", 
+            modelBeingUsed, usePremium ? " [PREMIUM]" : "");
+        
+        try
+        {
+            var response = await _anthropicClient.GenerateAsync(systemPrompt, prompt, usePremium, cancellationToken);
+            
+            // Parse the Claude response to extract code files
+            var fileChanges = ParseCodeBlocks(response.Content);
+            var explanation = ExtractExplanation(response.Content);
+            
+            // Parse execution instructions from response
+            var executionInstructions = ParseExecutionInstructions(response.Content, fileChanges);
+            
+            if (!fileChanges.Any())
+            {
+                _logger.LogWarning("[CLAUDE] No code blocks found. Response length: {Len}, Preview: {Preview}",
+                    response.Content.Length,
+                    response.Content.Length > 300 ? response.Content[..300] + "..." : response.Content);
+                
+                // Create fallback file from response if it looks like code
+                if (!string.IsNullOrWhiteSpace(response.Content) && response.Content.Length > 50)
+                {
+                    var extension = LanguageExtensions.TryGetValue(requestedLang, out var ext) ? ext : ".txt";
+                    fileChanges.Add(new FileChange
+                    {
+                        Path = $"GeneratedCode{extension}",
+                        Content = response.Content,
+                        Type = FileChangeType.Created,
+                        Reason = "Fallback - no code blocks detected"
+                    });
+                }
+            }
+            
+            _logger.LogInformation("[CLAUDE] Generated {Count} file(s), {InputTokens}+{OutputTokens} tokens, ${Cost:F4}",
+                fileChanges.Count, response.InputTokens, response.OutputTokens, response.Cost);
+            
+            return new GenerateCodeResponse
+            {
+                Success = true,
+                FileChanges = fileChanges,
+                Explanation = explanation,
+                TokensUsed = response.InputTokens + response.OutputTokens,
+                ModelUsed = $"claude:{response.Model}",  // Use actual model from response
+                Execution = executionInstructions,
+                CloudUsage = new CloudGenerationUsage
+                {
+                    Provider = "anthropic",
+                    Model = response.Model,
+                    InputTokens = response.InputTokens,
+                    OutputTokens = response.OutputTokens,
+                    Cost = response.Cost,
+                    TokensRemaining = response.TokensRemaining,
+                    RequestsRemaining = response.RequestsRemaining
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[CLAUDE] Error generating code");
+            return new GenerateCodeResponse
+            {
+                Success = false,
+                Error = $"Claude API error: {ex.Message}",
+                ModelUsed = $"claude:{_anthropicClient.ModelId}"
+            };
+        }
     }
     
     /// <summary>
@@ -414,18 +580,34 @@ RULES:
             }
             else if (!string.IsNullOrEmpty(language) && LanguageExtensions.TryGetValue(language, out var ext))
             {
-                // Auto-generate path based on known language
+                // SMART naming - extract class/type name from the code itself!
                 extension = ext;
-                extensionCounts.TryGetValue(ext, out var count);
-                extensionCounts[ext] = count + 1;
+                var extractedName = ExtractMainTypeName(code, language);
                 
-                // Smart naming based on language type
-                var baseName = GetDefaultFileName(language, count);
-                filePath = ext == "Dockerfile" || ext == "Makefile" 
-                    ? ext  // Special files without extension
-                    : baseName + ext;
-                    
-                _logger.LogDebug("Auto-generated path for {Language}: {Path}", language, filePath);
+                if (!string.IsNullOrEmpty(extractedName))
+                {
+                    // Use extracted class name for file path
+                    filePath = language.ToLowerInvariant() switch
+                    {
+                        "csharp" or "cs" or "c#" => extractedName == "Program" ? "Program.cs" : $"{extractedName}.cs",
+                        "typescript" or "ts" => $"src/{extractedName}.ts",
+                        "javascript" or "js" => $"src/{extractedName}.js",
+                        "python" or "py" => $"{extractedName.ToLowerInvariant()}.py",
+                        _ => extractedName + ext
+                    };
+                    _logger.LogInformation("Smart naming: extracted '{TypeName}' → {Path}", extractedName, filePath);
+                }
+                else
+                {
+                    // Fallback to default naming
+                    extensionCounts.TryGetValue(ext, out var count);
+                    extensionCounts[ext] = count + 1;
+                    var baseName = GetDefaultFileName(language, count);
+                    filePath = ext == "Dockerfile" || ext == "Makefile" 
+                        ? ext  
+                        : baseName + ext;
+                    _logger.LogDebug("Fallback naming for {Language}: {Path}", language, filePath);
+                }
             }
             else
             {
@@ -438,21 +620,173 @@ RULES:
                 _logger.LogDebug("Unknown language '{Language}', using: {Path}", language, filePath);
             }
             
+            // Clean the code to remove markdown artifacts
+            var cleanedCode = CleanGeneratedCode(code, language);
+            
+            if (string.IsNullOrWhiteSpace(cleanedCode))
+            {
+                _logger.LogWarning("Code block for {Path} was empty after cleanup, skipping", filePath);
+                continue;
+            }
+            
             files.Add(new FileChange
             {
                 Path = filePath,
-                Content = code,
+                Content = cleanedCode,
                 Type = FileChangeType.Created,
                 Reason = !string.IsNullOrEmpty(language) 
                     ? $"Generated {language} code" 
                     : "Generated code"
             });
             
-            _logger.LogInformation("Parsed code block: {Language} → {Path} ({Len} chars)", 
-                language, filePath, code.Length);
+            _logger.LogInformation("Parsed code block: {Language} → {Path} ({Len} chars, cleaned from {OrigLen})", 
+                language, filePath, cleanedCode.Length, code.Length);
         }
         
         return files;
+    }
+    
+    /// <summary>
+    /// Clean generated code by removing markdown artifacts and common LLM output problems
+    /// </summary>
+    private static string CleanGeneratedCode(string code, string language)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return code;
+            
+        var cleaned = code;
+        
+        // Remove any nested markdown code fences (LLM outputting ```csharp inside code)
+        // Match opening fences like ```csharp, ```cs, ```python, etc.
+        cleaned = Regex.Replace(cleaned, @"^```[a-zA-Z0-9#_+.-]*\s*$", "", RegexOptions.Multiline);
+        
+        // Remove closing fences
+        cleaned = Regex.Replace(cleaned, @"^```\s*$", "", RegexOptions.Multiline);
+        
+        // Remove stray backticks at start/end of lines
+        cleaned = Regex.Replace(cleaned, @"^`{1,4}\s*", "", RegexOptions.Multiline);
+        cleaned = Regex.Replace(cleaned, @"\s*`{1,4}$", "", RegexOptions.Multiline);
+        
+        // Remove common LLM explanation text that sometimes leaks through
+        // These patterns appear when LLM includes prose in the code block
+        var explanationPatterns = new[]
+        {
+            @"^Here(?:'s| is).*?:\s*$",
+            @"^This (?:code|implementation|class|method).*?:\s*$",
+            @"^The following.*?:\s*$",
+            @"^Below is.*?:\s*$",
+            @"^I(?:'ve| have).*?:\s*$",
+            @"^Let me.*?:\s*$"
+        };
+        
+        foreach (var pattern in explanationPatterns)
+        {
+            cleaned = Regex.Replace(cleaned, pattern, "", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+        }
+        
+        // For C#, ensure the code starts with valid C# syntax
+        if (language.Equals("csharp", StringComparison.OrdinalIgnoreCase) || 
+            language.Equals("cs", StringComparison.OrdinalIgnoreCase) ||
+            language.Equals("c#", StringComparison.OrdinalIgnoreCase))
+        {
+            cleaned = CleanCSharpCode(cleaned);
+        }
+        
+        // Trim and normalize line endings
+        cleaned = cleaned.Trim();
+        cleaned = Regex.Replace(cleaned, @"\r\n|\r", "\n");
+        
+        // Remove excessive blank lines (more than 2 consecutive)
+        cleaned = Regex.Replace(cleaned, @"\n{4,}", "\n\n\n");
+        
+        return cleaned;
+    }
+    
+    /// <summary>
+    /// C#-specific code cleaning - ensures valid C# structure
+    /// </summary>
+    private static string CleanCSharpCode(string code)
+    {
+        var lines = code.Split('\n').ToList();
+        var cleanedLines = new List<string>();
+        var foundValidStart = false;
+        
+        // Valid C# starting tokens
+        var validStartTokens = new[]
+        {
+            "using ", "namespace ", "public ", "internal ", "private ", "protected ",
+            "class ", "interface ", "struct ", "enum ", "record ", "sealed ", "abstract ",
+            "static ", "// ", "/* ", "/// ", "#region", "#pragma", "[", "global::"
+        };
+        
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.TrimStart();
+            
+            // Skip lines until we find valid C# start
+            if (!foundValidStart)
+            {
+                if (string.IsNullOrWhiteSpace(trimmedLine))
+                    continue;
+                    
+                // Check if line starts with valid C# token
+                if (validStartTokens.Any(token => trimmedLine.StartsWith(token, StringComparison.Ordinal)))
+                {
+                    foundValidStart = true;
+                    cleanedLines.Add(line);
+                }
+                // Skip invalid starting lines (markdown, prose, etc.)
+                continue;
+            }
+            
+            cleanedLines.Add(line);
+        }
+        
+        return string.Join("\n", cleanedLines);
+    }
+    
+    /// <summary>
+    /// Extract the main type name (class/interface/enum) from code for smart file naming
+    /// </summary>
+    private static string? ExtractMainTypeName(string code, string language)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        
+        // C# patterns
+        if (language.Equals("csharp", StringComparison.OrdinalIgnoreCase) ||
+            language.Equals("cs", StringComparison.OrdinalIgnoreCase) ||
+            language.Equals("c#", StringComparison.OrdinalIgnoreCase))
+        {
+            // Match: public/internal class/interface/struct/record/enum Name
+            var match = Regex.Match(code, 
+                @"(?:public|internal)\s+(?:partial\s+)?(?:class|interface|struct|record|enum)\s+(\w+)",
+                RegexOptions.Multiline);
+            if (match.Success)
+                return match.Groups[1].Value;
+        }
+        
+        // Python patterns
+        if (language.Equals("python", StringComparison.OrdinalIgnoreCase) ||
+            language.Equals("py", StringComparison.OrdinalIgnoreCase))
+        {
+            var match = Regex.Match(code, @"^class\s+(\w+)", RegexOptions.Multiline);
+            if (match.Success)
+                return match.Groups[1].Value;
+        }
+        
+        // TypeScript/JavaScript patterns  
+        if (language.Equals("typescript", StringComparison.OrdinalIgnoreCase) ||
+            language.Equals("ts", StringComparison.OrdinalIgnoreCase) ||
+            language.Equals("javascript", StringComparison.OrdinalIgnoreCase) ||
+            language.Equals("js", StringComparison.OrdinalIgnoreCase))
+        {
+            // Match: export class/interface Name or class Name
+            var match = Regex.Match(code, @"(?:export\s+)?(?:class|interface)\s+(\w+)", RegexOptions.Multiline);
+            if (match.Success)
+                return match.Groups[1].Value;
+        }
+        
+        return null;
     }
     
     /// <summary>

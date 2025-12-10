@@ -1,0 +1,77 @@
+# Multi-SDK .NET Docker Image for Code Execution
+# Supports: .NET 8, .NET 9, .NET 10 (preview)
+# Includes: Full SDKs, NuGet cache warming, ASP.NET Core support
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS base
+
+# Install .NET 8 SDK (LTS)
+RUN dotnet_version=8.0.404 \
+    && curl -fSL --output dotnet8.tar.gz https://dotnetcli.azureedge.net/dotnet/Sdk/$dotnet_version/dotnet-sdk-$dotnet_version-linux-x64.tar.gz \
+    && tar -ozxf dotnet8.tar.gz -C /usr/share/dotnet \
+    && rm dotnet8.tar.gz \
+    && echo "Installed .NET 8 SDK: $dotnet_version"
+
+# Install .NET 10 Preview SDK
+# Note: Update this version as new previews release
+RUN dotnet_version=10.0.100-preview.1.25120.13 \
+    && curl -fSL --output dotnet10.tar.gz https://dotnetcli.azureedge.net/dotnet/Sdk/$dotnet_version/dotnet-sdk-$dotnet_version-linux-x64.tar.gz \
+    && tar -ozxf dotnet10.tar.gz -C /usr/share/dotnet \
+    && rm dotnet10.tar.gz \
+    && echo "Installed .NET 10 SDK: $dotnet_version"
+
+# Verify all SDKs are installed
+RUN dotnet --list-sdks
+
+# Set environment for better NuGet performance
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DOTNET_NOLOGO=1
+ENV NUGET_XMLDOC_MODE=skip
+
+# Pre-warm NuGet cache with commonly used packages
+# This speeds up first restore significantly
+WORKDIR /tmp/warmup
+
+# Console app packages
+RUN dotnet new console -n ConsoleWarmup -f net9.0 && cd ConsoleWarmup \
+    && dotnet add package Newtonsoft.Json --version 13.0.3 \
+    && dotnet add package System.Text.Json --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.DependencyInjection --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.Logging --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.Logging.Console --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.Configuration --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.Configuration.Json --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.Http --version 9.0.0 \
+    && dotnet add package Polly --version 8.4.2 \
+    && dotnet add package Dapper --version 2.1.35 \
+    && dotnet add package CsvHelper --version 33.0.1 \
+    && dotnet restore \
+    && cd .. && rm -rf ConsoleWarmup
+
+# Web/API packages
+RUN dotnet new web -n WebWarmup -f net9.0 && cd WebWarmup \
+    && dotnet add package Swashbuckle.AspNetCore --version 6.6.2 \
+    && dotnet add package Microsoft.EntityFrameworkCore --version 9.0.0 \
+    && dotnet add package Microsoft.EntityFrameworkCore.InMemory --version 9.0.0 \
+    && dotnet add package Microsoft.EntityFrameworkCore.SqlServer --version 9.0.0 \
+    && dotnet add package FluentValidation.AspNetCore --version 11.3.0 \
+    && dotnet add package MediatR --version 12.4.1 \
+    && dotnet add package AutoMapper --version 13.0.1 \
+    && dotnet restore \
+    && cd .. && rm -rf WebWarmup
+
+# Clean up warmup files
+WORKDIR /app
+RUN rm -rf /tmp/warmup
+
+# Copy the smart build script
+COPY CodingOrchestrator.Server/dotnet-smart-build.sh /usr/local/bin/dotnet-smart-build.sh
+RUN chmod +x /usr/local/bin/dotnet-smart-build.sh
+
+# Default working directory
+WORKDIR /app
+
+# Labels
+LABEL maintainer="MemoryAgent"
+LABEL description="Multi-SDK .NET execution environment (8/9/10)"
+LABEL dotnet.versions="8.0,9.0,10.0-preview"
+

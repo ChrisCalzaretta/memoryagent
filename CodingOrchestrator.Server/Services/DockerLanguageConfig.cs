@@ -72,14 +72,16 @@ public static class DockerLanguageConfig
         ["csharp"] = new LanguageConfig
         {
             Language = "csharp",
-            DockerImage = "mcr.microsoft.com/dotnet/sdk:9.0",
+            DockerImage = "memoryagent-dotnet-multi:latest",  // Custom multi-SDK image (8/9/10)
             FileExtension = ".cs",
-            // For single files, use dotnet-script or create temp project
-            BuildCommand = "if [ -f *.csproj ]; then dotnet build --nologo -v q; else echo 'using System; {0}' | dotnet script - 2>/dev/null || dotnet new console -n TempApp -o /tmp/app && cp {mainFile} /tmp/app/Program.cs && dotnet build /tmp/app --nologo -v q; fi",
-            RunCommand = "if [ -f *.csproj ]; then dotnet run --nologo; else dotnet run --project /tmp/app --nologo; fi",
-            TestCommand = "dotnet test --nologo -v q 2>/dev/null || dotnet run --nologo",
+            // Smart build: detects console vs web, auto-adds packages from using statements
+            BuildCommand = "/usr/local/bin/dotnet-smart-build.sh . net9.0",
+            // Run the DLL directly (not exe) to avoid Windows volume mount permission issues
+            RunCommand = "dotnet bin/Debug/*/TempApp.dll",
+            TestCommand = "dotnet test --nologo -v q 2>/dev/null || dotnet bin/Debug/*/TempApp.dll",
             MainFilePatterns = new[] { "Program.cs", "*.cs" },
-            TimeoutSeconds = 60
+            TimeoutSeconds = 120,  // Longer timeout for restore + build
+            RequiresNetwork = true  // Enable network for NuGet package restore
         },
         
         ["go"] = new LanguageConfig
@@ -261,5 +263,11 @@ public class LanguageConfig
     public string[] SetupCommands { get; set; } = Array.Empty<string>();
     public int TimeoutSeconds { get; set; } = 30;
     public bool SkipExecution { get; set; } = false;
+    
+    /// <summary>
+    /// If true, network access is enabled for this language (e.g., for NuGet restore)
+    /// Default is false for security
+    /// </summary>
+    public bool RequiresNetwork { get; set; } = false;
 }
 

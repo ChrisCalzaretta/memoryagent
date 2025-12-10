@@ -137,7 +137,17 @@ public class JobManager : IJobManager
                 
                 if (result.Status == TaskState.Complete)
                 {
-                    await CompleteJobAsync(jobId, result.Result!);
+                    await CompleteJobAsync(jobId, result.Result!, result.CloudUsage);
+                }
+                else if (result.Status == TaskState.NeedsHelp)
+                {
+                    // Step-by-step mode: a step failed after max retries, waiting for user help
+                    _logger.LogInformation("[NEEDS-HELP] Job {JobId} needs user help at step", jobId);
+                    if (_jobs.TryGetValue(jobId, out var jobState))
+                    {
+                        jobState.Status = result;  // Preserve full response with error details
+                        await PersistJobAsync(jobState, false);
+                    }
                 }
                 else if (result.Status == TaskState.Failed)
                 {
@@ -247,12 +257,12 @@ public class JobManager : IJobManager
         }
     }
 
-    public void CompleteJob(string jobId, TaskResult result)
+    public void CompleteJob(string jobId, TaskResult result, CloudUsage? cloudUsage = null)
     {
-        _ = CompleteJobAsync(jobId, result);
+        _ = CompleteJobAsync(jobId, result, cloudUsage);
     }
 
-    private async Task CompleteJobAsync(string jobId, TaskResult result)
+    private async Task CompleteJobAsync(string jobId, TaskResult result, CloudUsage? cloudUsage = null)
     {
         if (_jobs.TryGetValue(jobId, out var jobState))
         {
@@ -263,9 +273,18 @@ public class JobManager : IJobManager
             jobState.Status.CurrentPhase = "Complete";
             jobState.Status.Result = result;
             jobState.Status.Message = result.Summary;
+            jobState.Status.CloudUsage = cloudUsage;  // ☁️ Include cloud usage stats
             
-            _logger.LogInformation("Job {JobId} completed successfully. Score: {Score}, Files: {FileCount}", 
-                jobId, result.ValidationScore, result.Files.Count);
+            if (cloudUsage?.ApiCalls > 0)
+            {
+                _logger.LogInformation("Job {JobId} completed successfully. Score: {Score}, Files: {FileCount}, CloudCost: ${Cost:F4}", 
+                    jobId, result.ValidationScore, result.Files.Count, cloudUsage.EstimatedCost);
+            }
+            else
+            {
+                _logger.LogInformation("Job {JobId} completed successfully. Score: {Score}, Files: {FileCount}", 
+                    jobId, result.ValidationScore, result.Files.Count);
+            }
 
             // Persist completion
             await PersistJobAsync(jobState, completed: true);
@@ -303,6 +322,133 @@ public class JobManager : IJobManager
         }
     }
 
+    public void SetJobPlan(string jobId, TaskPlanInfo plan)
+    {
+        if (_jobs.TryGetValue(jobId, out var jobState))
+        {
+            jobState.Status.Plan = plan;
+            _logger.LogDebug("Job {JobId} plan set: {StepCount} steps, {ClassCount} required classes", 
+                jobId, plan.Steps.Count, plan.RequiredClasses.Count);
+            _ = PersistJobAsync(jobState);
+        }
+    }
+
+    public void AddGeneratedFile(string jobId, string filePath)
+    {
+        if (_jobs.TryGetValue(jobId, out var jobState))
+        {
+            if (!jobState.Status.GeneratedFiles.Contains(filePath))
+            {
+                jobState.Status.GeneratedFiles.Add(filePath);
+                
+                // Also update plan step if this file is in the plan
+                var step = jobState.Status.Plan?.Steps.FirstOrDefault(s => 
+                    s.FileName.Equals(filePath, StringComparison.OrdinalIgnoreCase) ||
+                    filePath.EndsWith(s.FileName, StringComparison.OrdinalIgnoreCase));
+                if (step != null && step.Status == "pending")
+                {
+                    step.Status = "completed";
+                }
+                
+                _ = PersistJobAsync(jobState);
+            }
+        }
+    }
+
+    public void UpdatePlanStep(string jobId, string fileName, string status)
+    {
+        if (_jobs.TryGetValue(jobId, out var jobState) && jobState.Status.Plan != null)
+        {
+            var step = jobState.Status.Plan.Steps.FirstOrDefault(s => 
+                s.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase) ||
+                fileName.EndsWith(s.FileName, StringComparison.OrdinalIgnoreCase));
+            if (step != null)
+            {
+                step.Status = status;
+                _ = PersistJobAsync(jobState);
+            }
+        }
+    }
+    
+    public void UpdateStepStatus(string? jobId, int stepIndex, string status)
+    {
+        if (string.IsNullOrEmpty(jobId)) return;
+        
+        if (_jobs.TryGetValue(jobId, out var jobState) && jobState.Status.Plan != null)
+        {
+            if (stepIndex >= 0 && stepIndex < jobState.Status.Plan.Steps.Count)
+            {
+                jobState.Status.Plan.Steps[stepIndex].Status = status;
+                _ = PersistJobAsync(jobState);
+            }
+        }
+    }
+    
+    public async Task<bool> ResumeWithHelpAsync(string jobId, object helpRequest, CancellationToken cancellationToken)
+    {
+        if (!_jobs.TryGetValue(jobId, out var jobState))
+        {
+            _logger.LogWarning("[HELP] Job {JobId} not found for resume", jobId);
+            return false;
+        }
+        
+        if (jobState.Status.Status != TaskState.NeedsHelp)
+        {
+            _logger.LogWarning("[HELP] Job {JobId} is not in NeedsHelp state (current: {State})", 
+                jobId, jobState.Status.Status);
+            return false;
+        }
+        
+        // Store the help context for the orchestrator to use
+        // The help will be included as additional context in the next generation attempt
+        jobState.HelpContext = helpRequest;
+        
+        // Reset state to Running and update the step to in_progress
+        jobState.Status.Status = TaskState.Running;
+        jobState.Status.CurrentPhase = "Resuming with user help...";
+        
+        // Find the step that needs help and reset it
+        var needsHelpStep = jobState.Status.Plan?.Steps.FirstOrDefault(s => s.Status == "NeedsHelp");
+        if (needsHelpStep != null)
+        {
+            needsHelpStep.Status = "in_progress";
+        }
+        
+        _logger.LogInformation("[HELP] Job {JobId} resumed with user help", jobId);
+        
+        // Re-queue the job for processing
+        // The orchestrator will pick it up and continue with the help context
+        await Task.Run(() => RequeueJobAsync(jobState, cancellationToken), cancellationToken);
+        
+        return true;
+    }
+    
+    private async Task RequeueJobAsync(JobState jobState, CancellationToken cancellationToken)
+    {
+        // The job will continue from where it left off
+        // The HelpContext will be available for the orchestrator to use
+        try
+        {
+            var result = await _orchestrator.ExecuteTaskAsync(jobState.Request, jobState.Status.JobId, cancellationToken);
+            
+            // Update the job state with the result
+            jobState.Status = result;
+            await PersistJobAsync(jobState, result.Status == TaskState.Complete || result.Status == TaskState.Failed);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[HELP] Failed to resume job {JobId}", jobState.Status.JobId);
+            jobState.Status.Status = TaskState.Failed;
+            jobState.Status.Error = new TaskError
+            {
+                Type = "resume_failed",
+                Message = $"Failed to resume: {ex.Message}",
+                CanRetry = true
+            };
+            await PersistJobAsync(jobState, true);
+        }
+    }
+
     private async Task PersistJobAsync(JobState jobState, bool completed = false)
     {
         try
@@ -337,5 +483,10 @@ public class JobManager : IJobManager
         public required TaskStatusResponse Status { get; set; }
         public required CancellationTokenSource CancellationTokenSource { get; set; }
         public DateTime StartedAt { get; set; }
+        
+        /// <summary>
+        /// User-provided help context when job is in NeedsHelp state
+        /// </summary>
+        public object? HelpContext { get; set; }
     }
 }

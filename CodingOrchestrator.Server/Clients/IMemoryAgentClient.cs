@@ -62,6 +62,11 @@ public interface IMemoryAgentClient
     Task IndexFileAsync(string filePath, string content, string language, string context, CancellationToken cancellationToken);
     
     /// <summary>
+    /// 🔍 Smart search for relevant code/context (searches Qdrant + Neo4j)
+    /// </summary>
+    Task<List<SmartSearchResult>> SmartSearchAsync(string query, string context, int limit, CancellationToken cancellationToken);
+    
+    /// <summary>
     /// 🔍 Get all symbols (classes, methods) in the project context
     /// </summary>
     Task<ProjectSymbols> GetProjectSymbolsAsync(string context, CancellationToken cancellationToken);
@@ -317,5 +322,17 @@ public class ComponentPattern
     public string Description { get; set; } = "";
     public string Template { get; set; } = "";
     public Dictionary<string, string> Props { get; set; } = new();
+}
+
+/// <summary>
+/// Result from smart search (Qdrant + Neo4j)
+/// </summary>
+public class SmartSearchResult
+{
+    public string Name { get; set; } = "";
+    public string FilePath { get; set; } = "";
+    public string Type { get; set; } = "";  // class, method, file
+    public string Content { get; set; } = "";
+    public float Score { get; set; }
 }
 

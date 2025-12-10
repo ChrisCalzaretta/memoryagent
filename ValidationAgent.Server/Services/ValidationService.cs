@@ -562,22 +562,80 @@ Be thorough but fair. Only report real issues.";
 
     private string GenerateSummary(ValidateCodeResponse response)
     {
+        var sb = new System.Text.StringBuilder();
+        
+        // Header with score
         if (response.Score == 10)
         {
-            return "Code passes all validation checks. Excellent quality!";
+            sb.AppendLine("Code passes all validation checks. Excellent quality!");
         }
         else if (response.Score >= 8)
         {
-            return $"Code quality is good (Score: {response.Score}/10). Minor improvements suggested.";
+            sb.AppendLine($"Code quality is good (Score: {response.Score}/10). Minor improvements suggested.");
         }
         else if (response.Score >= 5)
         {
-            return $"Code needs improvement (Score: {response.Score}/10). Please address the issues found.";
+            sb.AppendLine($"Code needs improvement (Score: {response.Score}/10). Please address the issues below:");
         }
         else
         {
-            return $"Code has significant issues (Score: {response.Score}/10). Critical fixes required.";
+            sb.AppendLine($"Code has significant issues (Score: {response.Score}/10). Critical fixes required:");
         }
+        
+        // Include specific issues in summary
+        if (response.Issues.Any())
+        {
+            sb.AppendLine();
+            sb.AppendLine("ISSUES FOUND:");
+            
+            // Group by severity
+            var criticalIssues = response.Issues.Where(i => i.Severity == "critical").ToList();
+            var highIssues = response.Issues.Where(i => i.Severity == "high").ToList();
+            var warningIssues = response.Issues.Where(i => i.Severity == "warning").ToList();
+            var infoIssues = response.Issues.Where(i => i.Severity == "info").ToList();
+            
+            if (criticalIssues.Any())
+            {
+                sb.AppendLine($"  CRITICAL ({criticalIssues.Count}):");
+                foreach (var issue in criticalIssues.Take(3))
+                {
+                    sb.AppendLine($"    - {issue.Message}");
+                    if (!string.IsNullOrEmpty(issue.Suggestion))
+                        sb.AppendLine($"      Fix: {issue.Suggestion}");
+                }
+            }
+            
+            if (highIssues.Any())
+            {
+                sb.AppendLine($"  HIGH ({highIssues.Count}):");
+                foreach (var issue in highIssues.Take(3))
+                {
+                    sb.AppendLine($"    - {issue.Message}");
+                    if (!string.IsNullOrEmpty(issue.Suggestion))
+                        sb.AppendLine($"      Fix: {issue.Suggestion}");
+                }
+            }
+            
+            if (warningIssues.Any())
+            {
+                sb.AppendLine($"  WARNING ({warningIssues.Count}):");
+                foreach (var issue in warningIssues.Take(3))
+                {
+                    sb.AppendLine($"    - {issue.Message}");
+                }
+            }
+            
+            if (infoIssues.Any())
+            {
+                sb.AppendLine($"  INFO ({infoIssues.Count}):");
+                foreach (var issue in infoIssues.Take(2))
+                {
+                    sb.AppendLine($"    - {issue.Message}");
+                }
+            }
+        }
+        
+        return sb.ToString().TrimEnd();
     }
 
     private List<string> GenerateSuggestions(List<ValidationIssue> issues)

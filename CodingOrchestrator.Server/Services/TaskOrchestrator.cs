@@ -158,6 +158,13 @@ public class TaskOrchestrator : ITaskOrchestrator
             // 📁 ACCUMULATE files across iterations (not replace!)
             var accumulatedFiles = new Dictionary<string, FileChange>();
             
+            // ☁️ Track cloud LLM usage (Anthropic) across iterations
+            var cloudUsage = new CloudUsage
+            {
+                Provider = "anthropic",
+                Note = "Check console.anthropic.com for actual balance"
+            };
+            
             // 🧠 TASK LEARNING: Query lessons from similar failed tasks
             var taskLessons = await QueryLessonsForTaskAsync(request, cancellationToken);
             
@@ -177,7 +184,7 @@ public class TaskOrchestrator : ITaskOrchestrator
                     request.Language ?? "python", 
                     request.Context, 
                     cancellationToken);
-                _logger.LogInformation("📋 Generated plan with {Steps} steps", taskPlan.Steps.Count);
+                _logger.LogInformation("[PLAN] Generated plan with {Steps} steps", taskPlan.Steps.Count);
                 
                 // 🔍 Get project symbols for context
                 projectSymbols = await _memoryAgent.GetProjectSymbolsAsync(request.Context, cancellationToken);
@@ -214,6 +221,24 @@ public class TaskOrchestrator : ITaskOrchestrator
                     ["similarTasksFound"] = similarTasks?.FoundTasks ?? 0,
                     ["hasDesignContext"] = designContext != null
                 };
+                
+                // 📋 Set the plan on the job status for display
+                if (_jobManager != null)
+                {
+                    _jobManager.SetJobPlan(jobId, new TaskPlanInfo
+                    {
+                        RequiredClasses = taskPlan.RequiredClasses,
+                        DependencyOrder = taskPlan.DependencyOrder,
+                        SemanticBreakdown = taskPlan.SemanticBreakdown,
+                        Steps = taskPlan.Steps.Select(s => new PlanStepInfo
+                        {
+                            Order = s.Order,
+                            Description = s.Description,
+                            FileName = s.FileName,
+                            Status = s.Status
+                        }).ToList()
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -226,6 +251,17 @@ public class TaskOrchestrator : ITaskOrchestrator
             }
             EndPhase(jobId, planPhase);
             response.Timeline.Add(planPhase);
+            
+            // 🔀 EXECUTION MODE: Choose between batch (default) or step-by-step
+            if (request.ExecutionMode?.ToLowerInvariant() == "stepbystep" && taskPlan?.Steps.Count > 1)
+            {
+                _logger.LogInformation("[STEP-BY-STEP] Using step-by-step execution mode ({Steps} steps)", taskPlan.Steps.Count);
+                return await ExecuteStepByStepAsync(
+                    request, jobId, response, taskPlan, projectSymbols, similarTasks, 
+                    designContext, context, taskLessons, effectiveMaxIterations, startTime, cancellationToken);
+            }
+            
+            _logger.LogInformation("📦 Using BATCH execution mode (all files at once)");
 
             while (iteration < effectiveMaxIterations)
             {
@@ -243,14 +279,37 @@ public class TaskOrchestrator : ITaskOrchestrator
                 if (feedback != null)
                 {
                     feedback.TriedModels = triedModels;
+                    
+                    // 🔧 If this was a BUILD failure (not just validation), set BuildErrors
+                    // so CodingAgent uses the focused fix prompt
+                    if (lastValidation.Summary?.Contains("Build:") == true && 
+                        lastValidation.Summary?.Contains("❌") == true)
+                    {
+                        // Extract build errors from the summary/issues
+                        feedback.BuildErrors = lastValidation.Issues
+                            .FirstOrDefault(i => !string.IsNullOrEmpty(i.Suggestion))?.Suggestion 
+                            ?? lastValidation.Summary;
+                        _logger.LogDebug("[BUILD-ERROR] Detected build failure, setting BuildErrors for focused fix");
+                    }
                 }
 
-                // 📁 Tell the LLM what files already exist
-                var existingFilesList = accumulatedFiles.Any()
-                    ? $"\n\n📁 FILES ALREADY GENERATED ({accumulatedFiles.Count}):\n" + 
-                      string.Join("\n", accumulatedFiles.Keys.Select(f => $"- {f}")) +
-                      "\n\n⚠️ Generate the MISSING files. You may also update existing files if needed."
-                    : "";
+                // 📁 Tell the LLM what files already exist WITH their signatures
+                var existingFilesList = "";
+                if (accumulatedFiles.Any())
+                {
+                    existingFilesList = $"\n\n📁 FILES ALREADY GENERATED ({accumulatedFiles.Count}):\n";
+                    foreach (var file in accumulatedFiles)
+                    {
+                        existingFilesList += $"\n### {file.Key}\n";
+                        // Extract class/interface/function signatures from the content
+                        var signatures = ExtractSignatures(file.Value.Content, request.Language ?? "csharp");
+                        if (!string.IsNullOrEmpty(signatures))
+                        {
+                            existingFilesList += $"```\n{signatures}\n```\n";
+                        }
+                    }
+                    existingFilesList += "\n⚠️ Generate the MISSING files. Reference the classes/methods above. You may also update existing files if needed.";
+                }
 
                 // 🧠 Include lessons learned in the task description
                 var lessonsSection = taskLessons.FoundLessons > 0 
@@ -302,13 +361,23 @@ public class TaskOrchestrator : ITaskOrchestrator
                         designSection += $"  Accessibility: {string.Join(", ", designContext.AccessibilityRules.Take(3))}\n";
                 }
                 
+                // Convert accumulated files to ExistingFile format for the coding agent
+                var existingFilesForAgent = accumulatedFiles.Any()
+                    ? accumulatedFiles.Select(kv => new ExistingFile 
+                      { 
+                          Path = kv.Key, 
+                          Content = kv.Value.Content 
+                      }).ToList()
+                    : null;
+                
                 var generateRequest = new GenerateCodeRequest
                 {
                     Task = request.Task + existingFilesList + lessonsSection + planSection + symbolsSection + similarTasksSection + designSection,
                     Language = request.Language,
                     Context = context,
                     WorkspacePath = request.WorkspacePath,
-                    PreviousFeedback = feedback
+                    PreviousFeedback = feedback,
+                    ExistingFiles = existingFilesForAgent  // 🔧 Include existing files for build error fix prompt
                 };
 
                 lastGeneratedCode = iteration == 1 
@@ -324,6 +393,21 @@ public class TaskOrchestrator : ITaskOrchestrator
                         lastGeneratedCode.ModelUsed, triedModels.Count);
                 }
                 
+                // ☁️ Accumulate cloud usage if Claude was used
+                if (lastGeneratedCode.CloudUsage != null)
+                {
+                    cloudUsage.Model = lastGeneratedCode.CloudUsage.Model;
+                    cloudUsage.InputTokens += lastGeneratedCode.CloudUsage.InputTokens;
+                    cloudUsage.OutputTokens += lastGeneratedCode.CloudUsage.OutputTokens;
+                    cloudUsage.EstimatedCost += lastGeneratedCode.CloudUsage.Cost;
+                    cloudUsage.TokensRemaining = lastGeneratedCode.CloudUsage.TokensRemaining;
+                    cloudUsage.RequestsRemaining = lastGeneratedCode.CloudUsage.RequestsRemaining;
+                    cloudUsage.ApiCalls++;
+                    
+                    _logger.LogInformation("[CLAUDE] Total usage: {Calls} calls, {Tokens} tokens, ${Cost:F4}",
+                        cloudUsage.ApiCalls, cloudUsage.InputTokens + cloudUsage.OutputTokens, cloudUsage.EstimatedCost);
+                }
+                
                 // Track approaches tried
                 var approachKey = $"Iteration {iteration}: {(iteration == 1 ? "Initial generation" : "Fix attempt")} with {lastGeneratedCode.ModelUsed}";
                 approachesTried.Add(approachKey);
@@ -335,6 +419,23 @@ public class TaskOrchestrator : ITaskOrchestrator
                 {
                     _logger.LogWarning("Coding agent failed on iteration {Iteration}: {Error}", 
                         iteration, lastGeneratedCode.Error);
+                    
+                    // Set lastValidation so next iteration's PreviousFeedback isn't null
+                    lastValidation = new ValidateCodeResponse
+                    {
+                        Score = 0,
+                        Passed = false,
+                        Issues = new List<ValidationIssue>
+                        {
+                            new ValidationIssue
+                            {
+                                Severity = "critical",
+                                Message = "Code generation failed",
+                                Suggestion = lastGeneratedCode.Error ?? "Unknown error from code generation"
+                            }
+                        },
+                        Summary = $"Code generation failed: {lastGeneratedCode.Error}"
+                    };
                     continue;
                 }
 
@@ -343,6 +444,9 @@ public class TaskOrchestrator : ITaskOrchestrator
                 {
                     accumulatedFiles[file.Path] = file;
                     _logger.LogDebug("📁 Accumulated file: {Path} (total: {Count})", file.Path, accumulatedFiles.Count);
+                    
+                    // 📊 Track generated file in job status
+                    _jobManager?.AddGeneratedFile(jobId, file.Path);
                     
                     // 📊 INDEX IMMEDIATELY: Add to Qdrant+Neo4j for context awareness
                     try
@@ -583,35 +687,68 @@ public class TaskOrchestrator : ITaskOrchestrator
                 
                 // 📝 AUTO-WRITE: Write files to workspace if enabled
                 var filesWritten = new List<string>();
-                if (request.AutoWriteFiles && lastValidation.Passed && !string.IsNullOrEmpty(request.WorkspacePath))
+                var meetsMinScore = lastValidation.Score >= request.MinValidationScore;
+                if (request.AutoWriteFiles && meetsMinScore && !string.IsNullOrEmpty(request.WorkspacePath))
                 {
                     filesWritten = await WriteFilesToWorkspaceAsync(files, request.WorkspacePath, cancellationToken);
                     _logger.LogInformation("📝 Auto-wrote {Count} files to workspace", filesWritten.Count);
                 }
                 
-                var autoWriteStatus = request.AutoWriteFiles && lastValidation.Passed
+                var autoWriteStatus = request.AutoWriteFiles && meetsMinScore
                     ? $" Files written to: {string.Join(", ", filesWritten)}"
                     : " Files returned for manual review.";
                 
+                // meetsMinScore already defined above
                 var result = new TaskResult
                 {
-                    Success = lastValidation.Passed,
+                    Success = meetsMinScore,
                     Files = files,
                     ValidationScore = lastValidation.Score,
                     TotalIterations = iteration,
                     TotalDurationMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds,
-                    Summary = lastValidation.Passed 
+                    Summary = meetsMinScore 
                         ? $"Successfully generated code with score {lastValidation.Score}/10 in {iteration} iteration(s).{autoWriteStatus}"
-                        : $"Code generated but validation score {lastValidation.Score}/10 did not meet minimum {request.MinValidationScore}"
+                        : $"Code generated but validation score {lastValidation.Score}/10 did not meet minimum {request.MinValidationScore}",
+                    ModelsUsed = modelsUsedDuringTask.Distinct().ToList()
                 };
 
-                response.Status = lastValidation.Passed ? TaskState.Complete : TaskState.Failed;
+                response.Status = meetsMinScore ? TaskState.Complete : TaskState.Failed;
                 response.Progress = 100;
                 response.Result = result;
                 response.Iteration = iteration;
+                
+                // If failed, include detailed error information with issues
+                if (!meetsMinScore)
+                {
+                    var issueDetails = lastValidation.Issues?
+                        .OrderByDescending(i => i.Severity == "critical" ? 4 : i.Severity == "high" ? 3 : i.Severity == "warning" ? 2 : 1)
+                        .Select(i => $"[{i.Severity?.ToUpper()}] {i.Message}" + (!string.IsNullOrEmpty(i.Suggestion) ? $" -> {i.Suggestion}" : ""))
+                        .ToList() ?? new List<string>();
+                    
+                    response.Error = new TaskError
+                    {
+                        Type = "validation_failed",
+                        Message = lastValidation.Summary ?? "Code did not pass validation",
+                        CanRetry = true,
+                        PartialResult = result,
+                        Details = new Dictionary<string, object>
+                        {
+                            ["score"] = lastValidation.Score,
+                            ["issues"] = issueDetails,
+                            ["totalIterations"] = iteration,
+                            ["modelsUsed"] = modelsUsedDuringTask.Distinct().ToList()
+                        }
+                    };
+                }
+                
+                // ☁️ Include cloud usage if Claude was used
+                if (cloudUsage.ApiCalls > 0)
+                {
+                    response.CloudUsage = cloudUsage;
+                }
 
                 // Store successful Q&A and record prompt feedback in Lightning (with graceful degradation)
-                if (lastValidation.Passed)
+                if (meetsMinScore)
                 {
                     // 🛡️ GRACEFUL DEGRADATION: Don't fail if storage fails
                     try
@@ -1039,5 +1176,922 @@ public class TaskOrchestrator : ITaskOrchestrator
         
         return keywords.Take(10).ToList();
     }
+    
+    /// <summary>
+    /// Extract class/method signatures from code to give the LLM context
+    /// </summary>
+    private static string ExtractSignatures(string content, string language)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return "";
+        
+        var signatures = new List<string>();
+        var lines = content.Split('\n');
+        
+        switch (language?.ToLowerInvariant())
+        {
+            case "csharp":
+            case "c#":
+                // Extract namespace, class, interface, enum, method signatures
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    
+                    // Namespace
+                    if (trimmed.StartsWith("namespace "))
+                        signatures.Add(trimmed.TrimEnd(';', '{').Trim());
+                    
+                    // Class/Interface/Enum/Record declarations
+                    if (trimmed.StartsWith("public class ") || trimmed.StartsWith("public interface ") ||
+                        trimmed.StartsWith("public enum ") || trimmed.StartsWith("public record ") ||
+                        trimmed.StartsWith("public struct ") || trimmed.StartsWith("public abstract class ") ||
+                        trimmed.StartsWith("internal class ") || trimmed.StartsWith("internal interface "))
+                    {
+                        signatures.Add(trimmed.TrimEnd('{').Trim());
+                    }
+                    
+                    // Public methods and properties
+                    if ((trimmed.StartsWith("public ") || trimmed.StartsWith("public async ") || 
+                         trimmed.StartsWith("public static ") || trimmed.StartsWith("public virtual ")) &&
+                        (trimmed.Contains("(") || trimmed.Contains(" { get")))
+                    {
+                        // Get just the signature, not the body
+                        var sig = trimmed.Split(new[] { " =>" }, StringSplitOptions.None)[0]
+                                        .Split(new[] { " {" }, StringSplitOptions.None)[0]
+                                        .Trim();
+                        if (!string.IsNullOrWhiteSpace(sig))
+                            signatures.Add("  " + sig + (sig.Contains("(") ? ";" : " { get; set; }"));
+                    }
+                }
+                break;
+                
+            case "python":
+                bool inClass = false;
+                string currentClass = "";
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    
+                    // Class definitions
+                    if (trimmed.StartsWith("class "))
+                    {
+                        inClass = true;
+                        currentClass = trimmed.TrimEnd(':');
+                        signatures.Add(currentClass);
+                    }
+                    // Function/method definitions
+                    else if (trimmed.StartsWith("def ") || trimmed.StartsWith("async def "))
+                    {
+                        var indent = inClass ? "  " : "";
+                        var sig = trimmed.Split(':')[0].Trim();
+                        signatures.Add(indent + sig);
+                    }
+                    // Reset class tracking on blank lines at column 0
+                    else if (line.Length > 0 && !char.IsWhiteSpace(line[0]) && !trimmed.StartsWith("def ") && !trimmed.StartsWith("class "))
+                    {
+                        inClass = false;
+                    }
+                }
+                break;
+                
+            case "typescript":
+            case "javascript":
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    
+                    // Export/class/interface/function declarations
+                    if (trimmed.StartsWith("export class ") || trimmed.StartsWith("export interface ") ||
+                        trimmed.StartsWith("class ") || trimmed.StartsWith("interface ") ||
+                        trimmed.StartsWith("export function ") || trimmed.StartsWith("export const ") ||
+                        trimmed.StartsWith("export async function "))
+                    {
+                        var sig = trimmed.Split(new[] { " {" }, StringSplitOptions.None)[0].Trim();
+                        signatures.Add(sig);
+                    }
+                    // Method signatures in classes
+                    else if ((trimmed.StartsWith("public ") || trimmed.StartsWith("private ") || 
+                              trimmed.StartsWith("async ") || trimmed.StartsWith("static ")) &&
+                             trimmed.Contains("("))
+                    {
+                        var sig = trimmed.Split(new[] { " {" }, StringSplitOptions.None)[0].Trim();
+                        signatures.Add("  " + sig);
+                    }
+                }
+                break;
+                
+            default:
+                // For unknown languages, extract lines that look like definitions
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    if (trimmed.StartsWith("class ") || trimmed.StartsWith("def ") || 
+                        trimmed.StartsWith("function ") || trimmed.StartsWith("public ") ||
+                        trimmed.StartsWith("export "))
+                    {
+                        var sig = trimmed.Split(new[] { " {", ":" }, StringSplitOptions.None)[0].Trim();
+                        signatures.Add(sig);
+                    }
+                }
+                break;
+        }
+        
+        // Limit to prevent massive prompts
+        var result = string.Join("\n", signatures.Take(30));
+        return result.Length > 2000 ? result[..2000] + "\n// ... more ..." : result;
+    }
+    
+    #region Step-by-Step Execution Mode
+    
+    /// <summary>
+    /// Execute task step-by-step: generate each plan step separately, validate after each
+    /// This is better for complex multi-file tasks with dependencies
+    /// </summary>
+    private async Task<TaskStatusResponse> ExecuteStepByStepAsync(
+        OrchestrateTaskRequest request,
+        string? jobId,
+        TaskStatusResponse response,
+        TaskPlan taskPlan,
+        ProjectSymbols? projectSymbols,
+        SimilarTasksResult? similarTasks,
+        DesignContext? designContext,
+        CodeContext? context,
+        TaskLessonsResult taskLessons,
+        int effectiveMaxIterations,
+        DateTime startTime,
+        CancellationToken cancellationToken)
+    {
+        var accumulatedFiles = new Dictionary<string, FileChange>();
+        var triedModels = new HashSet<string>();
+        var modelsUsedDuringTask = new List<string>();
+        var approachesTried = new List<string>();
+        ValidateCodeResponse? lastValidation = null;
+        GenerateCodeResponse? lastGeneratedCode = null;
+        var totalIterations = 0;
+        var maxRetriesPerStep = 10;  // More retries per step before asking for help
+        
+        // ☁️ Track cloud LLM usage (Anthropic) across steps
+        var cloudUsage = new CloudUsage
+        {
+            Provider = "anthropic",
+            Note = "Check console.anthropic.com for actual balance"
+        };
+        
+        // 📋 Process each step in the plan
+        for (var stepIndex = 0; stepIndex < taskPlan.Steps.Count; stepIndex++)
+        {
+            var step = taskPlan.Steps[stepIndex];
+            var stepNumber = stepIndex + 1;
+            var stepRetries = 0;
+            var stepSuccess = false;
+            
+            _logger.LogInformation("[STEP] Step {StepNum}/{TotalSteps}: {Description}", 
+                stepNumber, taskPlan.Steps.Count, step.Description);
+            
+            // Update job plan status
+            if (_jobManager != null)
+            {
+                _jobManager.UpdateStepStatus(jobId, stepIndex, "InProgress");
+            }
+            
+            // Track files from PREVIOUS (completed) steps - don't overwrite these!
+            var filesFromPreviousSteps = new HashSet<string>(accumulatedFiles.Keys);
+            
+            while (!stepSuccess && stepRetries < maxRetriesPerStep && totalIterations < effectiveMaxIterations)
+            {
+                totalIterations++;
+                stepRetries++;
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                // On RETRY: Remove files generated by THIS step (keep only previous steps' files)
+                if (stepRetries > 1)
+                {
+                    var filesToRemove = accumulatedFiles.Keys.Where(k => !filesFromPreviousSteps.Contains(k)).ToList();
+                    foreach (var fileKey in filesToRemove)
+                    {
+                        accumulatedFiles.Remove(fileKey);
+                        _logger.LogDebug("[CLEANUP] Removed {File} from current step before retry", fileKey);
+                    }
+                }
+                
+                // Calculate progress: each step gets equal share
+                var stepProgress = 15 + (stepIndex * 70 / taskPlan.Steps.Count) + 
+                                   (stepRetries * 70 / (taskPlan.Steps.Count * maxRetriesPerStep));
+                UpdateProgress(jobId, TaskState.Running, stepProgress, 
+                    $"Step {stepNumber}/{taskPlan.Steps.Count}: {step.Description} (attempt {stepRetries})", totalIterations);
+                
+                var codingPhase = StartPhase("coding_agent", totalIterations);
+                codingPhase.Details = new Dictionary<string, object>
+                {
+                    ["mode"] = "step_by_step",
+                    ["step"] = stepNumber,
+                    ["stepDescription"] = step.Description,
+                    ["attempt"] = stepRetries
+                };
+                
+                try
+                {
+                    // 🔍 SEARCH for relevant context before each step
+                    // This finds code we just indexed from previous steps
+                    List<string> searchContext = new();
+                    if (stepNumber > 1)
+                    {
+                        try
+                        {
+                            var searchQuery = $"{step.Description} {string.Join(" ", taskPlan.RequiredClasses)}";
+                            var searchResults = await _memoryAgent.SmartSearchAsync(
+                                searchQuery, 
+                                request.Context, 
+                                5,  // Top 5 results
+                                cancellationToken);
+                            
+                            if (searchResults?.Any() == true)
+                            {
+                                searchContext = searchResults.Take(5).Select(r => 
+                                    $"// Found: {r.Name} in {r.FilePath}\n{r.Content}").ToList();
+                                _logger.LogInformation("[SEARCH-STEP] Found {Count} relevant items for step {Step}", 
+                                    searchResults.Count, stepNumber);
+                            }
+                        }
+                        catch (Exception searchEx)
+                        {
+                            _logger.LogWarning(searchEx, "[SEARCH-STEP] Search failed (non-critical)");
+                        }
+                    }
+                    
+                    // Build focused prompt for THIS step only (only pass files from PREVIOUS steps)
+                    var stepPrompt = BuildStepPrompt(step, stepNumber, taskPlan, 
+                        accumulatedFiles.Where(kv => filesFromPreviousSteps.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value), 
+                        projectSymbols, taskLessons, request.Language ?? "csharp", searchContext);
+                    
+                    // Build feedback if we have previous validation
+                    var feedback = lastValidation?.ToFeedback();
+                    if (feedback != null) feedback.TriedModels = triedModels;
+                    
+                    // Convert accumulated files to ExistingFile format for the coding agent
+                    var existingFilesForAgent = accumulatedFiles
+                        .Where(kv => filesFromPreviousSteps.Contains(kv.Key))
+                        .Select(kv => new ExistingFile 
+                        { 
+                            Path = kv.Key, 
+                            Content = kv.Value.Content 
+                        })
+                        .ToList();
+                    
+                    var generateRequest = new GenerateCodeRequest
+                    {
+                        Task = stepPrompt,
+                        Language = request.Language,
+                        Context = context,
+                        WorkspacePath = request.WorkspacePath,
+                        PreviousFeedback = stepRetries > 1 ? feedback : null,
+                        ExistingFiles = existingFilesForAgent.Any() ? existingFilesForAgent : null
+                    };
+                    
+                    _logger.LogInformation("[CONTEXT] Passing {FileCount} existing files to coding agent", existingFilesForAgent.Count);
+                    
+                    // Generate code for this step
+                    lastGeneratedCode = stepRetries == 1
+                        ? await _codingAgent.GenerateAsync(generateRequest, cancellationToken)
+                        : await _codingAgent.FixAsync(generateRequest, cancellationToken);
+                    
+                    // Track model usage
+                    if (!string.IsNullOrEmpty(lastGeneratedCode.ModelUsed))
+                    {
+                        triedModels.Add(lastGeneratedCode.ModelUsed);
+                        modelsUsedDuringTask.Add(lastGeneratedCode.ModelUsed);
+                        approachesTried.Add($"Step {stepNumber} attempt {stepRetries}: {lastGeneratedCode.ModelUsed}");
+                    }
+                    
+                    // ☁️ Accumulate cloud usage if Claude was used
+                    if (lastGeneratedCode.CloudUsage != null)
+                    {
+                        cloudUsage.Model = lastGeneratedCode.CloudUsage.Model;
+                        cloudUsage.InputTokens += lastGeneratedCode.CloudUsage.InputTokens;
+                        cloudUsage.OutputTokens += lastGeneratedCode.CloudUsage.OutputTokens;
+                        cloudUsage.EstimatedCost += lastGeneratedCode.CloudUsage.Cost;
+                        cloudUsage.TokensRemaining = lastGeneratedCode.CloudUsage.TokensRemaining;
+                        cloudUsage.RequestsRemaining = lastGeneratedCode.CloudUsage.RequestsRemaining;
+                        cloudUsage.ApiCalls++;
+                        
+                        codingPhase.Details["cloudCost"] = lastGeneratedCode.CloudUsage.Cost;
+                    }
+                    
+                    codingPhase.Details["modelUsed"] = lastGeneratedCode.ModelUsed ?? "unknown";
+                    codingPhase.Details["filesGenerated"] = lastGeneratedCode.FileChanges.Count;
+                    
+                    // Add files for THIS step (overwrite any from previous retry)
+                    var newFilesThisStep = 0;
+                    foreach (var file in lastGeneratedCode.FileChanges)
+                    {
+                        var fileName = Path.GetFileName(file.Path);
+                        // Use normalized filename to avoid path confusion
+                        var normalizedKey = NormalizeFileName(fileName, step.FileName);
+                        
+                        if (!accumulatedFiles.ContainsKey(normalizedKey))
+                        {
+                            newFilesThisStep++;
+                        }
+                        accumulatedFiles[normalizedKey] = file;
+                    }
+                    
+                    _logger.LogInformation("[FILES] Step {StepNum} Attempt {Attempt}: Added {NewFiles} files, Total: {Total} (prev steps: {PrevCount})", 
+                        stepNumber, stepRetries, newFilesThisStep, accumulatedFiles.Count, filesFromPreviousSteps.Count);
+                    
+                    // ✅ NO BUILD during steps - just accept the generated code
+                    // We'll build ALL files together at the end
+                    // This prevents issues with forward dependencies between files
+                    
+                    stepSuccess = true;  // Accept generation without build
+                    _logger.LogInformation("[STEP-OK] Step {StepNum} code generated (build deferred to end)", stepNumber);
+                    
+                    // 📊 INDEX IMMEDIATELY after step succeeds!
+                    // This allows NEXT step to SEARCH and find what we just built
+                    foreach (var file in lastGeneratedCode.FileChanges)
+                    {
+                        try
+                        {
+                            await _memoryAgent.IndexFileAsync(
+                                file.Path,
+                                file.Content,
+                                request.Language ?? "csharp",
+                                request.Context,
+                                cancellationToken);
+                            _logger.LogDebug("[INDEX-STEP] Indexed {Path} for next step to search", file.Path);
+                        }
+                        catch (Exception indexEx)
+                        {
+                            _logger.LogWarning(indexEx, "[INDEX-STEP] Failed (non-critical): {Path}", file.Path);
+                        }
+                    }
+                    
+                    // Update job plan status
+                    if (_jobManager != null)
+                    {
+                        _jobManager.UpdateStepStatus(jobId, stepIndex, "Completed");
+                    }
+                    
+                    // Track files for final build
+                    foreach (var file in lastGeneratedCode.FileChanges)
+                    {
+                        _jobManager?.AddGeneratedFile(jobId, file.Path);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[ERROR] Step {StepNum} failed with exception", stepNumber);
+                    lastValidation = new ValidateCodeResponse
+                    {
+                        Score = 0,
+                        Passed = false,
+                        Issues = new List<ValidationIssue>
+                        {
+                            new ValidationIssue
+                            {
+                                Severity = "critical",
+                                Message = ex.Message,
+                                File = step.FileName ?? "unknown",
+                                Line = 1,
+                                Suggestion = "Fix the error and try again"
+                            }
+                        },
+                        Summary = $"Step {stepNumber} error: {ex.Message}"
+                    };
+                }
+                
+                EndPhase(jobId, codingPhase);
+                response.Timeline.Add(codingPhase);
+            }
+            
+            // If step failed after all retries, pause for user help
+            if (!stepSuccess)
+            {
+                _logger.LogWarning("[STEP-BY-STEP] Step {StepNum} FAILED after {Retries} attempts - waiting for user help", 
+                    stepNumber, maxRetriesPerStep);
+                if (_jobManager != null)
+                {
+                    _jobManager.UpdateStepStatus(jobId, stepIndex, "NeedsHelp");
+                }
+                
+                // Build partial result with files generated so far (include content!)
+                var partialFiles = accumulatedFiles.Values.Select(f => new GeneratedFile
+                {
+                    Path = f.Path,
+                    Content = f.Content,
+                    ChangeType = f.Type,
+                    Reason = f.Reason
+                }).ToList();
+                
+                // Extract specific errors from validation
+                var errorDetails = lastValidation?.Issues?
+                    .Where(i => i.Severity == "critical" || i.Severity == "error")
+                    .Select(i => $"[{i.File}:{i.Line}] {i.Message}")
+                    .ToList() ?? new List<string>();
+                
+                // Set NeedsHelp state - user can provide feedback to continue
+                response.Status = TaskState.NeedsHelp;
+                response.Progress = 15 + (stepIndex * 70 / taskPlan.Steps.Count);
+                response.CurrentPhase = $"Step {stepNumber}/{taskPlan.Steps.Count} needs help: {step.Description}";
+                response.Iteration = totalIterations;
+                response.Error = new TaskError
+                {
+                    Type = "step_needs_help",
+                    Message = $"Step {stepNumber}/{taskPlan.Steps.Count} failed after {maxRetriesPerStep} attempts.",
+                    CanRetry = true,
+                    Details = new Dictionary<string, object>
+                    {
+                        ["stepNumber"] = stepNumber,
+                        ["stepDescription"] = step.Description,
+                        ["targetFile"] = step.FileName ?? "unknown",
+                        ["attemptsUsed"] = maxRetriesPerStep,
+                        ["lastError"] = lastValidation?.Summary ?? "Unknown error",
+                        ["specificErrors"] = errorDetails,
+                        ["modelsTriedThisStep"] = approachesTried.Where(a => a.Contains($"Step {stepNumber}")).ToList(),
+                        ["filesGeneratedSoFar"] = partialFiles.Select(f => f.Path).ToList(),
+                        ["helpEndpoint"] = $"POST /api/orchestrator/task/{jobId}/help",
+                        ["helpExample"] = new {
+                            hint = "Describe what's wrong and how to fix it",
+                            codeSnippet = "Optional: provide correct code",
+                            focusFile = step.FileName ?? "the failing file"
+                        }
+                    }
+                };
+                
+                // Include full file contents in result so user can see what was generated
+                response.Result = new TaskResult
+                {
+                    Success = false,
+                    Files = partialFiles,
+                    ValidationScore = lastValidation?.Score ?? 0,
+                    TotalIterations = totalIterations,
+                    Summary = $"Step {stepNumber} needs help. Files generated so far: {partialFiles.Count}"
+                };
+                response.GeneratedFiles = partialFiles.Select(f => f.Path).ToList();
+                
+                return response;
+            }
+        }
+        
+        // 🐳 FINAL BUILD + FIX LOOP: Build all files, fix errors if needed
+        _logger.LogInformation("[BUILD] All {StepCount} steps complete - building {FileCount} files together", 
+            taskPlan.Steps.Count, accumulatedFiles.Count);
+        
+        var maxBuildRetries = 5;
+        var buildRetries = 0;
+        ExecutionResult? finalExecution = null;
+        
+        while (buildRetries < maxBuildRetries)
+        {
+            buildRetries++;
+            totalIterations++;
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            UpdateProgress(jobId, TaskState.Running, 85 + (buildRetries * 2), 
+                $"Final Build (attempt {buildRetries}/{maxBuildRetries})", totalIterations);
+            var finalExecutionPhase = StartPhase("docker_execution", totalIterations);
+            finalExecutionPhase.Details = new Dictionary<string, object>
+            {
+                ["attempt"] = buildRetries,
+                ["fileCount"] = accumulatedFiles.Count
+            };
+            
+            var finalFiles = accumulatedFiles.Values.Select(f => new ExecutionFile
+            {
+                Path = f.Path,
+                Content = f.Content,
+                ChangeType = (int)f.Type,
+                Reason = f.Reason
+            }).ToList();
+            
+            finalExecution = await _executionService.ExecuteAsync(
+                request.Language ?? "python",
+                finalFiles,
+                request.WorkspacePath,
+                lastGeneratedCode?.Execution,
+                cancellationToken);
+            
+            finalExecutionPhase.Details["success"] = finalExecution.Success;
+            finalExecutionPhase.Details["buildPassed"] = finalExecution.BuildPassed;
+            finalExecutionPhase.Details["executionPassed"] = finalExecution.ExecutionPassed;
+            finalExecutionPhase.Details["output"] = finalExecution.Output?.Length > 500 
+                ? finalExecution.Output[..500] + "..." 
+                : finalExecution.Output;
+            EndPhase(jobId, finalExecutionPhase);
+            response.Timeline.Add(finalExecutionPhase);
+            
+            if (finalExecution.BuildPassed)
+            {
+                _logger.LogInformation("[BUILD-OK] Final build succeeded on attempt {Attempt}", buildRetries);
+                break;  // Build passed, exit retry loop
+            }
+            
+            // Build failed - send ALL errors to Claude to fix ALL files
+            _logger.LogWarning("[BUILD-FAIL] Final build failed (attempt {Attempt}): {Errors}", 
+                buildRetries, finalExecution.Errors?.Length > 200 ? finalExecution.Errors[..200] + "..." : finalExecution.Errors);
+            
+            if (buildRetries >= maxBuildRetries)
+            {
+                _logger.LogError("[BUILD-FAIL] Build failed after {MaxRetries} attempts", maxBuildRetries);
+                break;  // Max retries reached
+            }
+            
+            // 🔧 FIX ALL ERRORS: Send all files + errors to Claude
+            _logger.LogInformation("[FIX] Sending {FileCount} files to Claude to fix build errors...", accumulatedFiles.Count);
+            
+            var fixPhase = StartPhase("fix_build_errors", totalIterations);
+            
+            // Build a comprehensive fix prompt with ALL files and ALL errors
+            var fixPrompt = new System.Text.StringBuilder();
+            fixPrompt.AppendLine("=== BUILD FAILED - FIX ALL ERRORS ===");
+            fixPrompt.AppendLine();
+            fixPrompt.AppendLine("BUILD ERRORS:");
+            fixPrompt.AppendLine(finalExecution.Errors);
+            fixPrompt.AppendLine();
+            fixPrompt.AppendLine("=== CURRENT FILES (fix these) ===");
+            foreach (var file in accumulatedFiles)
+            {
+                fixPrompt.AppendLine($"// ========== {file.Key} ==========");
+                fixPrompt.AppendLine(file.Value.Content);
+                fixPrompt.AppendLine();
+            }
+            fixPrompt.AppendLine("=== INSTRUCTIONS ===");
+            fixPrompt.AppendLine("1. Fix ALL the build errors shown above");
+            fixPrompt.AppendLine("2. Return ALL files with corrections applied");
+            fixPrompt.AppendLine("3. Make sure all class references are correct");
+            fixPrompt.AppendLine("4. Make sure all using statements are present");
+            fixPrompt.AppendLine("5. Make sure there's exactly ONE Main method entry point");
+            
+            // Convert existing files for the request
+            var existingFilesForFix = accumulatedFiles.Select(kv => new ExistingFile 
+            { 
+                Path = kv.Key, 
+                Content = kv.Value.Content 
+            }).ToList();
+            
+            var fixRequest = new GenerateCodeRequest
+            {
+                Task = fixPrompt.ToString(),
+                Language = request.Language,
+                Context = context,
+                WorkspacePath = request.WorkspacePath,
+                PreviousFeedback = new ValidationFeedback
+                {
+                    TriedModels = triedModels,
+                    Score = 0,
+                    Issues = new List<ValidationIssue>
+                    {
+                        new ValidationIssue 
+                        { 
+                            Severity = "critical", 
+                            Message = $"Build failed: {finalExecution.Errors ?? "Unknown error"}" 
+                        }
+                    },
+                    // 🔧 SET BUILD ERRORS so CodingAgent uses focused fix prompt!
+                    BuildErrors = finalExecution.Errors
+                },
+                ExistingFiles = existingFilesForFix
+            };
+            
+            var fixedCode = await _codingAgent.FixAsync(fixRequest, cancellationToken);
+            
+            // Track model usage
+            if (!string.IsNullOrEmpty(fixedCode.ModelUsed))
+            {
+                triedModels.Add(fixedCode.ModelUsed);
+                modelsUsedDuringTask.Add(fixedCode.ModelUsed);
+                approachesTried.Add($"Build fix attempt {buildRetries}: {fixedCode.ModelUsed}");
+            }
+            
+            // Accumulate cloud usage
+            if (fixedCode.CloudUsage != null)
+            {
+                cloudUsage.Model = fixedCode.CloudUsage.Model;
+                cloudUsage.InputTokens += fixedCode.CloudUsage.InputTokens;
+                cloudUsage.OutputTokens += fixedCode.CloudUsage.OutputTokens;
+                cloudUsage.EstimatedCost += fixedCode.CloudUsage.Cost;
+                cloudUsage.ApiCalls++;
+            }
+            
+            // Update accumulated files with fixes
+            foreach (var file in fixedCode.FileChanges)
+            {
+                var fileName = Path.GetFileName(file.Path);
+                accumulatedFiles[fileName] = file;
+                _logger.LogDebug("[FIX] Updated: {File}", fileName);
+            }
+            
+            fixPhase.Details = new Dictionary<string, object>
+            {
+                ["filesFixed"] = fixedCode.FileChanges.Count,
+                ["modelUsed"] = fixedCode.ModelUsed ?? "unknown"
+            };
+            EndPhase(jobId, fixPhase);
+            response.Timeline.Add(fixPhase);
+            
+            lastGeneratedCode = fixedCode;
+        }
+        
+        // Ensure we have a result
+        if (finalExecution == null)
+        {
+            finalExecution = new ExecutionResult { Success = false, BuildPassed = false, Errors = "No build attempted" };
+        }
+        
+        // 📊 INDEX files to Qdrant+Neo4j (only if build passed)
+        if (finalExecution.BuildPassed)
+        {
+            _logger.LogInformation("[INDEX] Build passed - indexing {FileCount} files to memory", accumulatedFiles.Count);
+            foreach (var file in accumulatedFiles.Values)
+            {
+                try
+                {
+                    await _memoryAgent.IndexFileAsync(
+                        file.Path,
+                        file.Content,
+                        request.Language ?? "csharp",
+                        request.Context,
+                        cancellationToken);
+                    _logger.LogDebug("[INDEX] Indexed: {Path}", file.Path);
+                }
+                catch (Exception indexEx)
+                {
+                    _logger.LogWarning(indexEx, "[INDEX] Failed (non-critical): {Path}", file.Path);
+                }
+            }
+        }
+        
+        // 📊 FINAL VALIDATION
+        UpdateProgress(jobId, TaskState.Running, 90, "Final Validation", totalIterations);
+        var validationPhase = StartPhase("validation_agent", totalIterations);
+        
+        var validateRequest = new ValidateCodeRequest
+        {
+            Files = accumulatedFiles.Values.Select(f => new CodeFile
+            {
+                Path = f.Path,
+                Content = f.Content,
+                IsNew = f.Type == FileChangeType.Created
+            }).ToList(),
+            Context = request.Context,
+            Language = request.Language,
+            OriginalTask = request.Task,
+            WorkspacePath = request.WorkspacePath,
+            ValidationMode = request.ValidationMode
+        };
+        
+        lastValidation = await _validationAgent.ValidateAsync(validateRequest, cancellationToken);
+        
+        if (finalExecution.Success)
+        {
+            lastValidation.Summary = $"✅ Code executed successfully!\nOutput: {finalExecution.Output}\n\n{lastValidation.Summary}";
+        }
+        
+        validationPhase.Details = new Dictionary<string, object>
+        {
+            ["score"] = lastValidation.Score,
+            ["passed"] = lastValidation.Passed,
+            ["issueCount"] = lastValidation.Issues.Count
+        };
+        EndPhase(jobId, validationPhase);
+        response.Timeline.Add(validationPhase);
+        
+        // Build final response
+        var files = accumulatedFiles.Values.Select(f => new GeneratedFile
+        {
+            Path = f.Path,
+            Content = f.Content,
+            ChangeType = f.Type,
+            Reason = f.Reason
+        }).ToList();
+        
+        // 🎯 Use request.MinValidationScore (not ValidationAgent's internal threshold)
+        var meetsMinScore = lastValidation.Score >= request.MinValidationScore;
+        
+        var finalResult = new TaskResult
+        {
+            Success = meetsMinScore && finalExecution.Success,
+            Files = files,
+            ValidationScore = lastValidation.Score,
+            TotalIterations = totalIterations,
+            TotalDurationMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds,
+            Summary = lastValidation.Summary,
+            ModelsUsed = modelsUsedDuringTask.Distinct().ToList()
+        };
+        
+        response.Status = finalResult.Success ? TaskState.Complete : TaskState.Failed;
+        response.Progress = 100;
+        response.CurrentPhase = finalResult.Success ? "Complete" : "Failed";
+        response.Iteration = totalIterations;
+        response.Result = finalResult;
+        response.GeneratedFiles = files.Select(f => f.Path).ToList();
+        
+        // If failed, include detailed error information with issues
+        if (!finalResult.Success && lastValidation != null)
+        {
+            var issueDetails = lastValidation.Issues?
+                .OrderByDescending(i => i.Severity == "critical" ? 4 : i.Severity == "high" ? 3 : i.Severity == "warning" ? 2 : 1)
+                .Select(i => $"[{i.Severity?.ToUpper()}] {i.Message}" + (!string.IsNullOrEmpty(i.Suggestion) ? $" -> {i.Suggestion}" : ""))
+                .ToList() ?? new List<string>();
+            
+            response.Error = new TaskError
+            {
+                Type = "validation_failed",
+                Message = lastValidation.Summary ?? "Code did not pass validation",
+                CanRetry = true,
+                PartialResult = finalResult,
+                Details = new Dictionary<string, object>
+                {
+                    ["score"] = lastValidation.Score,
+                    ["issues"] = issueDetails,
+                    ["totalIterations"] = totalIterations,
+                    ["modelsUsed"] = modelsUsedDuringTask.Distinct().ToList(),
+                    ["executionResult"] = finalExecution.Success ? "PASSED" : "FAILED",
+                    ["executionOutput"] = finalExecution.Output?.Length > 1000 
+                        ? finalExecution.Output[..1000] + "..." 
+                        : finalExecution.Output ?? ""
+                }
+            };
+        }
+        
+        // ☁️ Include cloud usage if Claude was used
+        if (cloudUsage.ApiCalls > 0)
+        {
+            response.CloudUsage = cloudUsage;
+        }
+        
+        var elapsed = DateTime.UtcNow - startTime;
+        _logger.LogInformation("[COMPLETE] Step-by-step execution complete: {Steps} steps, {Iterations} total iterations, Score: {Score}/10, Duration: {Duration}s",
+            taskPlan.Steps.Count, totalIterations, lastValidation.Score, elapsed.TotalSeconds);
+        
+        // Store success/failure for learning (non-critical)
+        try
+        {
+            if (finalResult.Success && lastGeneratedCode != null)
+            {
+                await StoreSuccessfulResultAsync(request, lastGeneratedCode, cancellationToken);
+            }
+            else if (lastValidation != null)
+            {
+                await RecordDetailedFailureAsync(request, lastValidation, totalIterations, 
+                    modelsUsedDuringTask, approachesTried, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️ Failed to store learning data (non-critical)");
+        }
+        
+        return response;
+    }
+    
+    /// <summary>
+    /// Normalize file name to avoid duplicates from different LLM naming choices
+    /// E.g., "Services/Calculator.cs" and "Calculator.cs" both become "Calculator.cs"
+    /// If step has a target file name, use that; otherwise use the base filename
+    /// </summary>
+    private static string NormalizeFileName(string generatedFileName, string? stepTargetFile)
+    {
+        // If the step specifies a target file, and the generated file matches its name, use the target
+        if (!string.IsNullOrEmpty(stepTargetFile))
+        {
+            var stepBaseName = Path.GetFileNameWithoutExtension(stepTargetFile);
+            var generatedBaseName = Path.GetFileNameWithoutExtension(generatedFileName);
+            
+            // Check if they're referring to the same class/file
+            if (string.Equals(stepBaseName, generatedBaseName, StringComparison.OrdinalIgnoreCase))
+            {
+                return stepTargetFile; // Use the canonical step target
+            }
+        }
+        
+        // Otherwise just use the filename (no path)
+        return Path.GetFileName(generatedFileName);
+    }
+    
+    /// <summary>
+    /// Build a smart prompt for a step - shows full context and allows multiple related files
+    /// </summary>
+    private string BuildStepPrompt(
+        PlanStep step,
+        int stepNumber,
+        TaskPlan taskPlan,
+        Dictionary<string, FileChange> accumulatedFiles,
+        ProjectSymbols? projectSymbols,
+        TaskLessonsResult taskLessons,
+        string language,
+        List<string>? searchContext = null)
+    {
+        var prompt = new System.Text.StringBuilder();
+        
+        // Step instruction
+        prompt.AppendLine($"## STEP {stepNumber} of {taskPlan.Steps.Count}: {step.Description}");
+        
+        // 🔍 Include search results from indexed previous steps
+        if (searchContext?.Any() == true)
+        {
+            prompt.AppendLine();
+            prompt.AppendLine("=== RELEVANT CODE FROM SEARCH (use these!) ===");
+            foreach (var ctx in searchContext.Take(5))
+            {
+                prompt.AppendLine(ctx);
+                prompt.AppendLine();
+            }
+        }
+        prompt.AppendLine();
+        
+        // Target file(s)
+        if (!string.IsNullOrEmpty(step.FileName))
+        {
+            prompt.AppendLine($"PRIMARY TARGET: {step.FileName}");
+        }
+        prompt.AppendLine();
+        
+        // STRICT RULES for step-by-step - ONE FILE ONLY
+        prompt.AppendLine("=== CRITICAL RULES ===");
+        prompt.AppendLine("1. Generate ONLY the ONE file for THIS step");
+        prompt.AppendLine("2. Do NOT copy or redefine ANY existing classes (see below)");
+        prompt.AppendLine("3. Just add 'using' statements to reference existing classes");
+        prompt.AppendLine("4. Same namespace as existing files (use their namespace)");
+        prompt.AppendLine("5. NO Program.Main unless step explicitly asks for Program");
+        prompt.AppendLine();
+        
+        // Show FULL CONTENT of existing files (not just signatures!)
+        if (accumulatedFiles.Any())
+        {
+            prompt.AppendLine("=== EXISTING CODE (reference this, do NOT redefine) ===");
+            
+            var existingTypes = new List<string>();
+            foreach (var file in accumulatedFiles)
+            {
+                prompt.AppendLine($"\n// ========== {file.Key} ==========");
+                
+                // Show full content for small files, truncated for large ones
+                var content = file.Value.Content;
+                if (content.Length > 2000)
+                {
+                    // For large files, show structure + truncated
+                    var signatures = ExtractSignatures(content, language);
+                    prompt.AppendLine(signatures);
+                    prompt.AppendLine("// ... (file truncated, use these signatures)");
+                }
+                else
+                {
+                    // Show full content for small files
+                    prompt.AppendLine(content);
+                }
+                
+                // Track existing type names
+                var typeMatches = System.Text.RegularExpressions.Regex.Matches(
+                    content, 
+                    @"(?:public|internal|private)\s+(?:enum|class|struct|record|interface)\s+(\w+)");
+                foreach (System.Text.RegularExpressions.Match m in typeMatches)
+                {
+                    existingTypes.Add(m.Groups[1].Value);
+                }
+            }
+            
+            if (existingTypes.Any())
+            {
+                prompt.AppendLine($"\n⚠️ ALREADY DEFINED (do NOT recreate): {string.Join(", ", existingTypes.Distinct())}");
+            }
+            prompt.AppendLine();
+        }
+        
+        // Show what's coming next
+        if (stepNumber < taskPlan.Steps.Count)
+        {
+            prompt.AppendLine("UPCOMING STEPS (for reference):");
+            for (var i = stepNumber; i < Math.Min(stepNumber + 3, taskPlan.Steps.Count); i++)
+            {
+                var upcoming = taskPlan.Steps[i];
+                prompt.AppendLine($"  - Step {i + 1}: {upcoming.Description}");
+            }
+            prompt.AppendLine();
+        }
+        
+        // Lessons from past failures
+        if (taskLessons.FoundLessons > 0)
+        {
+            prompt.AppendLine($"LEARN FROM PAST FAILURES:\n{taskLessons.AvoidanceAdvice}");
+            prompt.AppendLine();
+        }
+        
+        // Clear output instructions - be VERY specific about what to generate
+        prompt.AppendLine("=== YOUR OUTPUT (ONE FILE ONLY) ===");
+        prompt.AppendLine($"Implement: {step.Description}");
+        if (!string.IsNullOrEmpty(step.FileName))
+        {
+            prompt.AppendLine($"GENERATE ONLY: {step.FileName}");
+            prompt.AppendLine($"Do NOT generate any other files.");
+        }
+        prompt.AppendLine();
+        prompt.AppendLine("REMEMBER:");
+        prompt.AppendLine("- Generate ONLY the new class/code for this step");
+        prompt.AppendLine("- Do NOT include classes from existing files");
+        prompt.AppendLine("- Use 'using' to reference existing classes");
+        
+        return prompt.ToString();
+    }
+    
+    #endregion
 }
 

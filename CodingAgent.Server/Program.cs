@@ -22,6 +22,20 @@ builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client =>
     client.Timeout = TimeSpan.FromMinutes(5); // LLM inference can take a while
 });
 
+// ☁️ Configure HTTP client for Anthropic Claude (optional - for high-quality code generation)
+builder.Services.AddHttpClient<IAnthropicClient, AnthropicClient>(client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(3); // Claude is fast but allow time for complex generations
+});
+builder.Services.AddSingleton<IAnthropicClient>(sp =>
+{
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = httpClientFactory.CreateClient(nameof(AnthropicClient));
+    var logger = sp.GetRequiredService<ILogger<AnthropicClient>>();
+    var config = sp.GetRequiredService<IConfiguration>();
+    return new AnthropicClient(httpClient, logger, config);
+});
+
 // Configure HTTP client for ModelOrchestrator (needs plain HttpClient for multi-port)
 builder.Services.AddHttpClient<ModelOrchestrator>(client =>
 {

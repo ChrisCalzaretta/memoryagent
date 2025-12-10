@@ -39,14 +39,21 @@ public class MemoryAgentClient : IMemoryAgentClient
 
         try
         {
+            // Use JSONRPC 2.0 format for MCP calls
             var request = new
             {
-                name = "manage_prompts",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    action = "list",
-                    name = promptName,
-                    activeOnly = true
+                    name = "manage_prompts",
+                    arguments = new
+                    {
+                        action = "list",
+                        name = promptName,
+                        activeOnly = true
+                    }
                 }
             };
 
@@ -161,11 +168,17 @@ public class MemoryAgentClient : IMemoryAgentClient
         {
             var request = new
             {
-                name = "validate",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    context = context,
-                    scope = "list_best_practices"
+                    name = "validate",
+                    arguments = new
+                    {
+                        context = context,
+                        scope = "list_best_practices"
+                    }
                 }
             };
 
@@ -196,13 +209,19 @@ public class MemoryAgentClient : IMemoryAgentClient
         {
             var request = new
             {
-                name = "feedback",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    type = "prompt",
-                    name = promptName,
-                    wasSuccessful = wasSuccessful,
-                    rating = rating
+                    name = "feedback",
+                    arguments = new
+                    {
+                        type = "prompt",
+                        name = promptName,
+                        wasSuccessful = wasSuccessful,
+                        rating = rating
+                    }
                 }
             };
 
@@ -223,13 +242,19 @@ public class MemoryAgentClient : IMemoryAgentClient
         {
             var request = new
             {
-                name = "feedback",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    type = "pattern",
-                    patternName = patternName,
-                    wasUseful = wasUseful,
-                    comments = comments
+                    name = "feedback",
+                    arguments = new
+                    {
+                        type = "pattern",
+                        patternName = patternName,
+                        wasUseful = wasUseful,
+                        comments = comments
+                    }
                 }
             };
 
@@ -277,20 +302,26 @@ public class MemoryAgentClient : IMemoryAgentClient
         {
             var request = new
             {
-                name = "store_model_performance",
-                arguments = new
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
                 {
-                    model = model,
-                    taskType = taskType,
-                    language = language ?? "unknown",
-                    complexity = complexity ?? "unknown",
-                    outcome = succeeded ? "success" : (score > 0 ? "partial" : "failure"),
-                    score = (int)score,
-                    durationMs = durationMs,
-                    iterations = iterations,
-                    errorType = errorType ?? "",
-                    context = context ?? "default",
-                    taskKeywords = taskKeywords ?? new List<string>()
+                    name = "store_model_performance",
+                    arguments = new
+                    {
+                        model = model,
+                        taskType = taskType,
+                        language = language ?? "unknown",
+                        complexity = complexity ?? "unknown",
+                        outcome = succeeded ? "success" : (score > 0 ? "partial" : "failure"),
+                        score = (int)score,
+                        durationMs = durationMs,
+                        iterations = iterations,
+                        errorType = errorType ?? "",
+                        context = context ?? "default",
+                        taskKeywords = taskKeywords ?? new List<string>()
+                    }
                 }
             };
 

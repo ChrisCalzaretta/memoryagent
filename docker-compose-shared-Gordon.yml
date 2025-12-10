@@ -184,6 +184,10 @@ services:
       # 🗂️ Path translation: Windows paths → container paths
       - PathMapping__HostRoot=h:\code\git
       - PathMapping__ContainerRoot=/workspace
+      # ☁️ Anthropic Claude for code generation (if configured)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      - ANTHROPIC_MODEL_PREMIUM=${ANTHROPIC_MODEL_PREMIUM:-claude-opus-4-20250514}
     depends_on:
       mcp-server:
         condition: service_healthy

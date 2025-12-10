@@ -82,13 +82,13 @@ builder.Services.AddHttpClient<IMemoryAgentClient, MemoryAgentClient>(client =>
 builder.Services.AddHttpClient<ICodingAgentClient, CodingAgentClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["CodingAgent:BaseUrl"] ?? "http://localhost:5001");
-    client.Timeout = TimeSpan.FromSeconds(120); // Increased for code generation
+    client.Timeout = TimeSpan.FromSeconds(300); // 5 min for complex multi-file generation
 }).AddPolicyHandler(combinedPolicy);
 
 builder.Services.AddHttpClient<IValidationAgentClient, ValidationAgentClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["ValidationAgent:BaseUrl"] ?? "http://localhost:5002");
-    client.Timeout = TimeSpan.FromSeconds(120); // Increased for validation
+    client.Timeout = TimeSpan.FromSeconds(180); // 3 min for validation with LLM
 }).AddPolicyHandler(combinedPolicy);
 
 // 🎨 Design Agent - Brand guidelines and design validation

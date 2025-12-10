@@ -342,9 +342,23 @@ public partial class ModelOrchestrator
             return (smallModel.Name, Config.PinnedPort);
         }
 
-        _logger.LogWarning("No model fits in available VRAM ({Available}GB) for {Purpose}. " +
+        // If dual GPU, try ANY model that fits on swap GPU (not just big ones)
+        if (Config.DualGpu)
+        {
+            var swapAvailable = Config.SwapGpuVram - 2; // 2GB safety buffer
+            var swapModel = candidates.FirstOrDefault(m => m.SizeGb <= swapAvailable);
+            
+            if (swapModel != null)
+            {
+                _logger.LogInformation("Selected {Model} ({Size:F1}GB) for {Purpose} on SWAP GPU (port {Port}) - no room on pinned",
+                    swapModel.Name, swapModel.SizeGb, purpose, Config.SwapPort);
+                return (swapModel.Name, Config.SwapPort);
+            }
+        }
+
+        _logger.LogWarning("No model fits in available VRAM ({Available}GB pinned, {SwapAvailable}GB swap) for {Purpose}. " +
             "Candidates were: {Candidates}",
-            availableVram, purpose, 
+            availableVram, Config.DualGpu ? Config.SwapGpuVram - 2 : 0, purpose, 
             string.Join(", ", candidates.Select(c => $"{c.Name}({c.SizeGb:F1}GB)")));
         return null;
     }

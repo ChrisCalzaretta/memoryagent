@@ -429,6 +429,59 @@ public class McpHandler : IMcpHandler
         result.AppendLine($"| **Iteration** | {status.Iteration}/{status.MaxIterations} |");
         result.AppendLine();
 
+        // 📋 Show execution plan with checklist
+        if (status.Plan != null)
+        {
+            result.AppendLine("### 📋 Execution Plan");
+            result.AppendLine();
+            
+            // Show required classes
+            if (status.Plan.RequiredClasses.Any())
+            {
+                result.AppendLine($"**Required Components:** {string.Join(", ", status.Plan.RequiredClasses)}");
+                result.AppendLine();
+            }
+            
+            // Show dependency order
+            if (status.Plan.DependencyOrder.Any())
+            {
+                result.AppendLine($"**Generation Order:** {string.Join(" → ", status.Plan.DependencyOrder)}");
+                result.AppendLine();
+            }
+            
+            // Show steps checklist
+            if (status.Plan.Steps.Any())
+            {
+                result.AppendLine("**Checklist:**");
+                result.AppendLine();
+                foreach (var step in status.Plan.Steps.OrderBy(s => s.Order))
+                {
+                    var stepStatus = step.Status?.ToLower() switch
+                    {
+                        "completed" => "✅",
+                        "in_progress" => "🔄",
+                        "failed" => "❌",
+                        _ => "⬜"
+                    };
+                    var fileName = !string.IsNullOrEmpty(step.FileName) ? $" (`{step.FileName}`)" : "";
+                    result.AppendLine($"- {stepStatus} {step.Description}{fileName}");
+                }
+                result.AppendLine();
+            }
+        }
+
+        // 📁 Show generated files
+        if (status.GeneratedFiles.Any())
+        {
+            result.AppendLine($"### 📁 Files Generated ({status.GeneratedFiles.Count})");
+            result.AppendLine();
+            foreach (var file in status.GeneratedFiles.OrderBy(f => f))
+            {
+                result.AppendLine($"- ✅ `{file}`");
+            }
+            result.AppendLine();
+        }
+
         // Analyze timeline for statistics
         if (status.Timeline.Any())
         {

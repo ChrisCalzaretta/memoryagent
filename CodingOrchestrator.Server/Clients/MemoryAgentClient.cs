@@ -482,6 +482,82 @@ public class MemoryAgentClient : IMemoryAgentClient
     }
 
     /// <summary>
+    /// 🔍 Smart search for relevant code/context (searches Qdrant + Neo4j)
+    /// </summary>
+    public async Task<List<SmartSearchResult>> SmartSearchAsync(string query, string context, int limit, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new
+            {
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
+                {
+                    name = "smartsearch",
+                    arguments = new
+                    {
+                        query,
+                        context,
+                        limit,
+                        includeRelationships = true
+                    }
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                var jsonrpcResponse = JsonSerializer.Deserialize<JsonRpcResponse>(content, JsonOptions);
+                
+                if (jsonrpcResponse?.Result?.Content?.FirstOrDefault()?.Text != null)
+                {
+                    // Parse the response - smartsearch returns structured results
+                    var results = new List<SmartSearchResult>();
+                    var text = jsonrpcResponse.Result.Content.First().Text;
+                    
+                    // Try to parse as JSON first, fallback to text parsing
+                    try
+                    {
+                        var searchResponse = JsonSerializer.Deserialize<SmartSearchJsonResponse>(text, JsonOptions);
+                        if (searchResponse?.Results != null)
+                        {
+                            results = searchResponse.Results.Select(r => new SmartSearchResult
+                            {
+                                Name = r.Name ?? "",
+                                FilePath = r.FilePath ?? "",
+                                Type = r.Type ?? "code",
+                                Content = r.Content ?? "",
+                                Score = r.Score
+                            }).ToList();
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback: parse as text output
+                        _logger.LogDebug("SmartSearch returned text format, parsing manually");
+                    }
+                    
+                    _logger.LogInformation("🔍 SmartSearch found {Count} results for '{Query}' in {Context}", 
+                        results.Count, query.Length > 50 ? query[..50] + "..." : query, context);
+                    return results;
+                }
+            }
+            
+            _logger.LogWarning("SmartSearch failed: {StatusCode}", response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SmartSearch error (non-critical)");
+        }
+        
+        return new List<SmartSearchResult>();
+    }
+
+    /// <summary>
     /// 🔍 Get all symbols (classes, methods) in the project context
     /// </summary>
     public async Task<ProjectSymbols> GetProjectSymbolsAsync(string context, CancellationToken cancellationToken)
@@ -783,5 +859,19 @@ internal class JsonRpcError
 {
     public int Code { get; set; }
     public string? Message { get; set; }
+}
+
+internal class SmartSearchJsonResponse
+{
+    public List<SmartSearchJsonResult>? Results { get; set; }
+}
+
+internal class SmartSearchJsonResult
+{
+    public string? Name { get; set; }
+    public string? FilePath { get; set; }
+    public string? Type { get; set; }
+    public string? Content { get; set; }
+    public float Score { get; set; }
 }
 

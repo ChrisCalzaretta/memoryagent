@@ -54,6 +54,114 @@ public class TaskStatusResponse
     /// Human-readable message
     /// </summary>
     public string? Message { get; set; }
+    
+    /// <summary>
+    /// The original task description
+    /// </summary>
+    public string? Task { get; set; }
+    
+    /// <summary>
+    /// Execution plan with checklist (populated after plan generation phase)
+    /// </summary>
+    public TaskPlanInfo? Plan { get; set; }
+    
+    /// <summary>
+    /// Files generated so far (even if incomplete)
+    /// </summary>
+    public List<string> GeneratedFiles { get; set; } = new();
+    
+    /// <summary>
+    /// Cloud LLM usage statistics (when using Anthropic/OpenAI)
+    /// </summary>
+    public CloudUsage? CloudUsage { get; set; }
+}
+
+/// <summary>
+/// Cloud LLM usage tracking for cost monitoring
+/// </summary>
+public class CloudUsage
+{
+    /// <summary>
+    /// Provider name (e.g., "anthropic", "openai")
+    /// </summary>
+    public string? Provider { get; set; }
+    
+    /// <summary>
+    /// Model used (e.g., "claude-sonnet-4-20250514")
+    /// </summary>
+    public string? Model { get; set; }
+    
+    /// <summary>
+    /// Total input tokens used this task
+    /// </summary>
+    public int InputTokens { get; set; }
+    
+    /// <summary>
+    /// Total output tokens used this task
+    /// </summary>
+    public int OutputTokens { get; set; }
+    
+    /// <summary>
+    /// Number of API calls made
+    /// </summary>
+    public int ApiCalls { get; set; }
+    
+    /// <summary>
+    /// Estimated cost in USD
+    /// </summary>
+    public decimal EstimatedCost { get; set; }
+    
+    /// <summary>
+    /// Tokens remaining (from rate limit headers)
+    /// </summary>
+    public int? TokensRemaining { get; set; }
+    
+    /// <summary>
+    /// Requests remaining (from rate limit headers)
+    /// </summary>
+    public int? RequestsRemaining { get; set; }
+    
+    /// <summary>
+    /// Note about balance checking
+    /// </summary>
+    public string? Note { get; set; }
+}
+
+/// <summary>
+/// Execution plan info for status display
+/// </summary>
+public class TaskPlanInfo
+{
+    /// <summary>
+    /// Required classes/components to generate
+    /// </summary>
+    public List<string> RequiredClasses { get; set; } = new();
+    
+    /// <summary>
+    /// Order to generate files (dependencies first)
+    /// </summary>
+    public List<string> DependencyOrder { get; set; } = new();
+    
+    /// <summary>
+    /// Semantic breakdown of the task
+    /// </summary>
+    public string SemanticBreakdown { get; set; } = "";
+    
+    /// <summary>
+    /// Individual steps with their status
+    /// </summary>
+    public List<PlanStepInfo> Steps { get; set; } = new();
+}
+
+/// <summary>
+/// A step in the plan with its status
+/// </summary>
+public class PlanStepInfo
+{
+    public int Order { get; set; }
+    public string Description { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string Status { get; set; } = "pending";  // pending, in_progress, completed, failed
 }
 
 /// <summary>
@@ -66,7 +174,12 @@ public enum TaskState
     Complete,
     Failed,
     Cancelled,
-    TimedOut
+    TimedOut,
+    /// <summary>
+    /// Step-by-step mode: A step failed after max retries, waiting for user help
+    /// User can provide feedback via resume endpoint to continue
+    /// </summary>
+    NeedsHelp
 }
 
 /// <summary>
@@ -94,6 +207,11 @@ public class TaskResult
     public int TotalIterations { get; set; }
     public long TotalDurationMs { get; set; }
     public string? Summary { get; set; }
+    
+    /// <summary>
+    /// LLM models used during the task (e.g., "claude:claude-sonnet-4-20250514", "phi4:latest")
+    /// </summary>
+    public List<string> ModelsUsed { get; set; } = new();
 }
 
 /// <summary>
@@ -127,6 +245,11 @@ public class TaskError
     public string? Phase { get; set; }
     public TaskResult? PartialResult { get; set; }
     public bool CanRetry { get; set; }
+    
+    /// <summary>
+    /// Rich error details (for NeedsHelp state: step info, specific errors, help examples)
+    /// </summary>
+    public Dictionary<string, object>? Details { get; set; }
 }
 
 

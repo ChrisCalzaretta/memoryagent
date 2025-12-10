@@ -42,6 +42,25 @@ public class GenerateCodeResponse
     /// Tells ExecutionService exactly how to run this code
     /// </summary>
     public ExecutionInstructions? Execution { get; set; }
+    
+    /// <summary>
+    /// ☁️ Cloud LLM usage (when Anthropic/OpenAI was used)
+    /// </summary>
+    public CloudGenerationUsage? CloudUsage { get; set; }
+}
+
+/// <summary>
+/// Usage info from a single cloud LLM generation call
+/// </summary>
+public class CloudGenerationUsage
+{
+    public string Provider { get; set; } = "";
+    public string Model { get; set; } = "";
+    public int InputTokens { get; set; }
+    public int OutputTokens { get; set; }
+    public decimal Cost { get; set; }
+    public int? TokensRemaining { get; set; }
+    public int? RequestsRemaining { get; set; }
 }
 
 /// <summary>

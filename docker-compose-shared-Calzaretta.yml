@@ -1,4 +1,15 @@
 services:
+  # 🔧 Build-only service: Multi-SDK .NET execution image
+  # This builds the custom image used by coding-orchestrator for C# execution
+  # Run: docker-compose -f docker-compose-shared-Calzaretta.yml build dotnet-multi
+  dotnet-multi:
+    build:
+      context: .
+      dockerfile: CodingOrchestrator.Server/Dockerfile.dotnet-multi
+    image: memoryagent-dotnet-multi:latest
+    profiles:
+      - build-only  # Won't start with normal docker-compose up
+
   mcp-server:
     build:
       context: .
@@ -184,14 +195,20 @@ services:
       - Gpu__PrimaryModel=deepseek-coder-v2:16b
       - Gpu__PinnedGpuVram=24
       - Gpu__SwapGpuVram=16
-      # Actual pinned usage: phi4(10GB) + embed(1GB) = ~11GB, leave buffer
-      - Gpu__PinnedModelsVram=12
-      # ⚡ Smart model selection: false = always use PrimaryModel (best for single GPU)
-      # Set to true if you have multiple GPUs and want LLM-based model selection
+      # deepseek-coder-v2:16b uses ~22GB, so no room for swapping on pinned GPU
+      # All non-primary models should go to swap GPU (port 11435)
+      - Gpu__PinnedModelsVram=23
+      # ⚡ Smart model selection ENABLED for dual GPU
+      # PinnedModelsVram=23 forces alternates to swap GPU (11435)
+      # deepseek stays on 3090 (11434), alternatives go to 5070 Ti
       - Gpu__UseSmartModelSelection=true
       # 🗂️ Path translation: Windows paths → container paths
       - PathMapping__HostRoot=E:\GitHub
       - PathMapping__ContainerRoot=/workspace
+      # ☁️ Anthropic Claude for code generation (if configured)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      - ANTHROPIC_MODEL_PREMIUM=${ANTHROPIC_MODEL_PREMIUM:-claude-opus-4-20250514}
     depends_on:
       mcp-server:
         condition: service_healthy
@@ -206,6 +223,7 @@ services:
     restart: unless-stopped
 
   # ValidationAgent - Validates code quality with LLM
+  # Uses 5070 Ti (port 11435) for phi4 - keeps 3090 free for code generation
   validation-agent:
     build:
       context: .
@@ -217,13 +235,15 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5002
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - Ollama__Url=http://10.0.0.20:11434
+      # ⚡ Route validation to 5070 Ti (port 11435) - phi4 runs there
+      - Ollama__Url=http://10.0.0.20:11435
+      - Ollama__Port=11435
       - Gpu__ValidationModel=phi4:latest
-      # Dual GPU: 3090 (pinned) + 5070 Ti (swap)
+      # Dual GPU: 3090 (pinned code gen) + 5070 Ti (validation)
       - Gpu__DualGpu=true
       - Gpu__PinnedPort=11434
       - Gpu__SwapPort=11435
-      # ⚡ Smart model selection: false = always use ValidationModel (best for single GPU)
+      # Smart selection ON - can use different validation models on 5070 Ti
       - Gpu__UseSmartModelSelection=true
     depends_on:
       mcp-server:

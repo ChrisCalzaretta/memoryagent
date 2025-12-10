@@ -276,36 +276,141 @@ public class SmartCodegenToolHandler : IMcpToolHandler
     {
         var classes = new List<string>();
         
-        // Common patterns for different task types
-        if (task.Contains("blackjack", StringComparison.OrdinalIgnoreCase) ||
-            task.Contains("card game", StringComparison.OrdinalIgnoreCase))
+        // DYNAMIC EXTRACTION - NO HARDCODING!
+        // Pattern 1: "X class" - explicit class mentions (Card class, Hand class, etc.)
+        var classPattern1 = @"(\b[A-Z][a-zA-Z0-9]+)\s+class\b";
+        foreach (System.Text.RegularExpressions.Match m in 
+            System.Text.RegularExpressions.Regex.Matches(task, classPattern1))
         {
-            classes.AddRange(new[] { "Card", "Deck", "Hand", "Player", "Game" });
-        }
-        else if (task.Contains("todo", StringComparison.OrdinalIgnoreCase))
-        {
-            classes.AddRange(new[] { "TodoItem", "TodoList", "App" });
-        }
-        else if (task.Contains("chat", StringComparison.OrdinalIgnoreCase))
-        {
-            classes.AddRange(new[] { "Message", "User", "ChatRoom", "Client" });
-        }
-        else if (task.Contains("api", StringComparison.OrdinalIgnoreCase) ||
-                 task.Contains("service", StringComparison.OrdinalIgnoreCase))
-        {
-            classes.AddRange(new[] { "Service", "Repository", "Controller", "Model" });
-        }
-        else
-        {
-            // Generic extraction based on task words
-            classes.Add("Main");
-            if (task.Contains("game", StringComparison.OrdinalIgnoreCase))
-                classes.Add("Game");
-            if (task.Contains("player", StringComparison.OrdinalIgnoreCase))
-                classes.Add("Player");
+            classes.Add(m.Groups[1].Value);
         }
         
-        return classes.Distinct().ToList();
+        // Pattern 2: "a/the/with X class" - article + class name
+        var classPattern2 = @"(?:a|the|with|create|implement)\s+(\w+)\s+class";
+        foreach (System.Text.RegularExpressions.Match m in 
+            System.Text.RegularExpressions.Regex.Matches(task, classPattern2, 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            classes.Add(ToPascalCase(m.Groups[1].Value));
+        }
+        
+        // Pattern 3: Common suffix patterns (XService, XController, etc.)
+        var suffixPatterns = new[] { 
+            @"(\w+)Service\b", @"(\w+)Controller\b", @"(\w+)Repository\b",
+            @"(\w+)Manager\b", @"(\w+)Handler\b", @"(\w+)Factory\b",
+            @"(\w+)Evaluator\b", @"(\w+)Validator\b", @"(\w+)Builder\b"
+        };
+        foreach (var pattern in suffixPatterns)
+        {
+            foreach (System.Text.RegularExpressions.Match m in 
+                System.Text.RegularExpressions.Regex.Matches(task, pattern, 
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                // Add the full match (e.g., "HandEvaluator")
+                classes.Add(ToPascalCase(m.Value));
+            }
+        }
+        
+        // Pattern 4: Comma-separated list of classes
+        // e.g., "Card, Deck, Hand, Player classes"
+        var listPattern = @"(\w+(?:\s*,\s*\w+)+)\s+class(?:es)?";
+        foreach (System.Text.RegularExpressions.Match m in 
+            System.Text.RegularExpressions.Regex.Matches(task, listPattern, 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            var items = m.Groups[1].Value.Split(',');
+            foreach (var item in items)
+            {
+                var className = ToPascalCase(item.Trim());
+                if (!string.IsNullOrEmpty(className) && className.Length > 1)
+                    classes.Add(className);
+            }
+        }
+        
+        // Pattern 5: "and" separated - ONLY when explicitly followed by "class" or "classes"
+        // e.g., "Card and Deck classes" but NOT "Add and Subtract methods"
+        var andClassPattern = @"(\w+)\s+and\s+(\w+)(?:\s+and\s+(\w+))?\s+class(?:es)?";
+        foreach (System.Text.RegularExpressions.Match m in 
+            System.Text.RegularExpressions.Regex.Matches(task, andClassPattern, 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            for (int i = 1; i <= 3 && i < m.Groups.Count; i++)
+            {
+                if (m.Groups[i].Success)
+                {
+                    var word = m.Groups[i].Value;
+                    // Only add if it looks like a class name (starts with capital or common pattern)
+                    if (char.IsUpper(word[0]) || word.EndsWith("er") || word.EndsWith("or"))
+                        classes.Add(ToPascalCase(word));
+                }
+            }
+        }
+        
+        // CRITICAL: Extract words that are METHOD names (not class names)
+        // Look for "X and Y methods" or "X method" patterns and EXCLUDE these
+        var methodNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var methodPatterns = new[] {
+            @"(\w+)\s+method\b",                                    // "Add method"
+            @"(\w+)\s+and\s+(\w+)\s+methods?\b",                   // "Add and Subtract methods"
+            @"(\w+),\s*(\w+)(?:,\s*(\w+))?\s+methods?\b",          // "Add, Subtract, Multiply methods"
+            @"methods?\s+(?:called|named)\s+(\w+)",                 // "method called Add"
+            @"(?:has|have|with)\s+(\w+)\s+and\s+(\w+)\s+methods?"  // "has Add and Subtract methods"
+        };
+        foreach (var pattern in methodPatterns)
+        {
+            foreach (System.Text.RegularExpressions.Match m in 
+                System.Text.RegularExpressions.Regex.Matches(task, pattern, 
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                for (int i = 1; i < m.Groups.Count; i++)
+                {
+                    if (m.Groups[i].Success && !string.IsNullOrWhiteSpace(m.Groups[i].Value))
+                    {
+                        methodNames.Add(m.Groups[i].Value);
+                    }
+                }
+            }
+        }
+        
+        // Filter out common words that aren't classes
+        var excludeWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+        { 
+            "The", "A", "An", "This", "That", "Create", "Make", "Build", "Simple", "Basic",
+            "Console", "Main", "With", "Using", "From", "Into", "And", "Or", "For", "Test",
+            "Sample", "Example", "New", "Old", "First", "Last", "Each", "All", "Some",
+            // Common method names that should NOT be classes
+            "Add", "Remove", "Update", "Delete", "Get", "Set", "Find", "Search", "Sort",
+            "Insert", "Append", "Clear", "Count", "Contains", "Execute", "Run", "Start", "Stop",
+            "Initialize", "Dispose", "Validate", "Process", "Handle", "Parse", "Format", "Convert"
+        };
+        
+        // Also exclude anything we detected as a method name
+        foreach (var methodName in methodNames)
+        {
+            excludeWords.Add(methodName);
+            _logger.LogDebug("[PLAN] Excluding '{Name}' - detected as method, not class", methodName);
+        }
+        
+        // Filter and clean up classes
+        var filteredClasses = classes
+            .Where(c => !string.IsNullOrWhiteSpace(c) && c.Length > 1)
+            .Where(c => !excludeWords.Contains(c))
+            .Select(c => ToPascalCase(c))
+            .Distinct()
+            .ToList();
+            
+        // Always add Program as entry point (unless it's a library)
+        var taskLower = task.ToLowerInvariant();
+        if (!taskLower.Contains("library") && !taskLower.Contains("nuget") && 
+            !filteredClasses.Contains("Program"))
+        {
+            filteredClasses.Add("Program");
+        }
+        
+        _logger.LogInformation("[PLAN] Extracted {Count} classes from task: {Classes}", 
+            filteredClasses.Count, string.Join(", ", filteredClasses));
+        
+        return filteredClasses;
     }
 
     private List<string> ExtractRequiredMethods(string task, string language)
@@ -354,42 +459,77 @@ public class SmartCodegenToolHandler : IMcpToolHandler
             _ => ".txt"
         };
 
-        // Base/model classes first
-        foreach (var cls in classes.Where(c => 
-            c.EndsWith("Model") || c == "Card" || c == "TodoItem" || c == "Message"))
+        // Priority 1: Base/model classes (no dependencies)
+        var baseClasses = new[] { "Model", "Card", "TodoItem", "Message", "Item", "Entity" };
+        foreach (var cls in classes.Where(c => baseClasses.Any(b => c.EndsWith(b) || c == b)))
         {
-            order.Add($"{cls.ToLowerInvariant()}{ext}");
+            var fileName = $"{cls}{ext}";
+            if (!order.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                order.Add(fileName);
         }
         
-        // Container classes next
-        foreach (var cls in classes.Where(c => 
-            c == "Deck" || c == "Hand" || c == "TodoList" || c == "Repository"))
+        // Priority 2: Container/collection classes
+        var containerClasses = new[] { "Deck", "Hand", "TodoList", "Repository", "Collection", "List" };
+        foreach (var cls in classes.Where(c => containerClasses.Any(b => c.EndsWith(b) || c == b)))
         {
-            var fileName = language == "python" ? cls.ToLowerInvariant() : cls;
-            if (!order.Contains($"{fileName.ToLowerInvariant()}{ext}"))
-                order.Add($"{fileName.ToLowerInvariant()}{ext}");
+            var fileName = $"{cls}{ext}";
+            if (!order.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                order.Add(fileName);
         }
         
-        // Entity classes
-        foreach (var cls in classes.Where(c => 
-            c == "Player" || c == "User" || c == "Client"))
+        // Priority 3: Utility/Helper classes (Calculator, Parser, Formatter, etc.)
+        var utilityClasses = new[] { "Calculator", "Parser", "Formatter", "Helper", "Utility", "Validator", "Manager" };
+        foreach (var cls in classes.Where(c => utilityClasses.Any(b => c.EndsWith(b) || c == b)))
         {
-            var fileName = language == "python" ? cls.ToLowerInvariant() : cls;
-            if (!order.Contains($"{fileName.ToLowerInvariant()}{ext}"))
-                order.Add($"{fileName.ToLowerInvariant()}{ext}");
+            var fileName = $"{cls}{ext}";
+            if (!order.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                order.Add(fileName);
         }
         
-        // Main/Game/Service classes last
-        foreach (var cls in classes.Where(c => 
-            c == "Game" || c == "Main" || c == "Service" || c == "App" || c == "Controller"))
+        // Priority 4: Entity classes (Player, User, etc.)
+        var entityClasses = new[] { "Player", "User", "Client", "Account", "Person" };
+        foreach (var cls in classes.Where(c => entityClasses.Any(b => c.EndsWith(b) || c == b)))
         {
-            var fileName = language == "python" ? cls.ToLowerInvariant() : cls;
-            if (!order.Contains($"{fileName.ToLowerInvariant()}{ext}"))
-                order.Add($"{fileName.ToLowerInvariant()}{ext}");
+            var fileName = $"{cls}{ext}";
+            if (!order.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                order.Add(fileName);
         }
         
-        // Add main entry point
-        if (language == "python" && !order.Contains("main.py"))
+        // Priority 5: Service/Controller classes
+        var serviceClasses = new[] { "Service", "Controller", "Handler", "Factory" };
+        foreach (var cls in classes.Where(c => serviceClasses.Any(b => c.EndsWith(b))))
+        {
+            var fileName = $"{cls}{ext}";
+            if (!order.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                order.Add(fileName);
+        }
+        
+        // Priority 6: Game/App logic classes
+        foreach (var cls in classes.Where(c => c == "Game" || c == "App" || c == "Application"))
+        {
+            var fileName = $"{cls}{ext}";
+            if (!order.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                order.Add(fileName);
+        }
+        
+        // Priority 7: Main entry point LAST (depends on everything else)
+        foreach (var cls in classes.Where(c => c == "Program" || c == "Main"))
+        {
+            var fileName = $"{cls}{ext}";
+            if (!order.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                order.Add(fileName);
+        }
+        
+        // Add any remaining classes we missed
+        foreach (var cls in classes)
+        {
+            var fileName = $"{cls}{ext}";
+            if (!order.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                order.Add(fileName);
+        }
+        
+        // Python convention: entry point is main.py or __main__.py
+        if (language == "python" && !order.Contains("main.py", StringComparer.OrdinalIgnoreCase))
             order.Add("main.py");
         
         return order;
@@ -415,15 +555,13 @@ public class SmartCodegenToolHandler : IMcpToolHandler
             order++;
         }
         
-        // Add integration step
-        steps.Add(new PlanStepInfo
-        {
-            StepId = $"step_{order}",
-            Order = order,
-            Description = "Integrate all components and test",
-            Status = "pending",
-            SemanticSpec = "Ensure all imports work, main entry point runs correctly"
-        });
+        // NOTE: No separate "integration" step needed!
+        // Integration happens automatically via:
+        // 1. Each step's code uses 'using' statements to reference previous files
+        // 2. Final Docker execution builds and runs ALL files together
+        // Adding an "integrate" step just confuses the LLM into generating duplicate code
+        
+        _logger.LogInformation("[PLAN] Generated {Count} steps (no integration step - Docker handles that)", steps.Count);
         
         return steps;
     }
@@ -728,11 +866,17 @@ public class SmartCodegenToolHandler : IMcpToolHandler
                 IsValid = false
             };
 
-            // Check if it's a standard module
+            // Check if it's a standard module (exact match)
             if (standardModules.Contains(import.Module, StringComparer.OrdinalIgnoreCase))
             {
                 check.IsValid = true;
                 check.Reason = "Standard library module";
+            }
+            // Check if it starts with a standard namespace prefix (e.g., "Microsoft.AspNetCore.Components.Web" starts with "Microsoft.AspNetCore.Components")
+            else if (standardModules.Any(s => import.Module.StartsWith(s, StringComparison.OrdinalIgnoreCase)))
+            {
+                check.IsValid = true;
+                check.Reason = "Standard library module (sub-namespace)";
             }
             // Check if it's a common third-party module
             else if (IsCommonThirdPartyModule(import.Module, language))
@@ -740,11 +884,17 @@ public class SmartCodegenToolHandler : IMcpToolHandler
                 check.IsValid = true;
                 check.Reason = "Common third-party module (pip/npm install required)";
             }
-            // Check if it's a local module
+            // Check if it's a local module (from indexed files)
             else if (result.AvailableModules.Contains(import.Module, StringComparer.OrdinalIgnoreCase))
             {
                 check.IsValid = true;
                 check.Reason = "Local project module";
+            }
+            // Check if it's a project-local namespace (e.g., "WizBlamPoker.Models")
+            else if (IsProjectNamespace(import.Module, context ?? ""))
+            {
+                check.IsValid = true;
+                check.Reason = "Project-local namespace";
             }
             else
             {
@@ -896,14 +1046,39 @@ public class SmartCodegenToolHandler : IMcpToolHandler
             },
             "csharp" or "c#" => new List<string>
             {
+                // Core System namespaces
                 "System", "System.Collections", "System.Collections.Generic", "System.Linq",
                 "System.Text", "System.Text.Json", "System.IO", "System.Threading",
-                "System.Threading.Tasks", "System.Net", "System.Net.Http", "Microsoft.Extensions"
+                "System.Threading.Tasks", "System.Net", "System.Net.Http",
+                "System.ComponentModel", "System.ComponentModel.DataAnnotations",
+                "System.Reflection", "System.Runtime", "System.Diagnostics",
+                "System.Globalization", "System.Security", "System.Data",
+                // Microsoft Extensions (DI, Configuration, Logging)
+                "Microsoft.Extensions", "Microsoft.Extensions.DependencyInjection",
+                "Microsoft.Extensions.Logging", "Microsoft.Extensions.Configuration",
+                "Microsoft.Extensions.Hosting", "Microsoft.Extensions.Options",
+                // ASP.NET Core
+                "Microsoft.AspNetCore", "Microsoft.AspNetCore.Builder",
+                "Microsoft.AspNetCore.Components", "Microsoft.AspNetCore.Components.Web",
+                "Microsoft.AspNetCore.Components.Forms", "Microsoft.AspNetCore.Components.Routing",
+                "Microsoft.AspNetCore.Http", "Microsoft.AspNetCore.Mvc",
+                "Microsoft.AspNetCore.Authorization", "Microsoft.AspNetCore.Authentication",
+                "Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Razor",
+                // Entity Framework Core
+                "Microsoft.EntityFrameworkCore",
+                // JSInterop for Blazor
+                "Microsoft.JSInterop"
             },
             "typescript" or "javascript" => new List<string>
             {
                 "fs", "path", "http", "https", "url", "querystring", "crypto", "events",
                 "stream", "util", "os", "child_process", "buffer"
+            },
+            "dart" or "flutter" => new List<string>
+            {
+                "dart:core", "dart:async", "dart:collection", "dart:convert", "dart:io",
+                "dart:math", "dart:typed_data", "package:flutter/material.dart",
+                "package:flutter/widgets.dart", "package:flutter/services.dart"
             },
             _ => new List<string>()
         };
@@ -913,13 +1088,69 @@ public class SmartCodegenToolHandler : IMcpToolHandler
     {
         var commonModules = language switch
         {
-            "python" => new[] { "numpy", "pandas", "requests", "flask", "django", "pygame", "pillow", "PIL", "matplotlib", "scipy", "sklearn" },
-            "typescript" or "javascript" => new[] { "react", "vue", "angular", "express", "lodash", "axios", "moment", "dayjs" },
-            "csharp" or "c#" => new[] { "Newtonsoft.Json", "Serilog", "AutoMapper", "Dapper", "MediatR" },
+            "python" => new[] { 
+                "numpy", "pandas", "requests", "flask", "django", "pygame", "pillow", "PIL", 
+                "matplotlib", "scipy", "sklearn", "fastapi", "pydantic", "sqlalchemy", 
+                "aiohttp", "httpx", "pytest", "black", "mypy"
+            },
+            "typescript" or "javascript" => new[] { 
+                "react", "vue", "angular", "express", "lodash", "axios", "moment", "dayjs",
+                "next", "nuxt", "svelte", "jquery", "bootstrap", "tailwindcss", "webpack",
+                "vite", "typescript", "eslint", "prettier", "jest", "mocha"
+            },
+            "csharp" or "c#" => new[] { 
+                "Newtonsoft.Json", "Serilog", "AutoMapper", "Dapper", "MediatR",
+                "FluentValidation", "Moq", "xunit", "NUnit", "Polly", "Refit",
+                "MassTransit", "Hangfire", "Swashbuckle", "NLog"
+            },
+            "dart" or "flutter" => new[] {
+                "provider", "bloc", "riverpod", "get", "dio", "http", "shared_preferences",
+                "flutter_bloc", "equatable", "freezed", "json_annotation"
+            },
             _ => Array.Empty<string>()
         };
         
         return commonModules.Contains(module, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Check if a module is a project-local namespace (e.g., "MyProject.Models", "WizBlamPoker.Core")
+    /// </summary>
+    private bool IsProjectNamespace(string module, string context)
+    {
+        if (string.IsNullOrEmpty(module)) return false;
+        
+        // If it starts with the project/context name, it's likely a local namespace
+        var contextParts = context?.Split(new[] { '-', '_', '.' }, StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>();
+        foreach (var part in contextParts)
+        {
+            if (module.StartsWith(part, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        
+        // Common local namespace patterns - expanded list
+        var localPatterns = new[] { 
+            ".Models", ".Services", ".Controllers", ".Components", ".Pages", ".Data", 
+            ".Entities", ".ViewModels", ".Helpers", ".Extensions", ".Core", ".Shared",
+            ".Common", ".Interfaces", ".Abstractions", ".Infrastructure", ".Domain",
+            ".Application", ".Api", ".Web", ".Client", ".Server", ".Game", ".Engine"
+        };
+        if (localPatterns.Any(p => module.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            return true;
+        
+        // If it looks like a PascalCase project namespace (e.g., "WizBlamPoker.Core")
+        // Two parts, first part is PascalCase with at least 3 chars
+        var parts = module.Split('.');
+        if (parts.Length >= 2 && parts[0].Length >= 3 && char.IsUpper(parts[0][0]))
+        {
+            // Check if it looks like a project name (not a well-known framework namespace)
+            var knownPrefixes = new[] { "System", "Microsoft", "Newtonsoft", "Serilog", "NLog", 
+                "AutoMapper", "FluentValidation", "MediatR", "Polly", "Moq", "xunit", "NUnit" };
+            if (!knownPrefixes.Any(p => module.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+        
+        return false;
     }
 
     private async Task<List<string>> GetLocalModulesAsync(string context, CancellationToken ct)

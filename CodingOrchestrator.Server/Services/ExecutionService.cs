@@ -427,9 +427,14 @@ public class ExecutionService : IExecutionService
         dockerArgs.Append($"--pids-limit={_config.PidsLimit} ");
         
         // Security (configurable network access)
-        if (!_config.NetworkEnabled)
+        // Enable network if: global config allows OR language requires it (e.g., C# for NuGet)
+        if (!_config.NetworkEnabled && !config.RequiresNetwork)
         {
             dockerArgs.Append("--network=none ");  // No network access
+        }
+        else if (config.RequiresNetwork)
+        {
+            _logger.LogDebug("🌐 Network enabled for {Language} (RequiresNetwork=true)", config.Language);
         }
         dockerArgs.Append("--security-opt=no-new-privileges ");
         

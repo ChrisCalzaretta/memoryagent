@@ -74,3 +74,4 @@ Write-Host "✅ $total pattern detection methods ready`n" -ForegroundColor Green
 
 
 
+

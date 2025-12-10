@@ -387,6 +387,34 @@ CRITICAL RULES:
             sb.AppendLine();
         }
         
+        // 📁 EXISTING FILES: Include files from previous generation steps
+        if (request.ExistingFiles?.Any() == true)
+        {
+            sb.AppendLine("=== EXISTING CODE (from previous steps - REFERENCE BUT DO NOT REDEFINE) ===");
+            sb.AppendLine("These files have already been generated. Use them, don't recreate them:");
+            sb.AppendLine();
+            
+            foreach (var file in request.ExistingFiles)
+            {
+                sb.AppendLine($"// ========== {file.Path} ==========");
+                // Show full content for files under 3000 chars, truncated for larger
+                if (file.Content.Length <= 3000)
+                {
+                    sb.AppendLine(file.Content);
+                }
+                else
+                {
+                    // Show first 2500 chars + structure
+                    sb.AppendLine(file.Content.Substring(0, 2500));
+                    sb.AppendLine("// ... (truncated - use the classes/methods shown above)");
+                }
+                sb.AppendLine();
+            }
+            
+            _logger.LogInformation("📁 Added {FileCount} existing files to prompt ({TotalChars} chars)", 
+                request.ExistingFiles.Count, request.ExistingFiles.Sum(f => f.Content.Length));
+        }
+
         sb.AppendLine("=== TASK ===");
         sb.AppendLine(request.Task);
         sb.AppendLine();
@@ -580,6 +608,69 @@ CRITICAL RULES:
         sb.AppendLine("{\"language\": \"...\", \"mainFile\": \"...\", \"runCommand\": \"...\"}");
         sb.AppendLine("```");
 
+        return sb.ToString();
+    }
+    
+    /// <summary>
+    /// Build a FOCUSED prompt for fixing build errors only.
+    /// This is much smaller than the regular fix prompt - puts errors at the TOP.
+    /// </summary>
+    public async Task<string> BuildBuildErrorFixPromptAsync(
+        string buildErrors, 
+        Dictionary<string, string> brokenFiles,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        var sb = new StringBuilder();
+        
+        // Fetch the focused build error fix prompt
+        var prompt = await _memoryAgent.GetPromptAsync("coding_agent_fix_build_errors", cancellationToken);
+        
+        if (prompt == null)
+        {
+            _logger.LogWarning("Build error fix prompt not found, using inline fallback");
+            // Inline fallback if prompt not seeded yet
+            sb.AppendLine("You are fixing BUILD ERRORS. Your ONLY job is to fix the specific compiler errors listed below.");
+            sb.AppendLine();
+        }
+        else
+        {
+            // Use the template but we'll replace placeholders
+            sb.AppendLine(prompt.Content.Replace("{{BUILD_ERRORS}}", "").Replace("{{BROKEN_CODE}}", ""));
+        }
+        
+        // === BUILD ERRORS AT THE TOP ===
+        sb.AppendLine();
+        sb.AppendLine("=== BUILD ERRORS (FIX THESE NOW) ===");
+        sb.AppendLine(buildErrors);
+        sb.AppendLine();
+        
+        // === BROKEN CODE ===
+        sb.AppendLine("=== BROKEN CODE ===");
+        foreach (var file in brokenFiles)
+        {
+            sb.AppendLine($"// ===== {file.Key} =====");
+            sb.AppendLine(file.Value);
+            sb.AppendLine();
+        }
+        
+        // === MINIMAL LANGUAGE GUIDANCE ===
+        if (!string.IsNullOrEmpty(language) && language.Equals("csharp", StringComparison.OrdinalIgnoreCase))
+        {
+            sb.AppendLine("=== C# REMINDERS ===");
+            sb.AppendLine("- Use 'namespace MyApp;' file-scoped namespace");
+            sb.AppendLine("- Wrap code in 'public class Program' with 'Main' method");
+            sb.AppendLine("- Add 'using' statements for missing types");
+            sb.AppendLine("- Check enum values match (e.g., HandRank.Ace vs Rank.Ace)");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine("=== OUTPUT ===");
+        sb.AppendLine("Return the COMPLETE fixed file(s) with path comments like: // path: Program.cs");
+        sb.AppendLine("Fix ALL the errors. Do NOT add new features.");
+        
+        _logger.LogInformation("[PROMPT] Built focused build-error fix prompt: {Length} chars (vs 48K typical)", sb.Length);
+        
         return sb.ToString();
     }
 }
