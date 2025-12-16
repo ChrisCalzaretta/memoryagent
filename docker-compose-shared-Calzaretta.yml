@@ -18,8 +18,8 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - d:\Memory\shared\memory:/data/memory
-      - d:\Memory\shared\logs:/data/logs
+      - Z:\Memory\shared\memory:/data/memory
+      - Z:\Memory\shared\logs:/data/logs
       - E:\GitHub:/workspace:rw
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
@@ -29,7 +29,7 @@ services:
       - Neo4j__Url=bolt://memory-agent-neo4j:7687
       - Neo4j__User=neo4j
       - Neo4j__Password=memoryagent
-      - Ollama__Url=http://10.0.0.20:11434
+      - Ollama__Url=http://10.0.2.20:11434
       - PathMapping__HostRoot=E:\GitHub
       - PathMapping__ContainerRoot=/workspace
       - AutoReindex__Enabled=true
@@ -67,7 +67,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - d:\Memory\shared\qdrant:/qdrant/storage
+      - Z:\Memory\shared\qdrant:/qdrant/storage
     healthcheck:
       test: ["CMD-SHELL", "timeout 5 bash -c 'cat < /dev/null > /dev/tcp/localhost/6333' || exit 1"]
       interval: 10s
@@ -91,13 +91,13 @@ services:
       - "7474:7474"
       - "7687:7687"
     volumes:
-      - d:\Memory\shared\neo4j\data:/data
-      - d:\Memory\shared\neo4j\logs:/logs
-      - d:\Memory\shared\neo4j\import:/var/lib/neo4j/import
-      - d:\Memory\shared\neo4j\plugins:/plugins
+      - Z:\Memory\shared\neo4j\data:/data
+      - Z:\Memory\shared\neo4j\logs:/logs
+      - Z:\Memory\shared\neo4j\import:/var/lib/neo4j/import
+      - Z:\Memory\shared\neo4j\plugins:/plugins
     environment:
       - NEO4J_AUTH=neo4j/memoryagent
-      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_PLUGINS=["apoc"] 
       - NEO4J_dbms_memory_heap_max__size=6G
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
       - NEO4J_dbms_security_procedures_allowlist=apoc.*
@@ -141,7 +141,7 @@ services:
       # Temp directory for code execution
       - /tmp:/tmp
       # 💾 Job persistence - survives container restarts
-      - d:\Memory\shared\memory:/data/memory
+      - Z:\Memory\shared\memory:/data/memory
       # 📁 Workspace access for reading/writing code files
       - E:\GitHub:/workspace:rw
     environment:
@@ -186,7 +186,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5001
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - Ollama__Url=http://10.0.0.20:11434
+      - Ollama__Url=http://10.0.2.20:11434
       # Dual GPU: 3090 (pinned) + 5070 Ti (swap)
       - Gpu__DualGpu=true
       - Gpu__PinnedPort=11434
@@ -236,7 +236,7 @@ services:
       - ASPNETCORE_URLS=http://+:5002
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       # ⚡ Route validation to 5070 Ti (port 11435) - phi4 runs there
-      - Ollama__Url=http://10.0.0.20:11435
+      - Ollama__Url=http://10.0.2.20:11435
       - Ollama__Port=11435
       - Gpu__ValidationModel=phi4:latest
       # Dual GPU: 3090 (pinned code gen) + 5070 Ti (validation)
@@ -271,7 +271,7 @@ services:
       - ASPNETCORE_URLS=http://+:5004
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
       # 🧠 LLM for creative brand generation and intelligent validation
-      - Ollama__Url=http://10.0.0.20:11434
+      - Ollama__Url=http://10.0.2.20:11434
       - Ollama__Port=11434
       - Ollama__DefaultModel=deepseek-coder-v2:16b
     depends_on:

@@ -196,7 +196,7 @@ public class ReindexService : IReindexService
                         var lastModified = fileInfo.LastWriteTimeUtc;
                         
                         // Get the last indexed time from vector store metadata
-                        var lastIndexed = await _vectorService.GetFileLastIndexedTimeAsync(file, cancellationToken);
+                        var lastIndexed = await _vectorService.GetFileLastIndexedTimeAsync(file, context, cancellationToken);
                         
                         if (!lastIndexed.HasValue || lastModified > lastIndexed.Value)
                         {

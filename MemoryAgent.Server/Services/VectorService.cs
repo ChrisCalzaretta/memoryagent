@@ -489,7 +489,7 @@ public class VectorService : IVectorService
         }
     }
 
-    public async Task<DateTime?> GetFileLastIndexedTimeAsync(string filePath, CancellationToken cancellationToken = default)
+    public async Task<DateTime?> GetFileLastIndexedTimeAsync(string filePath, string? context = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -515,9 +515,9 @@ public class VectorService : IVectorService
             var searchJson = JsonSerializer.Serialize(searchRequest);
             var searchContent = new StringContent(searchJson, Encoding.UTF8, "application/json");
 
-            // Extract context from filePath if needed (for per-workspace collections)
-            // For now, assume context is embedded in filePath or passed separately
-            var searchResponse = await _httpClient.PostAsync($"/collections/{GetFilesCollection(null)}/points/scroll", searchContent, cancellationToken);
+            // Use context-prefixed collection name
+            var collectionName = GetFilesCollection(context);
+            var searchResponse = await _httpClient.PostAsync($"/collections/{collectionName}/points/scroll", searchContent, cancellationToken);
 
             if (searchResponse.IsSuccessStatusCode)
             {

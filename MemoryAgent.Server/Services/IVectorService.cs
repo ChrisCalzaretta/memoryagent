@@ -51,7 +51,7 @@ public interface IVectorService
     /// <summary>
     /// Get the last indexed time for a specific file
     /// </summary>
-    Task<DateTime?> GetFileLastIndexedTimeAsync(string filePath, CancellationToken cancellationToken = default);
+    Task<DateTime?> GetFileLastIndexedTimeAsync(string filePath, string? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Health check for Qdrant
