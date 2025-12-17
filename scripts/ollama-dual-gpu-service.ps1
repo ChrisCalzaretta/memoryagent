@@ -237,3 +237,4 @@ try {
 }
 
 Write-ServiceLog "Ollama Dual GPU Service Stopped" "INFO"
+

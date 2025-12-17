@@ -188,3 +188,4 @@ Write-Host "  Status:    Get-Service -Name $serviceName" -ForegroundColor White
 Write-Host "  Logs:      Get-Content $logDir\service-*.log -Tail 50" -ForegroundColor White
 Write-Host "  Uninstall: Run uninstall-ollama-service.ps1" -ForegroundColor White
 Write-Host ""
+

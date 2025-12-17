@@ -80,3 +80,4 @@ if ($service) {
 Write-Host ""
 Write-Host "Uninstall complete!" -ForegroundColor Green
 Write-Host ""
+

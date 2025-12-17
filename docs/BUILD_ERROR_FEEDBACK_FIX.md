@@ -188,3 +188,5 @@ This fix ensures:
 - `CodeGenerationService` check for `HasBuildErrors` - already existed
 
 The infrastructure was all there, it just wasn't being wired up properly!
+
+
