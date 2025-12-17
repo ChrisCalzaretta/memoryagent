@@ -12,6 +12,19 @@ public static class DockerLanguageConfig
     public static LanguageConfig GetConfig(string language)
     {
         var lang = language?.ToLowerInvariant() ?? "python";
+        
+        // Map language aliases to their canonical names
+        lang = lang switch
+        {
+            "blazor" => "csharp",       // Blazor is C#/.NET
+            "cs" => "csharp",           // C# alias
+            "c#" => "csharp",           // C# alias
+            "dotnet" => "csharp",       // .NET alias
+            "js" => "javascript",       // JS alias
+            "ts" => "typescript",       // TS alias
+            _ => lang
+        };
+        
         return Configs.GetValueOrDefault(lang, Configs["python"]);
     }
 
@@ -76,9 +89,10 @@ public static class DockerLanguageConfig
             FileExtension = ".cs",
             // Smart build: detects console vs web, auto-adds packages from using statements
             BuildCommand = "/usr/local/bin/dotnet-smart-build.sh . net9.0",
-            // Run the DLL directly (not exe) to avoid Windows volume mount permission issues
-            RunCommand = "dotnet bin/Debug/*/TempApp.dll",
-            TestCommand = "dotnet test --nologo -v q 2>/dev/null || dotnet bin/Debug/*/TempApp.dll",
+            // Run ANY DLL found - supports both TempApp.dll (auto-generated) and custom project names (MyApp.dll etc)
+            // The wildcard pattern finds the actual DLL regardless of project name
+            RunCommand = "dotnet $(find bin/Debug -name '*.dll' -type f ! -name '*.resources.dll' ! -name 'Microsoft.*' ! -name 'System.*' | head -1)",
+            TestCommand = "dotnet test --nologo -v q 2>/dev/null || dotnet $(find bin/Debug -name '*.dll' -type f ! -name '*.resources.dll' ! -name 'Microsoft.*' ! -name 'System.*' | head -1)",
             MainFilePatterns = new[] { "Program.cs", "*.cs" },
             TimeoutSeconds = 120,  // Longer timeout for restore + build
             RequiresNetwork = true  // Enable network for NuGet package restore

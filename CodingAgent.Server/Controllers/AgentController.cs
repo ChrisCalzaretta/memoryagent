@@ -54,8 +54,12 @@ public class AgentController : ControllerBase
         [FromBody] GenerateCodeRequest request,
         CancellationToken cancellationToken)
     {
+        _logger.LogInformation("📥 Fix request received - PreviousFeedback is {Status}", 
+            request.PreviousFeedback == null ? "NULL" : "present");
+            
         if (request.PreviousFeedback == null)
         {
+            _logger.LogError("❌ Returning 400 - PreviousFeedback is NULL");
             return BadRequest(new GenerateCodeResponse
             {
                 Success = false,

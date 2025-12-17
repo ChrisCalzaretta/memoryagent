@@ -116,6 +116,9 @@ builder.Services.AddScoped<IComplexityEstimationService, ComplexityEstimationSer
 builder.Services.AddScoped<IFileAccumulatorService, FileAccumulatorService>();
 builder.Services.AddScoped<IResultPersistenceService, ResultPersistenceService>();
 
+// 📦 Register .NET Scaffold Service (uses dotnet new for perfect project structure)
+builder.Services.AddSingleton<IDotnetScaffoldService, DotnetScaffoldService>();
+
 // 🗂️ Register Path Translation Service for host->container path mapping
 builder.Services.AddSingleton<AgentContracts.Services.IPathTranslationService>(sp =>
     new AgentContracts.Services.PathTranslationService(

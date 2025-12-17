@@ -33,13 +33,20 @@ public class ValidateCodeResponse
     public string? Summary { get; set; }
 
     /// <summary>
+    /// Raw build/execution errors from Docker (if any)
+    /// When set, indicates this is a build/execution failure
+    /// </summary>
+    public string? BuildErrors { get; set; }
+
+    /// <summary>
     /// Convert to feedback for next iteration
     /// </summary>
     public ValidationFeedback ToFeedback() => new()
     {
         Score = Score,
         Issues = Issues,
-        Summary = Summary
+        Summary = Summary,
+        BuildErrors = BuildErrors  // 🔧 CRITICAL: Copy build errors so focused prompt is used!
     };
 }
 
@@ -78,6 +85,7 @@ public class ValidationIssue
     /// </summary>
     public string? Rule { get; set; }
 }
+
 
 
 

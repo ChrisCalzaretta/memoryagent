@@ -67,29 +67,56 @@ echo "🔍 Analyzing using statements for package references..."
 
 # Package mappings: namespace prefix -> package name
 declare -A PACKAGE_MAP=(
+    # TEST FRAMEWORKS (CRITICAL - most common missing packages!)
+    ["Xunit"]="xunit"
+    ["NUnit"]="NUnit"
+    ["Microsoft.VisualStudio.TestTools"]="MSTest.TestFramework"
+    ["Moq"]="Moq"
+    ["FluentAssertions"]="FluentAssertions"
+    ["NSubstitute"]="NSubstitute"
+    ["Bogus"]="Bogus"
+    
+    # JSON
     ["Newtonsoft.Json"]="Newtonsoft.Json"
+    
+    # OpenAPI/Swagger (CRITICAL for Web APIs)
+    ["Microsoft.OpenApi"]="Microsoft.OpenApi"
+    ["Swashbuckle"]="Swashbuckle.AspNetCore"
+    ["NSwag"]="NSwag.AspNetCore"
+    
+    # Microsoft.Extensions.*
     ["Microsoft.Extensions.DependencyInjection"]="Microsoft.Extensions.DependencyInjection"
     ["Microsoft.Extensions.Logging"]="Microsoft.Extensions.Logging"
     ["Microsoft.Extensions.Configuration"]="Microsoft.Extensions.Configuration"
     ["Microsoft.Extensions.Http"]="Microsoft.Extensions.Http"
     ["Microsoft.Extensions.Hosting"]="Microsoft.Extensions.Hosting"
     ["Microsoft.Extensions.Options"]="Microsoft.Extensions.Options"
+    ["Microsoft.Extensions.Caching"]="Microsoft.Extensions.Caching.Memory"
+    
+    # Data Access
     ["Microsoft.EntityFrameworkCore"]="Microsoft.EntityFrameworkCore"
     ["System.Text.Json"]="System.Text.Json"
     ["Dapper"]="Dapper"
     ["CsvHelper"]="CsvHelper"
-    ["Polly"]="Polly"
-    ["FluentValidation"]="FluentValidation"
-    ["MediatR"]="MediatR"
-    ["AutoMapper"]="AutoMapper"
-    ["Serilog"]="Serilog"
     ["StackExchange.Redis"]="StackExchange.Redis"
     ["MongoDB.Driver"]="MongoDB.Driver"
     ["Npgsql"]="Npgsql"
     ["MySql.Data"]="MySql.Data"
     ["Microsoft.Data.SqlClient"]="Microsoft.Data.SqlClient"
+    
+    # Common Libraries
+    ["Polly"]="Polly"
+    ["FluentValidation"]="FluentValidation"
+    ["MediatR"]="MediatR"
+    ["AutoMapper"]="AutoMapper"
+    ["Serilog"]="Serilog"
+    ["Humanizer"]="Humanizer"
+    
+    # API/Web
     ["Swashbuckle"]="Swashbuckle.AspNetCore"
     ["NSwag"]="NSwag.AspNetCore"
+    ["RestSharp"]="RestSharp"
+    ["Refit"]="Refit"
 )
 
 # Extract unique using statements from all .cs files
@@ -107,6 +134,20 @@ for NS in $USINGS; do
         fi
     done
 done
+
+# Add companion packages for test frameworks (they need multiple packages to work)
+if [[ "$PACKAGES" == *"xunit"* ]]; then
+    echo "   📦 Adding xUnit companion packages..."
+    PACKAGES="$PACKAGES xunit.runner.visualstudio Microsoft.NET.Test.Sdk"
+fi
+if [[ "$PACKAGES" == *"NUnit"* ]]; then
+    echo "   📦 Adding NUnit companion packages..."
+    PACKAGES="$PACKAGES NUnit3TestAdapter Microsoft.NET.Test.Sdk"
+fi
+if [[ "$PACKAGES" == *"MSTest.TestFramework"* ]]; then
+    echo "   📦 Adding MSTest companion packages..."
+    PACKAGES="$PACKAGES MSTest.TestAdapter Microsoft.NET.Test.Sdk"
+fi
 
 # Create appropriate project file
 if [ "$IS_WEB" = true ]; then

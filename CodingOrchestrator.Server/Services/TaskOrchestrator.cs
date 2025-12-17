@@ -17,6 +17,7 @@ public class TaskOrchestrator : ITaskOrchestrator
     private readonly IMemoryAgentClient _memoryAgent;
     private readonly IExecutionService _executionService;
     private readonly IPathTranslationService _pathTranslation;
+    private readonly IDotnetScaffoldService _scaffoldService;
     private readonly ILogger<TaskOrchestrator> _logger;
     private IJobManager? _jobManager;
     
@@ -29,6 +30,7 @@ public class TaskOrchestrator : ITaskOrchestrator
         IMemoryAgentClient memoryAgent,
         IExecutionService executionService,
         IPathTranslationService pathTranslation,
+        IDotnetScaffoldService scaffoldService,
         ILogger<TaskOrchestrator> logger)
     {
         _codingAgent = codingAgent;
@@ -36,7 +38,10 @@ public class TaskOrchestrator : ITaskOrchestrator
         _memoryAgent = memoryAgent;
         _executionService = executionService;
         _pathTranslation = pathTranslation;
+        _scaffoldService = scaffoldService;
         _logger = logger;
+        
+        _logger.LogInformation("🔧 TaskOrchestrator v2025.12.16.C - with null-safe lastValidation");
     }
 
     /// <summary>
@@ -155,6 +160,11 @@ public class TaskOrchestrator : ITaskOrchestrator
             var modelsUsedDuringTask = new List<string>();  // For failure recording
             var approachesTried = new List<string>();  // Track approaches for failure learning
             
+            // 🔄 STAGNATION DETECTION: Track repeated errors to prevent infinite loops
+            var lastErrorSignature = "";
+            var sameErrorCount = 0;
+            const int MaxSameErrors = 3;  // Break after 3 identical errors
+            
             // 📁 ACCUMULATE files across iterations (not replace!)
             var accumulatedFiles = new Dictionary<string, FileChange>();
             
@@ -252,6 +262,82 @@ public class TaskOrchestrator : ITaskOrchestrator
             EndPhase(jobId, planPhase);
             response.Timeline.Add(planPhase);
             
+            // 📦 SCAFFOLD PHASE: Use dotnet new for C# projects to get perfect structure
+            ScaffoldResult? scaffoldResult = null;
+            var isCSharpProject = request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#" 
+                                  || request.Task.Contains(".NET", StringComparison.OrdinalIgnoreCase)
+                                  || request.Task.Contains("C#", StringComparison.OrdinalIgnoreCase);
+            
+            if (isCSharpProject)
+            {
+                var scaffoldPhase = StartPhase("project_scaffolding");
+                try
+                {
+                    var projectType = _scaffoldService.DetectProjectType(request.Task);
+                    // ALWAYS use "GeneratedApp" - matches what Claude generates by default
+                    // This prevents namespace mismatches between scaffold and Claude code
+                    var projectName = "GeneratedApp";
+                    
+                    _logger.LogInformation("📦 Scaffolding {ProjectType} project: {ProjectName}", projectType, projectName);
+                    UpdateProgress(jobId, TaskState.Running, 15, $"Scaffolding {projectType} project", 0);
+                    
+                    scaffoldResult = await _scaffoldService.ScaffoldProjectAsync(projectType, projectName, cancellationToken);
+                    
+                    if (scaffoldResult.Success)
+                    {
+                        _logger.LogInformation("✅ Scaffolded {Count} files using dotnet new {Template}", 
+                            scaffoldResult.Files.Count, scaffoldResult.TemplateName);
+                        
+                        // 🎯 Override language for specific project types to use specialized prompts
+                        if (scaffoldResult.ProjectType == DotnetProjectType.Blazor || 
+                            scaffoldResult.ProjectType == DotnetProjectType.BlazorWasm)
+                        {
+                            request.Language = "blazor";
+                            _logger.LogInformation("🎨 Using Blazor-specific prompt for {ProjectType}", scaffoldResult.ProjectType);
+                        }
+                        
+                        // Pre-populate accumulated files with scaffolded structure
+                        foreach (var file in scaffoldResult.Files)
+                        {
+                            accumulatedFiles[file.Path] = new AgentContracts.Responses.FileChange
+                            {
+                                Path = file.Path,
+                                Content = file.Content,
+                                Type = AgentContracts.Responses.FileChangeType.Created
+                            };
+                        }
+                        
+                        scaffoldPhase.Details = new Dictionary<string, object>
+                        {
+                            ["projectType"] = scaffoldResult.ProjectType.ToString(),
+                            ["template"] = scaffoldResult.TemplateName,
+                            ["filesScaffolded"] = scaffoldResult.Files.Count,
+                            ["projectName"] = scaffoldResult.ProjectName
+                        };
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Scaffolding failed: {Error} - proceeding without scaffold", scaffoldResult.Error);
+                        scaffoldPhase.Details = new Dictionary<string, object>
+                        {
+                            ["status"] = "failed",
+                            ["error"] = scaffoldResult.Error ?? "Unknown error"
+                        };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "⚠️ Scaffolding error - proceeding without scaffold");
+                    scaffoldPhase.Details = new Dictionary<string, object>
+                    {
+                        ["status"] = "error",
+                        ["error"] = ex.Message
+                    };
+                }
+                EndPhase(jobId, scaffoldPhase);
+                response.Timeline.Add(scaffoldPhase);
+            }
+            
             // 🔀 EXECUTION MODE: Choose between batch (default) or step-by-step
             if (request.ExecutionMode?.ToLowerInvariant() == "stepbystep" && taskPlan?.Steps.Count > 1)
             {
@@ -261,7 +347,8 @@ public class TaskOrchestrator : ITaskOrchestrator
                     designContext, context, taskLessons, effectiveMaxIterations, startTime, cancellationToken);
             }
             
-            _logger.LogInformation("📦 Using BATCH execution mode (all files at once)");
+            _logger.LogInformation("📦 Using BATCH execution mode (all files at once){ScaffoldInfo}", 
+                scaffoldResult?.Success == true ? $" (with {scaffoldResult.Files.Count} scaffolded files)" : "");
 
             while (iteration < effectiveMaxIterations)
             {
@@ -276,21 +363,31 @@ public class TaskOrchestrator : ITaskOrchestrator
 
                 // Build feedback with tried models so CodingAgent can rotate
                 var feedback = lastValidation?.ToFeedback();
+                
+                _logger.LogInformation("🔍 Iteration {Iteration}: lastValidation is {NullOrPresent}, feedback is {FeedbackStatus}",
+                    iteration, 
+                    lastValidation == null ? "NULL" : "present",
+                    feedback == null ? "NULL" : "present");
+                
+                // 🔧 FIX: If we don't have feedback but it's not iteration 1, create a dummy feedback
+                // This prevents 400 errors when calling FixAsync with null PreviousFeedback
+                if (feedback == null && iteration > 1)
+                {
+                    _logger.LogWarning("⚠️ No previous validation on iteration {Iteration} - creating dummy feedback", iteration);
+                    feedback = new ValidationFeedback
+                    {
+                        Score = 0,
+                        TriedModels = triedModels,
+                        Summary = "Previous iteration did not complete validation"
+                    };
+                }
+                
                 if (feedback != null)
                 {
                     feedback.TriedModels = triedModels;
                     
-                    // 🔧 If this was a BUILD failure (not just validation), set BuildErrors
-                    // so CodingAgent uses the focused fix prompt
-                    if (lastValidation.Summary?.Contains("Build:") == true && 
-                        lastValidation.Summary?.Contains("❌") == true)
-                    {
-                        // Extract build errors from the summary/issues
-                        feedback.BuildErrors = lastValidation.Issues
-                            .FirstOrDefault(i => !string.IsNullOrEmpty(i.Suggestion))?.Suggestion 
-                            ?? lastValidation.Summary;
-                        _logger.LogDebug("[BUILD-ERROR] Detected build failure, setting BuildErrors for focused fix");
-                    }
+                    // ✅ BuildErrors is now properly set in ValidateCodeResponse.ToFeedback()
+                    // No need for hacky extraction logic here!
                 }
 
                 // 📁 Tell the LLM what files already exist WITH their signatures
@@ -326,18 +423,21 @@ public class TaskOrchestrator : ITaskOrchestrator
                     planSection += $"  Semantic Breakdown:\n{taskPlan.SemanticBreakdown}\n";
                 }
                 
-                // 🔍 Include project symbols context (only relevant ones)
+                // 🔍 Include project symbols context (DISABLED - causes context pollution)
+                // The symbols from the indexed workspace (MemoryAgent) pollute generation
+                // of new, unrelated code (e.g., Calculator app gets CodingAgent namespaces)
+                // TODO: Re-enable when we can scope symbols to the task, not the whole workspace
                 var symbolsSection = "";
-                if (projectSymbols != null && (projectSymbols.Classes.Any() || projectSymbols.Functions.Any()))
-                {
-                    symbolsSection = "\n\n🔍 AVAILABLE SYMBOLS IN PROJECT:\n";
-                    foreach (var cls in projectSymbols.Classes.Take(10))
-                    {
-                        symbolsSection += $"  • {cls.Name}: {cls.ImportStatement}\n";
-                        if (cls.Methods.Any())
-                            symbolsSection += $"    Methods: {string.Join(", ", cls.Methods.Take(5))}\n";
-                    }
-                }
+                // if (projectSymbols != null && (projectSymbols.Classes.Any() || projectSymbols.Functions.Any()))
+                // {
+                //     symbolsSection = "\n\n🔍 AVAILABLE SYMBOLS IN PROJECT:\n";
+                //     foreach (var cls in projectSymbols.Classes.Take(10))
+                //     {
+                //         symbolsSection += $"  • {cls.Name}: {cls.ImportStatement}\n";
+                //         if (cls.Methods.Any())
+                //             symbolsSection += $"    Methods: {string.Join(", ", cls.Methods.Take(5))}\n";
+                //     }
+                // }
                 
                 // 🔎 Include similar task guidance
                 var similarTasksSection = "";
@@ -379,10 +479,27 @@ public class TaskOrchestrator : ITaskOrchestrator
                     PreviousFeedback = feedback,
                     ExistingFiles = existingFilesForAgent  // 🔧 Include existing files for build error fix prompt
                 };
+                
+                _logger.LogInformation("📤 Sending {FileCount} existing files to coding agent (iteration {Iteration})",
+                    existingFilesForAgent?.Count ?? 0, iteration);
 
-                lastGeneratedCode = iteration == 1 
-                    ? await _codingAgent.GenerateAsync(generateRequest, cancellationToken)
-                    : await _codingAgent.FixAsync(generateRequest, cancellationToken);
+                try
+                {
+                    lastGeneratedCode = iteration == 1 
+                        ? await _codingAgent.GenerateAsync(generateRequest, cancellationToken)
+                        : await _codingAgent.FixAsync(generateRequest, cancellationToken);
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    _logger.LogError(ex, "❌ Coding agent returned 400 on iteration {Iteration} - ensuring feedback for next iteration", iteration);
+                    // Create a fake failure response so we have lastValidation for next iteration
+                    lastGeneratedCode = new GenerateCodeResponse
+                    {
+                        Success = false,
+                        Error = $"HTTP 400: {ex.Message}",
+                        ModelUsed = "error"
+                    };
+                }
                 
                 // Track which model was used
                 if (!string.IsNullOrEmpty(lastGeneratedCode.ModelUsed))
@@ -537,6 +654,13 @@ public class TaskOrchestrator : ITaskOrchestrator
                 
                 var executionPhase = StartPhase("docker_execution", iteration);
                 
+                // 🧹 CLEAN UP C# FILES BEFORE DOCKER BUILD
+                // Fixes MSB1011 (multiple .csproj) and duplicate file issues
+                if (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#")
+                {
+                    CleanAccumulatedFilesForCSharp(accumulatedFiles);
+                }
+                
                 // Use ALL accumulated files, not just last iteration's!
                 var executionFiles = accumulatedFiles.Values.Select(f => new ExecutionFile
                 {
@@ -583,11 +707,49 @@ public class TaskOrchestrator : ITaskOrchestrator
                     _logger.LogWarning("🐳 Execution failed on iteration {Iteration}: {Errors}", 
                         iteration, executionResult.Errors);
                     
+                    // 🔄 STAGNATION DETECTION: Check if we're seeing the same error repeatedly
+                    var currentErrorSignature = GetErrorSignature(executionResult.Errors);
+                    if (currentErrorSignature == lastErrorSignature)
+                    {
+                        sameErrorCount++;
+                        _logger.LogWarning("⚠️ Same error detected {Count}/{Max} times: {Signature}", 
+                            sameErrorCount, MaxSameErrors, currentErrorSignature);
+                        
+                        if (sameErrorCount >= MaxSameErrors)
+                        {
+                            _logger.LogError("🛑 STAGNATION DETECTED: Breaking loop after {Count} identical errors", sameErrorCount);
+                            lastValidation = new ValidateCodeResponse
+                            {
+                                Score = 0,
+                                Passed = false,
+                                BuildErrors = executionResult.Errors, // 🔧 Set build errors for stagnation too!
+                                Issues = new List<ValidationIssue>
+                                {
+                                    new ValidationIssue
+                                    {
+                                        Severity = "critical",
+                                        Message = $"Stagnation detected: Same error repeated {sameErrorCount} times",
+                                        Suggestion = $"The LLM cannot fix this error. Manual intervention needed:\n\n{executionResult.Errors}"
+                                    }
+                                },
+                                Summary = $"STAGNATION: Same error repeated {sameErrorCount} times. LLM cannot resolve.\n\nError: {currentErrorSignature}"
+                            };
+                            break; // Exit the loop - we're stuck
+                        }
+                    }
+                    else
+                    {
+                        // New error - reset counter
+                        lastErrorSignature = currentErrorSignature;
+                        sameErrorCount = 1;
+                    }
+                    
                     // Create feedback with REAL execution errors (not LLM guesses!)
                     lastValidation = new ValidateCodeResponse
                     {
                         Score = 0,
                         Passed = false,
+                        BuildErrors = executionResult.Errors, // 🔧 CRITICAL: Set this so focused build error prompt is used!
                         Issues = new List<ValidationIssue>
                         {
                             new ValidationIssue
@@ -1114,6 +1276,99 @@ public class TaskOrchestrator : ITaskOrchestrator
     }
     
     /// <summary>
+    /// Get a signature for an error to detect stagnation (same error repeating)
+    /// </summary>
+    private static string GetErrorSignature(string errors)
+    {
+        if (string.IsNullOrWhiteSpace(errors))
+            return "";
+        
+        // Extract the first error code/message (e.g., "CS0246", "error MSB1011")
+        var lines = errors.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        
+        // First pass: Find CS errors (compiler errors - highest priority)
+        foreach (var line in lines)
+        {
+            var csMatch = System.Text.RegularExpressions.Regex.Match(line, @"(CS\d{4})");
+            if (csMatch.Success)
+            {
+                return csMatch.Value;
+            }
+        }
+        
+        // Second pass: Find MSB errors (build errors)
+        foreach (var line in lines)
+        {
+            var msbMatch = System.Text.RegularExpressions.Regex.Match(line, @"(MSB\d{4})");
+            if (msbMatch.Success)
+            {
+                return msbMatch.Value;
+            }
+        }
+        
+        // Third pass: Find NU errors (NuGet errors - NOT warnings)
+        foreach (var line in lines)
+        {
+            // Only match NU if it's an error, not a warning
+            if (line.Contains("error NU", StringComparison.OrdinalIgnoreCase))
+            {
+                var nuMatch = System.Text.RegularExpressions.Regex.Match(line, @"(NU\d{4})");
+                if (nuMatch.Success)
+                {
+                    return nuMatch.Value;
+                }
+            }
+        }
+        
+        // Fourth pass: Generic error patterns
+        foreach (var line in lines)
+        {
+            
+            // Match generic error patterns
+            if (line.Contains("error") || line.Contains("Error"))
+            {
+                // Return first 100 chars of the error line as signature
+                return line.Trim().Length > 100 ? line.Trim()[..100] : line.Trim();
+            }
+        }
+        
+        // Fallback: hash of first 200 chars
+        var truncated = errors.Length > 200 ? errors[..200] : errors;
+        return truncated.GetHashCode().ToString();
+    }
+    
+    /// <summary>
+    /// Extract a project name from task description
+    /// </summary>
+    private static string? ExtractProjectNameFromTask(string task)
+    {
+        // Try to find explicit project names like "MyApp", "Calculator", "UserService"
+        var patterns = new[]
+        {
+            @"(?:create|build|make|generate)\s+(?:a\s+)?([A-Z][a-zA-Z0-9]+(?:App|Service|Api|Application|Manager|Handler)?)",
+            @"(?:called|named)\s+([A-Z][a-zA-Z0-9]+)",
+            @"([A-Z][a-zA-Z]+(?:Calculator|Service|Api|Manager|Handler|Controller))",
+        };
+        
+        foreach (var pattern in patterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(task, pattern);
+            if (match.Success && match.Groups.Count > 1)
+            {
+                var name = match.Groups[1].Value;
+                // Sanitize: remove spaces, ensure valid C# identifier
+                name = System.Text.RegularExpressions.Regex.Replace(name, @"[^a-zA-Z0-9]", "");
+                if (!string.IsNullOrEmpty(name) && char.IsLetter(name[0]))
+                {
+                    return name;
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
     /// Build lessons learned from this failure
     /// </summary>
     private static string BuildLessonsLearned(ValidateCodeResponse validation, int iterations)
@@ -1497,12 +1752,67 @@ public class TaskOrchestrator : ITaskOrchestrator
                     _logger.LogInformation("[FILES] Step {StepNum} Attempt {Attempt}: Added {NewFiles} files, Total: {Total} (prev steps: {PrevCount})", 
                         stepNumber, stepRetries, newFilesThisStep, accumulatedFiles.Count, filesFromPreviousSteps.Count);
                     
-                    // ✅ NO BUILD during steps - just accept the generated code
-                    // We'll build ALL files together at the end
-                    // This prevents issues with forward dependencies between files
+                    // 🔧 INTERMEDIATE BUILD CHECK for C# (after step 2+)
+                    // For C#, we check compilation incrementally to catch errors early
+                    // Step 1 is always accepted (may have forward dependencies)
+                    var isCSharp = (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#") ||
+                                   accumulatedFiles.Keys.Any(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase));
                     
-                    stepSuccess = true;  // Accept generation without build
-                    _logger.LogInformation("[STEP-OK] Step {StepNum} code generated (build deferred to end)", stepNumber);
+                    if (isCSharp && stepNumber > 1 && accumulatedFiles.Count >= 2)
+                    {
+                        // 🧹 Clean before build check
+                        CleanAccumulatedFilesForCSharp(accumulatedFiles);
+                        
+                        _logger.LogInformation("[BUILD-CHECK] Running intermediate build check for C# (step {StepNum}, {FileCount} files)", 
+                            stepNumber, accumulatedFiles.Count);
+                        
+                        var buildCheckFiles = accumulatedFiles.Values.Select(f => new ExecutionFile
+                        {
+                            Path = f.Path,
+                            Content = f.Content,
+                            ChangeType = (int)f.Type,
+                            Reason = f.Reason
+                        }).ToList();
+                        
+                        var buildCheckResult = await _executionService.ExecuteAsync(
+                            "csharp", buildCheckFiles, request.WorkspacePath, null, 
+                            buildOnly: true,  // Just compile, don't execute
+                            cancellationToken);
+                        
+                        if (!buildCheckResult.BuildPassed)
+                        {
+                            _logger.LogWarning("[BUILD-CHECK] Intermediate build FAILED: {Errors}", 
+                                buildCheckResult.Errors?.Length > 200 ? buildCheckResult.Errors[..200] + "..." : buildCheckResult.Errors);
+                            
+                            // Create feedback with build errors for retry
+                            lastValidation = new ValidateCodeResponse
+                            {
+                                Score = 2,
+                                Passed = false,
+                                BuildErrors = buildCheckResult.Errors, // 🔧 CRITICAL: Set build errors for focused prompt!
+                                Issues = new List<ValidationIssue>
+                                {
+                                    new ValidationIssue
+                                    {
+                                        Severity = "critical",
+                                        Message = "Build failed after generating this step",
+                                        File = step.FileName ?? "unknown",
+                                        Line = 1,
+                                        Suggestion = $"Fix compilation errors:\n{buildCheckResult.Errors}"
+                                    }
+                                },
+                                Summary = $"Build failed:\n{buildCheckResult.Errors}"
+                            };
+                            stepSuccess = false;
+                            continue; // Retry this step
+                        }
+                        
+                        _logger.LogInformation("[BUILD-CHECK] ✅ Intermediate build PASSED");
+                    }
+                    
+                    stepSuccess = true;
+                    _logger.LogInformation("[STEP-OK] Step {StepNum} code generated{BuildNote}", 
+                        stepNumber, isCSharp && stepNumber > 1 ? " and compiled" : " (build deferred)");
                     
                     // 📊 INDEX IMMEDIATELY after step succeeds!
                     // This allows NEXT step to SEARCH and find what we just built
@@ -1653,6 +1963,12 @@ public class TaskOrchestrator : ITaskOrchestrator
                 ["attempt"] = buildRetries,
                 ["fileCount"] = accumulatedFiles.Count
             };
+            
+            // 🧹 Final cleanup before execution
+            if (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#")
+            {
+                CleanAccumulatedFilesForCSharp(accumulatedFiles);
+            }
             
             var finalFiles = accumulatedFiles.Values.Select(f => new ExecutionFile
             {
@@ -2090,6 +2406,152 @@ public class TaskOrchestrator : ITaskOrchestrator
         prompt.AppendLine("- Use 'using' to reference existing classes");
         
         return prompt.ToString();
+    }
+    
+    #endregion
+    
+    #region 🧹 FILE CLEANUP FOR C# BUILDS
+    
+    /// <summary>
+    /// 🧹 Clean accumulated files for C# build - remove junk and consolidate duplicates
+    /// Fixes common LLM issues:
+    /// - Multiple .csproj files (MSB1011 error)
+    /// - Wrong .csproj names (e.g., CodingAgent.csproj from context pollution)
+    /// - Duplicate .cs files with different paths
+    /// - Junk config files (config.json, config.xml, etc.)
+    /// - Files in wrong directories (Services/GeneratedService.cs)
+    /// </summary>
+    private void CleanAccumulatedFilesForCSharp(Dictionary<string, FileChange> accumulatedFiles)
+    {
+        var toRemove = new List<string>();
+        var csprojFiles = new List<string>();
+        var csFilesByName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        
+        // 🧹 POLLUTION DETECTION: These are MemoryAgent-specific patterns that indicate context pollution
+        var pollutionPatterns = new[] { 
+            "CodingAgent", "ValidationAgent", "MemoryAgent", "CodingOrchestrator",
+            "DesignAgent", "AgentContracts", "ServerTests" 
+        };
+        
+        foreach (var key in accumulatedFiles.Keys.ToList())
+        {
+            var fileName = Path.GetFileName(key);
+            
+            // 🧹 Remove files that look like context pollution from MemoryAgent
+            if (pollutionPatterns.Any(p => fileName.Contains(p, StringComparison.OrdinalIgnoreCase) || 
+                                           key.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            {
+                // Don't remove if this is actually a user task about agents
+                if (!fileName.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                {
+                    // For .cs files, check if they have wrong namespaces
+                    if (fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var content = accumulatedFiles[key].Content ?? "";
+                        if (pollutionPatterns.Any(p => content.Contains($"namespace {p}", StringComparison.OrdinalIgnoreCase) ||
+                                                       content.Contains($"namespace.*{p}", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            toRemove.Add(key);
+                            _logger.LogWarning("🧹 Removing context-polluted file: {Path}", key);
+                            continue;
+                        }
+                    }
+                }
+            }
+            
+            // Track .csproj files
+            if (key.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            {
+                // 🧹 Remove .csproj files with pollution patterns (e.g., CodingAgent.csproj)
+                if (pollutionPatterns.Any(p => fileName.Contains(p, StringComparison.OrdinalIgnoreCase)))
+                {
+                    toRemove.Add(key);
+                    _logger.LogWarning("🧹 Removing polluted .csproj: {Path} (from context pollution)", key);
+                    continue;
+                }
+                csprojFiles.Add(key);
+                continue;
+            }
+            
+            // Track .cs files by base name
+            if (key.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!csFilesByName.ContainsKey(fileName))
+                    csFilesByName[fileName] = new List<string>();
+                csFilesByName[fileName].Add(key);
+                continue;
+            }
+            
+            // 🧹 Remove junk files that shouldn't be in a C# project
+            var ext = Path.GetExtension(key).ToLowerInvariant();
+            if (ext is ".json" or ".xml" or ".txt" or ".yaml" or ".yml" or ".sh")
+            {
+                // Keep only specific config files
+                if (!fileName.Equals("appsettings.json", StringComparison.OrdinalIgnoreCase) &&
+                    !fileName.Equals("appsettings.Development.json", StringComparison.OrdinalIgnoreCase))
+                {
+                    toRemove.Add(key);
+                    _logger.LogWarning("🧹 Removing junk file from C# build: {Path}", key);
+                }
+            }
+        }
+        
+        // 🧹 Remove GeneratedService.cs type files (common LLM pollution)
+        var serviceJunk = accumulatedFiles.Keys
+            .Where(k => k.EndsWith("GeneratedService.cs", StringComparison.OrdinalIgnoreCase) ||
+                       k.Contains("Services/Generated", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        foreach (var junk in serviceJunk)
+        {
+            if (!toRemove.Contains(junk))
+            {
+                toRemove.Add(junk);
+                _logger.LogWarning("🧹 Removing junk service file: {Path}", junk);
+            }
+        }
+        
+        // Keep only ONE .csproj file (prefer the one with actual project name, not "Generated")
+        if (csprojFiles.Count > 1)
+        {
+            // Sort: prefer files without "Generated" in name, then shorter paths
+            var preferred = csprojFiles
+                .OrderBy(f => f.Contains("Generated", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                .ThenBy(f => f.Length)
+                .First();
+            
+            foreach (var csproj in csprojFiles.Where(f => f != preferred))
+            {
+                toRemove.Add(csproj);
+                _logger.LogWarning("🧹 Removing duplicate .csproj: {Path} (keeping {Preferred})", csproj, preferred);
+            }
+        }
+        
+        // For duplicate .cs files, keep the one with more content (or the shorter path)
+        foreach (var kvp in csFilesByName.Where(k => k.Value.Count > 1))
+        {
+            var preferredCs = kvp.Value
+                .OrderByDescending(f => accumulatedFiles[f].Content?.Length ?? 0)
+                .ThenBy(f => f.Length)
+                .First();
+            
+            foreach (var dup in kvp.Value.Where(f => f != preferredCs))
+            {
+                toRemove.Add(dup);
+                _logger.LogWarning("🧹 Removing duplicate C# file: {Path} (keeping {Preferred})", dup, preferredCs);
+            }
+        }
+        
+        // Remove the junk
+        foreach (var key in toRemove.Distinct())
+        {
+            accumulatedFiles.Remove(key);
+        }
+        
+        if (toRemove.Count > 0)
+        {
+            _logger.LogInformation("🧹 Cleaned {Count} junk/duplicate/polluted files, {Remaining} files remain", 
+                toRemove.Count, accumulatedFiles.Count);
+        }
     }
     
     #endregion

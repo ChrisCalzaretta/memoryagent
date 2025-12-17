@@ -323,6 +323,10 @@ CRITICAL RULES:
             
             // Parse the Claude response to extract code files
             var fileChanges = ParseCodeBlocks(response.Content);
+            
+            // 🔧 AUTO-INJECT .csproj for C# projects if missing
+            fileChanges = EnsureCSharpProjectFile(fileChanges, request.Language);
+            
             var explanation = ExtractExplanation(response.Content);
             
             // Parse execution instructions from response
@@ -471,6 +475,10 @@ RULES:
 
             // Parse the LLM response to extract code files
             var fileChanges = ParseCodeBlocks(response.Response);
+            
+            // 🔧 AUTO-INJECT .csproj for C# projects if missing
+            fileChanges = EnsureCSharpProjectFile(fileChanges, request.Language);
+            
             var explanation = ExtractExplanation(response.Response);
             
             // 🐳 Parse execution instructions from LLM response
@@ -531,6 +539,292 @@ RULES:
                 ModelUsed = model
             };
         }
+    }
+
+    /// <summary>
+    /// 🔧 AUTO-INJECT .csproj FILE for C# projects when LLM doesn't generate one
+    /// This ensures multi-file C# projects can build properly
+    /// </summary>
+    private List<FileChange> EnsureCSharpProjectFile(List<FileChange> files, string? requestedLanguage)
+    {
+        // Only process if language is C# or we detected C# files
+        var hasCSharpFiles = files.Any(f => f.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase));
+        var isRequestedCSharp = requestedLanguage?.ToLowerInvariant() is "csharp" or "cs" or "c#";
+        
+        if (!hasCSharpFiles && !isRequestedCSharp)
+            return files;
+        
+        // Extract packages from using statements across all C# files
+        var allCode = string.Join("\n", files.Where(f => f.Path.EndsWith(".cs")).Select(f => f.Content));
+        var packages = DetectRequiredPackages(allCode);
+        
+        // Check if .csproj already exists
+        var existingCsproj = files.FirstOrDefault(f => 
+            f.Path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase));
+        
+        if (existingCsproj != null)
+        {
+            // Enhance existing .csproj with missing packages
+            var enhancedCsproj = EnhanceCsprojWithPackages(existingCsproj.Content, packages);
+            existingCsproj.Content = enhancedCsproj;
+            _logger.LogInformation("🔧 ENHANCED existing {Csproj} with {PackageCount} detected packages", 
+                existingCsproj.Path, packages.Count);
+            return files;
+        }
+        
+        // Detect if it's a web project
+        var isWebProject = allCode.Contains("Microsoft.AspNetCore") || 
+                          allCode.Contains("WebApplication") ||
+                          allCode.Contains("app.MapGet") ||
+                          allCode.Contains("builder.Services");
+        
+        // Extract project name from first .cs file's namespace or default
+        var projectName = ExtractProjectName(files) ?? "GeneratedApp";
+        
+        // Generate .csproj content
+        var csprojContent = GenerateCsprojContent(projectName, packages, isWebProject);
+        
+        _logger.LogInformation("🔧 AUTO-INJECTED {ProjectName}.csproj with {PackageCount} packages (isWeb: {IsWeb}): {Packages}",
+            projectName, packages.Count, isWebProject, string.Join(", ", packages));
+        
+        // Add .csproj file to the list
+        files.Add(new FileChange
+        {
+            Path = $"{projectName}.csproj",
+            Content = csprojContent,
+            Type = FileChangeType.Created,
+            Reason = "Auto-generated project file for C# compilation"
+        });
+        
+        return files;
+    }
+    
+    /// <summary>
+    /// Enhance an existing .csproj with missing packages
+    /// </summary>
+    private string EnhanceCsprojWithPackages(string csprojContent, HashSet<string> packages)
+    {
+        if (!packages.Any()) return csprojContent;
+        
+        // Check which packages are already present
+        var missingPackages = packages
+            .Where(pkg => !csprojContent.Contains($"Include=\"{pkg}\"", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        
+        if (!missingPackages.Any())
+        {
+            _logger.LogDebug("All detected packages already in .csproj");
+            return csprojContent;
+        }
+        
+        _logger.LogInformation("📦 Adding missing packages to .csproj: {Packages}", string.Join(", ", missingPackages));
+        
+        // Build PackageReference entries
+        var packageRefs = new System.Text.StringBuilder();
+        foreach (var pkg in missingPackages.OrderBy(p => p))
+        {
+            packageRefs.AppendLine($"    <PackageReference Include=\"{pkg}\" Version=\"*\" />");
+            
+            // Add companion packages for test frameworks
+            if (pkg.Equals("xunit", StringComparison.OrdinalIgnoreCase))
+            {
+                packageRefs.AppendLine("    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"2.5.4\" />");
+                packageRefs.AppendLine("    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.8.0\" />");
+            }
+        }
+        
+        // Find where to insert packages
+        if (csprojContent.Contains("<ItemGroup>"))
+        {
+            // Insert after first ItemGroup opening
+            var insertIndex = csprojContent.IndexOf("<ItemGroup>") + "<ItemGroup>".Length;
+            return csprojContent.Insert(insertIndex, "\n" + packageRefs.ToString());
+        }
+        else
+        {
+            // No ItemGroup exists, add one before closing Project tag
+            var itemGroup = $"\n  <ItemGroup>\n{packageRefs}  </ItemGroup>\n";
+            var insertIndex = csprojContent.LastIndexOf("</Project>");
+            if (insertIndex > 0)
+            {
+                return csprojContent.Insert(insertIndex, itemGroup);
+            }
+        }
+        
+        return csprojContent;
+    }
+    
+    /// <summary>
+    /// Detect NuGet packages required based on using statements
+    /// </summary>
+    private static HashSet<string> DetectRequiredPackages(string code)
+    {
+        var packages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        // Package mappings: namespace prefix -> NuGet package name
+        var packageMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Test Frameworks (CRITICAL - most common missing packages!)
+            ["Xunit"] = "xunit",
+            ["NUnit"] = "NUnit",
+            ["Microsoft.VisualStudio.TestTools.UnitTesting"] = "MSTest.TestFramework",
+            ["Moq"] = "Moq",
+            ["FluentAssertions"] = "FluentAssertions",
+            ["NSubstitute"] = "NSubstitute",
+            ["Bogus"] = "Bogus",
+            
+            // JSON
+            ["Newtonsoft.Json"] = "Newtonsoft.Json",
+            
+            // Microsoft.Extensions.*
+            ["Microsoft.Extensions.DependencyInjection"] = "Microsoft.Extensions.DependencyInjection",
+            ["Microsoft.Extensions.Logging"] = "Microsoft.Extensions.Logging",
+            ["Microsoft.Extensions.Configuration"] = "Microsoft.Extensions.Configuration",
+            ["Microsoft.Extensions.Http"] = "Microsoft.Extensions.Http",
+            ["Microsoft.Extensions.Hosting"] = "Microsoft.Extensions.Hosting",
+            ["Microsoft.Extensions.Options"] = "Microsoft.Extensions.Options",
+            ["Microsoft.Extensions.Caching"] = "Microsoft.Extensions.Caching.Memory",
+            
+            // Data Access
+            ["Microsoft.EntityFrameworkCore"] = "Microsoft.EntityFrameworkCore",
+            ["Dapper"] = "Dapper",
+            ["MongoDB.Driver"] = "MongoDB.Driver",
+            ["Npgsql"] = "Npgsql",
+            ["MySql.Data"] = "MySql.Data",
+            ["Microsoft.Data.SqlClient"] = "Microsoft.Data.SqlClient",
+            ["StackExchange.Redis"] = "StackExchange.Redis",
+            
+            // Common Libraries
+            ["CsvHelper"] = "CsvHelper",
+            ["Polly"] = "Polly",
+            ["FluentValidation"] = "FluentValidation",
+            ["MediatR"] = "MediatR",
+            ["AutoMapper"] = "AutoMapper",
+            ["Serilog"] = "Serilog",
+            ["Humanizer"] = "Humanizer",
+            
+            // API/Web
+            ["Swashbuckle"] = "Swashbuckle.AspNetCore",
+            ["Microsoft.OpenApi"] = "Microsoft.OpenApi",
+            ["NSwag"] = "NSwag.AspNetCore",
+            ["RestSharp"] = "RestSharp",
+            ["Refit"] = "Refit",
+            
+            // Built-in (no package needed)
+            ["System.Text.Json"] = "",
+            ["System.Linq"] = "",
+            ["System.Collections"] = "",
+        };
+        
+        // Extract using statements
+        var usingPattern = new Regex(@"using\s+([A-Za-z0-9_.]+)\s*;", RegexOptions.Multiline);
+        var matches = usingPattern.Matches(code);
+        
+        foreach (Match match in matches)
+        {
+            var ns = match.Groups[1].Value;
+            foreach (var mapping in packageMap)
+            {
+                if (ns.StartsWith(mapping.Key, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(mapping.Value))
+                {
+                    packages.Add(mapping.Value);
+                }
+            }
+        }
+        
+        // Detect packages from method calls (for extension methods that don't need explicit using)
+        var methodPatterns = new Dictionary<string, string>
+        {
+            // Swagger (very common in Web APIs)
+            [@"\.AddSwaggerGen|\.UseSwagger|\.UseSwaggerUI"] = "Swashbuckle.AspNetCore",
+            [@"Microsoft\.OpenApi"] = "Microsoft.OpenApi",
+            // EF Core
+            [@"\.UseSqlServer\(|\.UseNpgsql\(|\.UseSqlite\("] = "Microsoft.EntityFrameworkCore",
+            // Identity
+            [@"\.AddIdentity|\.AddDefaultIdentity"] = "Microsoft.AspNetCore.Identity.EntityFrameworkCore",
+            // JWT
+            [@"\.AddJwtBearer|JwtBearerDefaults"] = "Microsoft.AspNetCore.Authentication.JwtBearer",
+            // Serilog
+            [@"\.UseSerilog|Log\.Logger"] = "Serilog.AspNetCore",
+        };
+        
+        foreach (var pattern in methodPatterns)
+        {
+            if (Regex.IsMatch(code, pattern.Key, RegexOptions.IgnoreCase))
+            {
+                packages.Add(pattern.Value);
+            }
+        }
+        
+        // Add companion packages for test frameworks (they need multiple packages to work)
+        if (packages.Contains("xunit"))
+        {
+            packages.Add("xunit.runner.visualstudio");
+            packages.Add("Microsoft.NET.Test.Sdk");
+        }
+        if (packages.Contains("NUnit"))
+        {
+            packages.Add("NUnit3TestAdapter");
+            packages.Add("Microsoft.NET.Test.Sdk");
+        }
+        if (packages.Contains("MSTest.TestFramework"))
+        {
+            packages.Add("MSTest.TestAdapter");
+            packages.Add("Microsoft.NET.Test.Sdk");
+        }
+        
+        return packages;
+    }
+    
+    /// <summary>
+    /// Extract project name from namespace in C# files
+    /// </summary>
+    private static string? ExtractProjectName(List<FileChange> files)
+    {
+        foreach (var file in files.Where(f => f.Path.EndsWith(".cs")))
+        {
+            // Match: namespace ProjectName; or namespace ProjectName { or namespace ProjectName.SubNs
+            var nsMatch = Regex.Match(file.Content, @"namespace\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*[;{.]|$)", RegexOptions.Multiline);
+            if (nsMatch.Success)
+            {
+                return nsMatch.Groups[1].Value;
+            }
+        }
+        return null;
+    }
+    
+    /// <summary>
+    /// Generate .csproj content with detected packages
+    /// </summary>
+    private static string GenerateCsprojContent(string projectName, HashSet<string> packages, bool isWebProject)
+    {
+        var sdk = isWebProject ? "Microsoft.NET.Sdk.Web" : "Microsoft.NET.Sdk";
+        var sb = new System.Text.StringBuilder();
+        
+        sb.AppendLine($@"<Project Sdk=""{sdk}"">");
+        sb.AppendLine("  <PropertyGroup>");
+        sb.AppendLine("    <TargetFramework>net9.0</TargetFramework>");
+        if (!isWebProject)
+        {
+            sb.AppendLine("    <OutputType>Exe</OutputType>");
+        }
+        sb.AppendLine("    <ImplicitUsings>enable</ImplicitUsings>");
+        sb.AppendLine("    <Nullable>enable</Nullable>");
+        sb.AppendLine("  </PropertyGroup>");
+        
+        if (packages.Any())
+        {
+            sb.AppendLine("  <ItemGroup>");
+            foreach (var pkg in packages.OrderBy(p => p))
+            {
+                sb.AppendLine($@"    <PackageReference Include=""{pkg}"" Version=""*"" />");
+            }
+            sb.AppendLine("  </ItemGroup>");
+        }
+        
+        sb.AppendLine("</Project>");
+        
+        return sb.ToString();
     }
 
     /// <summary>

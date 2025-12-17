@@ -29,9 +29,9 @@ public class ExecutionService : IExecutionService
         AgentContracts.Models.ExecutionInstructions? instructions,
         CancellationToken cancellationToken)
     {
-        // Auto-detect if app is interactive and use build-only mode
-        var isInteractive = IsInteractiveApp(files, language);
-        return ExecuteAsync(language, files, workspacePath, instructions, buildOnly: isInteractive, cancellationToken);
+        // ALWAYS use build-only mode - we validate code by compiling, not running
+        // Running causes timeouts for web servers, GUI apps, and interactive programs
+        return ExecuteAsync(language, files, workspacePath, instructions, buildOnly: true, cancellationToken);
     }
     
     public async Task<ExecutionResult> ExecuteAsync(
