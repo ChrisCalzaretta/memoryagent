@@ -1,4 +1,5 @@
 using DesignAgent.Server.Models.DesignIntelligence;
+using DesignAgent.Server.Clients;
 using Microsoft.Extensions.Options;
 using Neo4j.Driver;
 using System.Text.Json;
@@ -11,15 +12,18 @@ namespace DesignAgent.Server.Services.DesignIntelligence;
 public class DesignIntelligenceStorage : IDesignIntelligenceStorage
 {
     private readonly IDriver _neo4jDriver;
+    private readonly IMemoryAgentClient _memoryAgent;
     private readonly ILogger<DesignIntelligenceStorage> _logger;
     private readonly DesignIntelligenceOptions _options;
 
     public DesignIntelligenceStorage(
         IDriver neo4jDriver,
+        IMemoryAgentClient memoryAgent,
         ILogger<DesignIntelligenceStorage> logger,
         IOptions<DesignIntelligenceOptions> options)
     {
         _neo4jDriver = neo4jDriver;
+        _memoryAgent = memoryAgent;
         _logger = logger;
         _options = options.Value;
     }
@@ -665,16 +669,30 @@ public class DesignIntelligenceStorage : IDesignIntelligenceStorage
 
     public async Task<string?> GetPromptAsync(string promptName, CancellationToken cancellationToken = default)
     {
-        // TODO: Integrate with Memory Agent Lightning API
-        // For now, return null (prompts will be seeded directly)
-        _logger.LogWarning("GetPromptAsync not yet implemented - Lightning integration needed");
-        return null;
+        try
+        {
+            var prompt = await _memoryAgent.GetPromptAsync(promptName, cancellationToken);
+            
+            if (prompt == null || string.IsNullOrWhiteSpace(prompt.Content))
+            {
+                _logger.LogWarning("Prompt '{PromptName}' not found or empty in Lightning", promptName);
+                return null;
+            }
+            
+            _logger.LogDebug("Retrieved prompt from Lightning: {PromptName} v{Version}", promptName, prompt.Version);
+            return prompt.Content;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve prompt '{PromptName}' from Lightning", promptName);
+            return null;
+        }
     }
 
     public async Task UpdatePromptAsync(string promptName, string newContent, int version, CancellationToken cancellationToken = default)
     {
-        // TODO: Integrate with Memory Agent Lightning API
-        _logger.LogWarning("UpdatePromptAsync not yet implemented - Lightning integration needed");
+        // TODO: Implement prompt updating through MCP API when needed
+        _logger.LogInformation("Prompt update requested: {PromptName} (version {Version}) - not yet implemented", promptName, version);
         await Task.CompletedTask;
     }
 

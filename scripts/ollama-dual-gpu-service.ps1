@@ -5,6 +5,14 @@
     Runs TWO Ollama instances for DUAL GPU setup as a Windows service
     - GPU 0 (3090): PINNED models - Port 11434 (24GB - holds all 3 core models)
     - GPU 1 (5070 Ti): SWAP GPU for alternatives - Port 11435 (16GB)
+    
+    Environment Variables Set:
+    - OLLAMA_HOST: Host and port configuration (0.0.0.0:PORT)
+    - OLLAMA_PRIMARY_MODEL: Primary coding model (deepseek-coder-v2:16b)
+    - OLLAMA_VALIDATION_MODEL: Validation model (phi4:latest)
+    - OLLAMA_EMBEDDING_MODEL: Embedding model (mxbai-embed-large:latest)
+    - OLLAMA_PRIMARY_PORT: GPU 0 port (11434)
+    - OLLAMA_SWAP_PORT: GPU 1 port (11435)
 #>
 
 # Service configuration
@@ -56,10 +64,20 @@ $startInfo0.RedirectStandardError = $true
 $startInfo0.EnvironmentVariables["CUDA_VISIBLE_DEVICES"] = "0"
 $startInfo0.EnvironmentVariables["OLLAMA_KEEP_ALIVE"] = "-1"
 $startInfo0.EnvironmentVariables["OLLAMA_HOST"] = "0.0.0.0:$gpu0Port"
+# Model configuration environment variables
+$startInfo0.EnvironmentVariables["OLLAMA_PRIMARY_MODEL"] = $PrimaryModel
+$startInfo0.EnvironmentVariables["OLLAMA_VALIDATION_MODEL"] = $ValidationModel
+$startInfo0.EnvironmentVariables["OLLAMA_EMBEDDING_MODEL"] = $EmbeddingModel
+$startInfo0.EnvironmentVariables["OLLAMA_PRIMARY_PORT"] = $gpu0Port.ToString()
+$startInfo0.EnvironmentVariables["OLLAMA_SWAP_PORT"] = $gpu1Port.ToString()
 
 try {
     $process0 = [System.Diagnostics.Process]::Start($startInfo0)
     Write-ServiceLog "Started Ollama GPU 0 (PID: $($process0.Id))" "INFO"
+    Write-ServiceLog "  Environment: OLLAMA_HOST=0.0.0.0:$gpu0Port" "INFO"
+    Write-ServiceLog "  Environment: OLLAMA_PRIMARY_MODEL=$PrimaryModel" "INFO"
+    Write-ServiceLog "  Environment: OLLAMA_VALIDATION_MODEL=$ValidationModel" "INFO"
+    Write-ServiceLog "  Environment: OLLAMA_EMBEDDING_MODEL=$EmbeddingModel" "INFO"
 } catch {
     Write-ServiceLog "Failed to start Ollama GPU 0: $_" "ERROR"
     exit 1
@@ -78,10 +96,20 @@ $startInfo1.RedirectStandardError = $true
 $startInfo1.EnvironmentVariables["CUDA_VISIBLE_DEVICES"] = "1"
 $startInfo1.EnvironmentVariables["OLLAMA_KEEP_ALIVE"] = "300"
 $startInfo1.EnvironmentVariables["OLLAMA_HOST"] = "0.0.0.0:$gpu1Port"
+# Model configuration environment variables
+$startInfo1.EnvironmentVariables["OLLAMA_PRIMARY_MODEL"] = $PrimaryModel
+$startInfo1.EnvironmentVariables["OLLAMA_VALIDATION_MODEL"] = $ValidationModel
+$startInfo1.EnvironmentVariables["OLLAMA_EMBEDDING_MODEL"] = $EmbeddingModel
+$startInfo1.EnvironmentVariables["OLLAMA_PRIMARY_PORT"] = $gpu0Port.ToString()
+$startInfo1.EnvironmentVariables["OLLAMA_SWAP_PORT"] = $gpu1Port.ToString()
 
 try {
     $process1 = [System.Diagnostics.Process]::Start($startInfo1)
     Write-ServiceLog "Started Ollama GPU 1 (PID: $($process1.Id))" "INFO"
+    Write-ServiceLog "  Environment: OLLAMA_HOST=0.0.0.0:$gpu1Port" "INFO"
+    Write-ServiceLog "  Environment: OLLAMA_PRIMARY_MODEL=$PrimaryModel" "INFO"
+    Write-ServiceLog "  Environment: OLLAMA_VALIDATION_MODEL=$ValidationModel" "INFO"
+    Write-ServiceLog "  Environment: OLLAMA_EMBEDDING_MODEL=$EmbeddingModel" "INFO"
 } catch {
     Write-ServiceLog "Failed to start Ollama GPU 1: $_" "ERROR"
     $process0.Kill()
@@ -178,6 +206,7 @@ while ($true) {
                 $process0 = [System.Diagnostics.Process]::Start($startInfo0)
                 $restartCount++
                 Write-ServiceLog "Restarted GPU 0 process (PID: $($process0.Id))" "INFO"
+                Write-ServiceLog "  Environment: OLLAMA_HOST=0.0.0.0:$gpu0Port, Models: $PrimaryModel, $ValidationModel, $EmbeddingModel" "INFO"
                 Start-Sleep -Seconds 30  # Give it time to stabilize
                 $gpu0Ready = Wait-ForOllama -Port $gpu0Port -Name "GPU 0 (3090)"
                 if ($gpu0Ready) {
@@ -205,6 +234,7 @@ while ($true) {
                 $process1 = [System.Diagnostics.Process]::Start($startInfo1)
                 $restartCount++
                 Write-ServiceLog "Restarted GPU 1 process (PID: $($process1.Id))" "INFO"
+                Write-ServiceLog "  Environment: OLLAMA_HOST=0.0.0.0:$gpu1Port, Models: $PrimaryModel, $ValidationModel, $EmbeddingModel" "INFO"
                 Start-Sleep -Seconds 30
                 Wait-ForOllama -Port $gpu1Port -Name "GPU 1 (5070 Ti)" | Out-Null
             } catch {
