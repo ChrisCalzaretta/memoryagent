@@ -241,6 +241,8 @@ services:
     container_name: memory-design-agent
     ports:
       - "5004:5004"
+    volumes:
+      - d:\Memory\shared\screenshots:/data/screenshots
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5004
@@ -249,8 +251,40 @@ services:
       - Ollama__Url=http://host.docker.internal:11434
       - Ollama__Port=11434
       - Ollama__DefaultModel=deepseek-coder-v2:16b
+      # 🔌 Database connections for design intelligence storage
+      - ConnectionStrings__Neo4j=bolt://memory-agent-neo4j:7687
+      - ConnectionStrings__Qdrant=http://memory-agent-qdrant:6333
+      - Neo4jCredentials__Username=neo4j
+      - Neo4jCredentials__Password=memoryagent
+      # 🎨 Design Intelligence Configuration
+      - DesignIntelligence__InitialThreshold=7.0
+      - DesignIntelligence__LeaderboardSize=100
+      - DesignIntelligence__MaxPagesPerSite=6
+      - DesignIntelligence__CrawlDelayMs=2000
+      - DesignIntelligence__PlaywrightTimeoutMs=30000
+      - DesignIntelligence__ScreenshotPath=/data/screenshots
+      - DesignIntelligence__ScreenshotQuality=85
+      - DesignIntelligence__ScreenshotBreakpoints=[1920,1024,375]
+      - DesignIntelligence__EnableVideoCapture=false
+      - DesignIntelligence__VideoCaptureDurationSec=10
+      - DesignIntelligence__SearchProvider=google
+      - DesignIntelligence__SearchApiKey=
+      - DesignIntelligence__SearchQueriesPerRun=5
+      - DesignIntelligence__SearchResultsPerQuery=10
+      - DesignIntelligence__EnableBackgroundLearning=true
+      - DesignIntelligence__BackgroundIntervalSec=3600
+      - DesignIntelligence__MaxCpuPercent=30
+      - DesignIntelligence__MinFeedbackForEvolution=10
+      - DesignIntelligence__MismatchThreshold=2.0
+      - DesignIntelligence__VisionModel=llava:13b
+      - DesignIntelligence__TextModel=phi4
+      - DesignIntelligence__LlmTimeoutSec=120
     depends_on:
       mcp-server:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      qdrant:
         condition: service_healthy
     networks:
       - memory-net
