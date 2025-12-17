@@ -1,0 +1,838 @@
+using DesignAgent.Server.Models.DesignIntelligence;
+using Microsoft.Extensions.Options;
+using Neo4j.Driver;
+using System.Text.Json;
+
+namespace DesignAgent.Server.Services.DesignIntelligence;
+
+/// <summary>
+/// Neo4j + Qdrant storage implementation for Design Intelligence
+/// </summary>
+public class DesignIntelligenceStorage : IDesignIntelligenceStorage
+{
+    private readonly IDriver _neo4jDriver;
+    private readonly ILogger<DesignIntelligenceStorage> _logger;
+    private readonly DesignIntelligenceOptions _options;
+
+    public DesignIntelligenceStorage(
+        IDriver neo4jDriver,
+        ILogger<DesignIntelligenceStorage> logger,
+        IOptions<DesignIntelligenceOptions> options)
+    {
+        _neo4jDriver = neo4jDriver;
+        _logger = logger;
+        _options = options.Value;
+    }
+
+    // ===== DESIGN SOURCES =====
+
+    public async Task<DesignSource> StoreSourceAsync(DesignSource source, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MERGE (s:DesignSource {url: $url})
+            SET s.id = $id,
+                s.category = $category,
+                s.trustScore = $trustScore,
+                s.discoveryMethod = $discoveryMethod,
+                s.discoveryQuery = $discoveryQuery,
+                s.discoveredAt = datetime($discoveredAt),
+                s.lastCrawledAt = datetime($lastCrawledAt),
+                s.status = $status,
+                s.tags = $tags,
+                s.alreadyEvaluated = $alreadyEvaluated,
+                s.finalScore = $finalScore,
+                s.discardReason = $discardReason
+            RETURN s";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new
+            {
+                id = source.Id,
+                url = source.Url,
+                category = source.Category,
+                trustScore = source.TrustScore,
+                discoveryMethod = source.DiscoveryMethod,
+                discoveryQuery = source.DiscoveryQuery,
+                discoveredAt = source.DiscoveredAt.ToString("o"),
+                lastCrawledAt = source.LastCrawledAt?.ToString("o"),
+                status = source.Status,
+                tags = source.Tags,
+                alreadyEvaluated = source.AlreadyEvaluated,
+                finalScore = source.FinalScore,
+                discardReason = source.DiscardReason
+            });
+        });
+
+        _logger.LogInformation("Stored design source: {Url}", source.Url);
+        return source;
+    }
+
+    public async Task<DesignSource?> GetSourceByUrlAsync(string url, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = "MATCH (s:DesignSource {url: $url}) RETURN s";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { url });
+            if (await cursor.FetchAsync())
+            {
+                return cursor.Current;
+            }
+            return null;
+        });
+
+        return result != null ? MapToDesignSource(result["s"].As<INode>()) : null;
+    }
+
+    public async Task<List<DesignSource>> GetPendingSourcesAsync(int limit = 10, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (s:DesignSource)
+            WHERE s.status = 'pending'
+            RETURN s
+            ORDER BY s.trustScore DESC, s.discoveredAt ASC
+            LIMIT $limit";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { limit });
+            return await cursor.ToListAsync(record => MapToDesignSource(record["s"].As<INode>()));
+        });
+
+        return result;
+    }
+
+    public async Task UpdateSourceStatusAsync(string sourceId, string status, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (s:DesignSource {id: $id})
+            SET s.status = $status,
+                s.lastCrawledAt = datetime()
+            RETURN s";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new { id = sourceId, status });
+        });
+    }
+
+    // ===== CAPTURED DESIGNS =====
+
+    public async Task<CapturedDesign> StoreDesignAsync(CapturedDesign design, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MERGE (d:CapturedDesign {url: $url})
+            SET d.id = $id,
+                d.name = $name,
+                d.autoGeneratedName = $autoGeneratedName,
+                d.capturedAt = datetime($capturedAt),
+                d.overallScore = $overallScore,
+                d.designDNA = $designDNA,
+                d.detectedSystem = $detectedSystem,
+                d.passedQualityGate = $passedQualityGate,
+                d.leaderboardRank = $leaderboardRank,
+                d.tags = $tags,
+                d.humanRating = $humanRating,
+                d.humanRatedAt = datetime($humanRatedAt),
+                d.extractedPatternIds = $extractedPatternIds
+            RETURN d";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new
+            {
+                id = design.Id,
+                url = design.Url,
+                name = design.Name,
+                autoGeneratedName = design.AutoGeneratedName,
+                capturedAt = design.CapturedAt.ToString("o"),
+                overallScore = design.OverallScore,
+                designDNA = design.DesignDNA != null ? JsonSerializer.Serialize(design.DesignDNA) : null,
+                detectedSystem = design.DetectedSystem != null ? JsonSerializer.Serialize(design.DetectedSystem) : null,
+                passedQualityGate = design.PassedQualityGate,
+                leaderboardRank = design.LeaderboardRank,
+                tags = design.Tags,
+                humanRating = design.HumanRating,
+                humanRatedAt = design.HumanRatedAt?.ToString("o"),
+                extractedPatternIds = design.ExtractedPatternIds
+            });
+        });
+
+        _logger.LogInformation("Stored design: {Url} (Score: {Score})", design.Url, design.OverallScore);
+        return design;
+    }
+
+    public async Task<CapturedDesign?> GetDesignAsync(string designId, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = "MATCH (d:CapturedDesign {id: $id}) RETURN d";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { id = designId });
+            if (await cursor.FetchAsync())
+            {
+                return cursor.Current;
+            }
+            return null;
+        });
+
+        return result != null ? MapToCapturedDesign(result["d"].As<INode>()) : null;
+    }
+
+    public async Task<CapturedDesign?> GetDesignByUrlAsync(string url, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = "MATCH (d:CapturedDesign {url: $url}) RETURN d";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { url });
+            if (await cursor.FetchAsync())
+            {
+                return cursor.Current;
+            }
+            return null;
+        });
+
+        return result != null ? MapToCapturedDesign(result["d"].As<INode>()) : null;
+    }
+
+    public async Task<List<CapturedDesign>> GetLeaderboardAsync(int limit = 100, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (d:CapturedDesign)
+            WHERE d.passedQualityGate = true
+            RETURN d
+            ORDER BY d.overallScore DESC
+            LIMIT $limit";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { limit });
+            return await cursor.ToListAsync(record => MapToCapturedDesign(record["d"].As<INode>()));
+        });
+
+        return result;
+    }
+
+    public async Task<double?> GetLeaderboardFloorAsync(CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (d:CapturedDesign)
+            WHERE d.passedQualityGate = true AND d.leaderboardRank IS NOT NULL
+            RETURN MIN(d.overallScore) as floor";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query);
+            if (await cursor.FetchAsync())
+            {
+                try
+                {
+                    return cursor.Current["floor"].As<double?>();
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+            return null;
+        });
+
+        return result;
+    }
+
+    public async Task UpdateLeaderboardRanksAsync(CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (d:CapturedDesign)
+            WHERE d.passedQualityGate = true
+            WITH d ORDER BY d.overallScore DESC
+            WITH collect(d) as designs
+            UNWIND range(0, size(designs)-1) as idx
+            WITH designs[idx] as design, idx
+            SET design.leaderboardRank = idx + 1
+            RETURN count(*) as updated";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query);
+        });
+
+        _logger.LogInformation("Updated leaderboard ranks");
+    }
+
+    public async Task EvictFromLeaderboardAsync(string designId, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (d:CapturedDesign {id: $id})
+            SET d.leaderboardRank = null,
+                d.passedQualityGate = false
+            RETURN d";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new { id = designId });
+        });
+
+        _logger.LogInformation("Evicted design from leaderboard: {DesignId}", designId);
+    }
+
+    // ===== PAGE ANALYSIS =====
+
+    public async Task<PageAnalysis> StorePageAnalysisAsync(PageAnalysis page, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MERGE (p:PageAnalysis {id: $id})
+            SET p.designId = $designId,
+                p.url = $url,
+                p.pageType = $pageType,
+                p.screenshots = $screenshots,
+                p.extractedHtml = $extractedHtml,
+                p.extractedCss = $extractedCss,
+                p.analyzedAt = datetime($analyzedAt),
+                p.analysisModel = $analysisModel,
+                p.categoryScores = $categoryScores,
+                p.overallPageScore = $overallPageScore,
+                p.pageWeight = $pageWeight,
+                p.strengths = $strengths,
+                p.weaknesses = $weaknesses
+            WITH p
+            MATCH (d:CapturedDesign {id: $designId})
+            MERGE (d)-[:HAS_PAGE]->(p)
+            RETURN p";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new
+            {
+                id = page.Id,
+                designId = page.DesignId,
+                url = page.Url,
+                pageType = page.PageType,
+                screenshots = JsonSerializer.Serialize(page.Screenshots),
+                extractedHtml = page.ExtractedHtml,
+                extractedCss = page.ExtractedCss,
+                analyzedAt = page.AnalyzedAt.ToString("o"),
+                analysisModel = page.AnalysisModel,
+                categoryScores = JsonSerializer.Serialize(page.CategoryScores),
+                overallPageScore = page.OverallPageScore,
+                pageWeight = page.PageWeight,
+                strengths = page.Strengths,
+                weaknesses = page.Weaknesses
+            });
+        });
+
+        return page;
+    }
+
+    public async Task<PageAnalysis?> GetPageAnalysisAsync(string pageId, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = "MATCH (p:PageAnalysis {id: $id}) RETURN p";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { id = pageId });
+            if (await cursor.FetchAsync())
+            {
+                return cursor.Current;
+            }
+            return null;
+        });
+
+        return result != null ? MapToPageAnalysis(result["p"].As<INode>()) : null;
+    }
+
+    public async Task<List<PageAnalysis>> GetDesignPagesAsync(string designId, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (d:CapturedDesign {id: $designId})-[:HAS_PAGE]->(p:PageAnalysis)
+            RETURN p
+            ORDER BY p.pageWeight DESC";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { designId });
+            return await cursor.ToListAsync(record => MapToPageAnalysis(record["p"].As<INode>()));
+        });
+
+        return result;
+    }
+
+    // ===== DESIGN PATTERNS =====
+
+    public async Task<DesignPattern> StorePatternAsync(DesignPattern pattern, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MERGE (p:DesignPattern {id: $id})
+            SET p.name = $name,
+                p.category = $category,
+                p.type = $type,
+                p.description = $description,
+                p.qualityScore = $qualityScore,
+                p.observationCount = $observationCount,
+                p.sourceDesignIds = $sourceDesignIds,
+                p.htmlStructure = $htmlStructure,
+                p.cssStyle = $cssStyle,
+                p.a2uiJson = $a2uiJson,
+                p.designTokens = $designTokens,
+                p.tags = $tags,
+                p.learnedAt = datetime($learnedAt),
+                p.lastUpdatedAt = datetime($lastUpdatedAt)
+            RETURN p";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new
+            {
+                id = pattern.Id,
+                name = pattern.Name,
+                category = pattern.Category,
+                type = pattern.Type,
+                description = pattern.Description,
+                qualityScore = pattern.QualityScore,
+                observationCount = pattern.ObservationCount,
+                sourceDesignIds = pattern.SourceDesignIds,
+                htmlStructure = pattern.HtmlStructure,
+                cssStyle = pattern.CssStyle,
+                a2uiJson = pattern.A2uiJson,
+                designTokens = JsonSerializer.Serialize(pattern.DesignTokens),
+                tags = pattern.Tags,
+                learnedAt = pattern.LearnedAt.ToString("o"),
+                lastUpdatedAt = pattern.LastUpdatedAt.ToString("o")
+            });
+        });
+
+        _logger.LogInformation("Stored pattern: {Name} (Score: {Score})", pattern.Name, pattern.QualityScore);
+        return pattern;
+    }
+
+    public async Task<DesignPattern?> GetPatternAsync(string patternId, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = "MATCH (p:DesignPattern {id: $id}) RETURN p";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { id = patternId });
+            if (await cursor.FetchAsync())
+            {
+                return cursor.Current;
+            }
+            return null;
+        });
+
+        return result != null ? MapToDesignPattern(result["p"].As<INode>()) : null;
+    }
+
+    public async Task<List<DesignPattern>> FindSimilarPatternsAsync(string category, List<string> tags, int limit = 10, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (p:DesignPattern)
+            WHERE p.category = $category AND any(tag IN $tags WHERE tag IN p.tags)
+            RETURN p
+            ORDER BY p.qualityScore DESC
+            LIMIT $limit";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { category, tags, limit });
+            return await cursor.ToListAsync(record => MapToDesignPattern(record["p"].As<INode>()));
+        });
+
+        return result;
+    }
+
+    public async Task<List<DesignPattern>> GetTopPatternsAsync(int limit = 50, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (p:DesignPattern)
+            RETURN p
+            ORDER BY p.qualityScore DESC, p.observationCount DESC
+            LIMIT $limit";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { limit });
+            return await cursor.ToListAsync(record => MapToDesignPattern(record["p"].As<INode>()));
+        });
+
+        return result;
+    }
+
+    public async Task IncrementPatternObservationAsync(string patternId, string sourceDesignId, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (p:DesignPattern {id: $id})
+            SET p.observationCount = p.observationCount + 1,
+                p.sourceDesignIds = p.sourceDesignIds + $sourceDesignId,
+                p.lastUpdatedAt = datetime()
+            RETURN p";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new { id = patternId, sourceDesignId });
+        });
+    }
+
+    // ===== FEEDBACK =====
+
+    public async Task<DesignFeedback> StoreFeedbackAsync(DesignFeedback feedback, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            CREATE (f:DesignFeedback {
+                id: $id,
+                designId: $designId,
+                rating: $rating,
+                humanScore: $humanScore,
+                llmScore: $llmScore,
+                mismatch: $mismatch,
+                customName: $customName,
+                providedAt: datetime($providedAt),
+                triggeredEvolution: $triggeredEvolution
+            })
+            WITH f
+            MATCH (d:CapturedDesign {id: $designId})
+            MERGE (f)-[:FEEDBACK_FOR]->(d)
+            RETURN f";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new
+            {
+                id = feedback.Id,
+                designId = feedback.DesignId,
+                rating = feedback.Rating,
+                humanScore = feedback.HumanScore,
+                llmScore = feedback.LlmScore,
+                mismatch = feedback.Mismatch,
+                customName = feedback.CustomName,
+                providedAt = feedback.ProvidedAt.ToString("o"),
+                triggeredEvolution = feedback.TriggeredEvolution
+            });
+        });
+
+        return feedback;
+    }
+
+    public async Task<List<DesignFeedback>> GetRecentFeedbackAsync(int limit = 20, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (f:DesignFeedback)
+            RETURN f
+            ORDER BY f.providedAt DESC
+            LIMIT $limit";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { limit });
+            return await cursor.ToListAsync(record => MapToDesignFeedback(record["f"].As<INode>()));
+        });
+
+        return result;
+    }
+
+    public async Task<List<DesignFeedback>> GetMismatchedFeedbackAsync(double threshold = 2.0, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (f:DesignFeedback)
+            WHERE f.mismatch >= $threshold
+            RETURN f
+            ORDER BY f.mismatch DESC, f.providedAt DESC";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { threshold });
+            return await cursor.ToListAsync(record => MapToDesignFeedback(record["f"].As<INode>()));
+        });
+
+        return result;
+    }
+
+    // ===== MODEL PERFORMANCE =====
+
+    public async Task<ModelPerformance> StoreModelPerformanceAsync(ModelPerformance performance, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MERGE (m:ModelPerformance {model: $model, pageType: $pageType})
+            SET m.averageBias = $averageBias,
+                m.standardDeviation = $standardDeviation,
+                m.accuracy = $accuracy,
+                m.sampleSize = $sampleSize,
+                m.lastUpdated = datetime($lastUpdated)
+            RETURN m";
+
+        await session.ExecuteWriteAsync(async tx =>
+        {
+            await tx.RunAsync(query, new
+            {
+                model = performance.Model,
+                pageType = performance.PageType,
+                averageBias = performance.AverageBias,
+                standardDeviation = performance.StandardDeviation,
+                accuracy = performance.Accuracy,
+                sampleSize = performance.SampleSize,
+                lastUpdated = performance.LastUpdated.ToString("o")
+            });
+        });
+
+        return performance;
+    }
+
+    public async Task<ModelPerformance?> GetModelPerformanceAsync(string model, string pageType, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = "MATCH (m:ModelPerformance {model: $model, pageType: $pageType}) RETURN m";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { model, pageType });
+            if (await cursor.FetchAsync())
+            {
+                return cursor.Current;
+            }
+            return null;
+        });
+
+        return result != null ? MapToModelPerformance(result["m"].As<INode>()) : null;
+    }
+
+    public async Task<List<ModelPerformance>> GetModelPerformanceHistoryAsync(string model, CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+        
+        var query = @"
+            MATCH (m:ModelPerformance {model: $model})
+            RETURN m
+            ORDER BY m.lastUpdated DESC";
+        
+        var result = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query, new { model });
+            return await cursor.ToListAsync(record => MapToModelPerformance(record["m"].As<INode>()));
+        });
+
+        return result;
+    }
+
+    // ===== PROMPTS (Lightning Integration) =====
+
+    public async Task<string?> GetPromptAsync(string promptName, CancellationToken cancellationToken = default)
+    {
+        // TODO: Integrate with Memory Agent Lightning API
+        // For now, return null (prompts will be seeded directly)
+        _logger.LogWarning("GetPromptAsync not yet implemented - Lightning integration needed");
+        return null;
+    }
+
+    public async Task UpdatePromptAsync(string promptName, string newContent, int version, CancellationToken cancellationToken = default)
+    {
+        // TODO: Integrate with Memory Agent Lightning API
+        _logger.LogWarning("UpdatePromptAsync not yet implemented - Lightning integration needed");
+        await Task.CompletedTask;
+    }
+
+    // ===== VECTOR SEARCH (Qdrant Integration) =====
+
+    public async Task StoreDesignEmbeddingAsync(string designId, float[] embedding, Dictionary<string, object> metadata, CancellationToken cancellationToken = default)
+    {
+        // TODO: Integrate with Qdrant
+        _logger.LogWarning("StoreDesignEmbeddingAsync not yet implemented - Qdrant integration needed");
+        await Task.CompletedTask;
+    }
+
+    public async Task<List<string>> FindSimilarDesignsAsync(float[] queryEmbedding, int limit = 10, CancellationToken cancellationToken = default)
+    {
+        // TODO: Integrate with Qdrant
+        _logger.LogWarning("FindSimilarDesignsAsync not yet implemented - Qdrant integration needed");
+        return new List<string>();
+    }
+
+    // ===== MAPPING HELPERS =====
+    
+    private static DateTime? TryGetDateTime(IReadOnlyDictionary<string, object> props, string key)
+    {
+        if (!props.ContainsKey(key) || props[key] == null)
+        {
+            return null;
+        }
+        
+        try
+        {
+            return props[key] is ZonedDateTime zdt 
+                ? zdt.ToDateTimeOffset().UtcDateTime 
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private DesignSource MapToDesignSource(INode node)
+    {
+        var props = node.Properties;
+        return new DesignSource
+        {
+            Id = props["id"].As<string>(),
+            Url = props["url"].As<string>(),
+            Category = props.ContainsKey("category") ? props["category"].As<string?>() : null,
+            TrustScore = props.ContainsKey("trustScore") ? props["trustScore"].As<double>() : 5.0,
+            DiscoveryMethod = props.ContainsKey("discoveryMethod") ? props["discoveryMethod"].As<string>() : "unknown",
+            DiscoveryQuery = props.ContainsKey("discoveryQuery") ? props["discoveryQuery"].As<string?>() : null,
+            DiscoveredAt = props.ContainsKey("discoveredAt") ? props["discoveredAt"].As<ZonedDateTime>().ToDateTimeOffset().UtcDateTime : DateTime.UtcNow,
+            LastCrawledAt = TryGetDateTime(props, "lastCrawledAt"),
+            Status = props.ContainsKey("status") ? props["status"].As<string>() : "pending",
+            Tags = props.ContainsKey("tags") ? props["tags"].As<List<string>>() : new List<string>(),
+            AlreadyEvaluated = props.ContainsKey("alreadyEvaluated") ? props["alreadyEvaluated"].As<bool>() : false,
+            FinalScore = props.ContainsKey("finalScore") ? props["finalScore"].As<double?>() : null,
+            DiscardReason = props.ContainsKey("discardReason") ? props["discardReason"].As<string?>() : null
+        };
+    }
+
+    private CapturedDesign MapToCapturedDesign(INode node)
+    {
+        var props = node.Properties;
+        return new CapturedDesign
+        {
+            Id = props["id"].As<string>(),
+            Url = props["url"].As<string>(),
+            Name = props.ContainsKey("name") ? props["name"].As<string?>() : null,
+            AutoGeneratedName = props.ContainsKey("autoGeneratedName") ? props["autoGeneratedName"].As<string?>() : null,
+            CapturedAt = props.ContainsKey("capturedAt") ? props["capturedAt"].As<ZonedDateTime>().ToDateTimeOffset().UtcDateTime : DateTime.UtcNow,
+            OverallScore = props.ContainsKey("overallScore") ? props["overallScore"].As<double>() : 0,
+            DesignDNA = props.ContainsKey("designDNA") && props["designDNA"] != null ? JsonSerializer.Deserialize<DesignDNA>(props["designDNA"].As<string>()) : null,
+            DetectedSystem = props.ContainsKey("detectedSystem") && props["detectedSystem"] != null ? JsonSerializer.Deserialize<DetectedDesignSystem>(props["detectedSystem"].As<string>()) : null,
+            PassedQualityGate = props.ContainsKey("passedQualityGate") ? props["passedQualityGate"].As<bool>() : false,
+            LeaderboardRank = props.ContainsKey("leaderboardRank") ? props["leaderboardRank"].As<int?>() : null,
+            Tags = props.ContainsKey("tags") ? props["tags"].As<List<string>>() : new List<string>(),
+            HumanRating = props.ContainsKey("humanRating") ? props["humanRating"].As<int?>() : null,
+            HumanRatedAt = TryGetDateTime(props, "humanRatedAt"),
+            ExtractedPatternIds = props.ContainsKey("extractedPatternIds") ? props["extractedPatternIds"].As<List<string>>() : new List<string>()
+        };
+    }
+
+    private PageAnalysis MapToPageAnalysis(INode node)
+    {
+        var props = node.Properties;
+        return new PageAnalysis
+        {
+            Id = props["id"].As<string>(),
+            DesignId = props["designId"].As<string>(),
+            Url = props["url"].As<string>(),
+            PageType = props["pageType"].As<string>(),
+            Screenshots = props.ContainsKey("screenshots") ? JsonSerializer.Deserialize<ScreenshotSet>(props["screenshots"].As<string>()) ?? new ScreenshotSet() : new ScreenshotSet(),
+            ExtractedHtml = props.ContainsKey("extractedHtml") ? props["extractedHtml"].As<string?>() : null,
+            ExtractedCss = props.ContainsKey("extractedCss") ? props["extractedCss"].As<string?>() : null,
+            AnalyzedAt = props.ContainsKey("analyzedAt") ? props["analyzedAt"].As<ZonedDateTime>().ToDateTimeOffset().UtcDateTime : DateTime.UtcNow,
+            AnalysisModel = props.ContainsKey("analysisModel") ? props["analysisModel"].As<string>() : string.Empty,
+            CategoryScores = props.ContainsKey("categoryScores") ? JsonSerializer.Deserialize<Dictionary<string, double>>(props["categoryScores"].As<string>()) ?? new Dictionary<string, double>() : new Dictionary<string, double>(),
+            OverallPageScore = props.ContainsKey("overallPageScore") ? props["overallPageScore"].As<double>() : 0,
+            PageWeight = props.ContainsKey("pageWeight") ? props["pageWeight"].As<double>() : 1.0,
+            Strengths = props.ContainsKey("strengths") ? props["strengths"].As<List<string>>() : new List<string>(),
+            Weaknesses = props.ContainsKey("weaknesses") ? props["weaknesses"].As<List<string>>() : new List<string>()
+        };
+    }
+
+    private DesignPattern MapToDesignPattern(INode node)
+    {
+        var props = node.Properties;
+        return new DesignPattern
+        {
+            Id = props["id"].As<string>(),
+            Name = props["name"].As<string>(),
+            Category = props.ContainsKey("category") ? props["category"].As<string>() : string.Empty,
+            Type = props.ContainsKey("type") ? props["type"].As<string>() : string.Empty,
+            Description = props.ContainsKey("description") ? props["description"].As<string>() : string.Empty,
+            QualityScore = props.ContainsKey("qualityScore") ? props["qualityScore"].As<double>() : 0,
+            ObservationCount = props.ContainsKey("observationCount") ? props["observationCount"].As<int>() : 1,
+            SourceDesignIds = props.ContainsKey("sourceDesignIds") ? props["sourceDesignIds"].As<List<string>>() : new List<string>(),
+            HtmlStructure = props.ContainsKey("htmlStructure") ? props["htmlStructure"].As<string?>() : null,
+            CssStyle = props.ContainsKey("cssStyle") ? props["cssStyle"].As<string?>() : null,
+            A2uiJson = props.ContainsKey("a2uiJson") ? props["a2uiJson"].As<string?>() : null,
+            DesignTokens = props.ContainsKey("designTokens") ? JsonSerializer.Deserialize<Dictionary<string, string>>(props["designTokens"].As<string>()) ?? new Dictionary<string, string>() : new Dictionary<string, string>(),
+            Tags = props.ContainsKey("tags") ? props["tags"].As<List<string>>() : new List<string>(),
+            LearnedAt = props.ContainsKey("learnedAt") ? props["learnedAt"].As<ZonedDateTime>().ToDateTimeOffset().UtcDateTime : DateTime.UtcNow,
+            LastUpdatedAt = props.ContainsKey("lastUpdatedAt") ? props["lastUpdatedAt"].As<ZonedDateTime>().ToDateTimeOffset().UtcDateTime : DateTime.UtcNow
+        };
+    }
+
+    private DesignFeedback MapToDesignFeedback(INode node)
+    {
+        var props = node.Properties;
+        return new DesignFeedback
+        {
+            Id = props["id"].As<string>(),
+            DesignId = props["designId"].As<string>(),
+            Rating = props["rating"].As<int>(),
+            HumanScore = props["humanScore"].As<double>(),
+            LlmScore = props["llmScore"].As<double>(),
+            Mismatch = props["mismatch"].As<double>(),
+            CustomName = props.ContainsKey("customName") ? props["customName"].As<string?>() : null,
+            ProvidedAt = props.ContainsKey("providedAt") ? props["providedAt"].As<ZonedDateTime>().ToDateTimeOffset().UtcDateTime : DateTime.UtcNow,
+            TriggeredEvolution = props.ContainsKey("triggeredEvolution") ? props["triggeredEvolution"].As<bool>() : false
+        };
+    }
+
+    private ModelPerformance MapToModelPerformance(INode node)
+    {
+        var props = node.Properties;
+        return new ModelPerformance
+        {
+            Model = props["model"].As<string>(),
+            PageType = props["pageType"].As<string>(),
+            AverageBias = props["averageBias"].As<double>(),
+            StandardDeviation = props["standardDeviation"].As<double>(),
+            Accuracy = props["accuracy"].As<double>(),
+            SampleSize = props["sampleSize"].As<int>(),
+            LastUpdated = props.ContainsKey("lastUpdated") ? props["lastUpdated"].As<ZonedDateTime>().ToDateTimeOffset().UtcDateTime : DateTime.UtcNow
+        };
+    }
+}
+

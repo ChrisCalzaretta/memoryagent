@@ -274,8 +274,14 @@ services:
       - Ollama__Url=http://10.0.2.20:11434
       - Ollama__Port=11434
       - Ollama__DefaultModel=deepseek-coder-v2:16b
+      # 🔌 Neo4j connection for design intelligence storage
+      - ConnectionStrings__Neo4j=bolt://memory-agent-neo4j:7687
+      - Neo4jCredentials__Username=neo4j
+      - Neo4jCredentials__Password=memoryagent
     depends_on:
       mcp-server:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     networks:
       - memory-net

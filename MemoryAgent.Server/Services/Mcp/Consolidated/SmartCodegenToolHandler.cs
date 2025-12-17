@@ -1099,9 +1099,11 @@ public class SmartCodegenToolHandler : IMcpToolHandler
                 "vite", "typescript", "eslint", "prettier", "jest", "mocha"
             },
             "csharp" or "c#" => new[] { 
-                "Newtonsoft.Json", "Serilog", "AutoMapper", "Dapper", "MediatR",
-                "FluentValidation", "Moq", "xunit", "NUnit", "Polly", "Refit",
-                "MassTransit", "Hangfire", "Swashbuckle", "NLog"
+                // NuGet packages - check by prefix since imports can have subnamespaces (e.g., Xunit.Sdk)
+                "Newtonsoft", "Serilog", "AutoMapper", "Dapper", "MediatR",
+                "FluentValidation", "Moq", "Xunit", "xunit", "NUnit", "Polly", "Refit",
+                "MassTransit", "Hangfire", "Swashbuckle", "NLog", "Microsoft.Extensions",
+                "EntityFramework", "StackExchange", "MongoDB", "Npgsql", "MySql"
             },
             "dart" or "flutter" => new[] {
                 "provider", "bloc", "riverpod", "get", "dio", "http", "shared_preferences",
@@ -1110,6 +1112,15 @@ public class SmartCodegenToolHandler : IMcpToolHandler
             _ => Array.Empty<string>()
         };
         
+        // For C#, check if module STARTS WITH a known package (handles subnamespaces like Xunit.Sdk)
+        if (language is "csharp" or "c#")
+        {
+            return commonModules.Any(pkg => 
+                module.StartsWith(pkg, StringComparison.OrdinalIgnoreCase) ||
+                module.Equals(pkg, StringComparison.OrdinalIgnoreCase));
+        }
+        
+        // For other languages, exact match
         return commonModules.Contains(module, StringComparer.OrdinalIgnoreCase);
     }
 

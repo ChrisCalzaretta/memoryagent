@@ -19,7 +19,7 @@ public class GenerateCodeRequest : IValidatableObject
     /// Target programming language (e.g., "python", "csharp", "typescript", "javascript", "go", "rust")
     /// If not specified, will be auto-detected from workspace or default to C#
     /// </summary>
-    [RegularExpression(@"^(python|csharp|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart|sql|html|css|shell|auto)?$",
+    [RegularExpression(@"^(python|csharp|blazor|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart|flutter|sql|html|css|shell|auto)?$",
         ErrorMessage = "Invalid language specified")]
     public string? Language { get; set; }
 
