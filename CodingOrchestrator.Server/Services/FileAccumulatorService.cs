@@ -19,6 +19,12 @@ public interface IFileAccumulatorService
     IReadOnlyDictionary<string, FileChange> GetAccumulatedFiles();
     
     /// <summary>
+    /// Get accumulated files filtered to exclude build artifacts (bin/, obj/, .vs/)
+    /// Use this when sending files to agents to avoid massive payloads
+    /// </summary>
+    IReadOnlyDictionary<string, FileChange> GetAccumulatedFilesFiltered();
+    
+    /// <summary>
     /// Get files as ExecutionFile list for Docker execution
     /// </summary>
     List<ExecutionFile> GetExecutionFiles();
@@ -249,6 +255,53 @@ public class FileAccumulatorService : IFileAccumulatorService
     }
 
     public IReadOnlyDictionary<string, FileChange> GetAccumulatedFiles() => _accumulatedFiles;
+    
+    public IReadOnlyDictionary<string, FileChange> GetAccumulatedFilesFiltered()
+    {
+        // Filter out build artifacts that bloat payloads (bin/, obj/, .vs/, node_modules/)
+        var filtered = _accumulatedFiles
+            .Where(kvp => !IsBuildArtifact(kvp.Key))
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
+        
+        var excludedCount = _accumulatedFiles.Count - filtered.Count;
+        if (excludedCount > 0)
+        {
+            _logger.LogInformation("🚫 Filtered out {Count} build artifacts (bin/obj/.vs) from accumulated files", excludedCount);
+        }
+        
+        return filtered;
+    }
+    
+    /// <summary>
+    /// Check if a file path is a build artifact that should be excluded
+    /// </summary>
+    private static bool IsBuildArtifact(string path)
+    {
+        var normalizedPath = path.Replace('\\', '/').ToLowerInvariant();
+        
+        // Exclude folders
+        if (normalizedPath.Contains("/bin/") || normalizedPath.StartsWith("bin/") ||
+            normalizedPath.Contains("/obj/") || normalizedPath.StartsWith("obj/") ||
+            normalizedPath.Contains("/.vs/") || normalizedPath.StartsWith(".vs/") ||
+            normalizedPath.Contains("/node_modules/") || normalizedPath.StartsWith("node_modules/") ||
+            normalizedPath.Contains("/.git/") || normalizedPath.StartsWith(".git/"))
+        {
+            return true;
+        }
+        
+        // Exclude common build artifacts by file pattern
+        var fileName = Path.GetFileName(normalizedPath);
+        if (fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".cache", StringComparison.OrdinalIgnoreCase) ||
+            fileName.Contains(".nuget.", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        
+        return false;
+    }
 
     public List<ExecutionFile> GetExecutionFiles()
     {

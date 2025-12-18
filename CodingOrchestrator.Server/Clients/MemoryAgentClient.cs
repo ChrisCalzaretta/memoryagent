@@ -782,10 +782,27 @@ public class MemoryAgentClient : IMemoryAgentClient
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 var jsonrpcResponse = JsonSerializer.Deserialize<JsonRpcResponse>(content, JsonOptions);
                 
+                // Check if response has an error (method not found, etc.)
+                if (jsonrpcResponse?.Error != null)
+                {
+                    _logger.LogDebug("Design context not available: {Error}", jsonrpcResponse.Error.Message);
+                    return null;
+                }
+                
                 if (jsonrpcResponse?.Result?.Content?.FirstOrDefault()?.Text != null)
                 {
-                    var design = JsonSerializer.Deserialize<DesignContext>(
-                        jsonrpcResponse.Result.Content.First().Text, JsonOptions);
+                    var text = jsonrpcResponse.Result.Content.First().Text;
+                    
+                    // Check if text is an error message or valid JSON
+                    if (text.StartsWith("Error", StringComparison.OrdinalIgnoreCase) || 
+                        !text.TrimStart().StartsWith("{"))
+                    {
+                        _logger.LogDebug("Design context returned error or non-JSON: {Text}", 
+                            text.Length > 100 ? text.Substring(0, 100) + "..." : text);
+                        return null;
+                    }
+                    
+                    var design = JsonSerializer.Deserialize<DesignContext>(text, JsonOptions);
                     
                     if (design != null)
                     {

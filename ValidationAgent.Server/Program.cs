@@ -4,8 +4,28 @@ using ValidationAgent.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel for large requests (multi-file validation + 76+ accumulated files!)
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 2_000_000_000; // 2GB for accumulated files (handles any project size)
+    options.Limits.MaxRequestBufferSize = 2_000_000_000;
+    options.Limits.MaxRequestLineSize = 16384;
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(2); // Allow time for large uploads
+});
+
 // Add services
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.MaxDepth = 64; // Support deeply nested structures
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true; // Accept both camelCase and PascalCase
+    });
+
+// Configure form options for large payloads
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 2_000_000_000; // Match Kestrel limit (2GB)
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 

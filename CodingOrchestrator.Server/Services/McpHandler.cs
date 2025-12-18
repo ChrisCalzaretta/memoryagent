@@ -59,7 +59,7 @@ public class McpHandler : IMcpHandler
                         ["maxIterations"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Maximum coding/validation iterations. Default: 100", ["default"] = 100 },
                         ["minValidationScore"] = new Dictionary<string, object> { ["type"] = "integer", ["description"] = "Minimum score to pass validation (default: 8)", ["default"] = 8 },
                         ["validationMode"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Validation strictness: 'standard' (default, relaxed - only bugs/security) or 'enterprise' (strict - XML docs, CancellationToken, DI, etc.)", ["default"] = "standard", ["enum"] = new[] { "standard", "enterprise" } },
-                        ["autoWriteFiles"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Automatically write generated files to workspace (default: false). When false, files are returned for manual review.", ["default"] = false }
+                        ["autoWriteFiles"] = new Dictionary<string, object> { ["type"] = "boolean", ["description"] = "Automatically write generated files to workspace (default: true). Files sync incrementally with job storage backup. Set to false for manual-only extraction.", ["default"] = true }
                     },
                     ["required"] = new[] { "task" }
                 }
@@ -100,6 +100,21 @@ public class McpHandler : IMcpHandler
                 {
                     ["type"] = "object",
                     ["properties"] = new Dictionary<string, object>()
+                }
+            },
+            new Dictionary<string, object>
+            {
+                ["name"] = "get_generated_files",
+                ["description"] = "Extract and write generated files from a completed job to a specified directory. Files are automatically placed in a subdirectory named after the jobId (e.g., outputPath/job_xxx/). Works for both successful and failed jobs (gets all accumulated files).",
+                ["inputSchema"] = new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["properties"] = new Dictionary<string, object>
+                    {
+                        ["jobId"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "The job ID to extract files from" },
+                        ["outputPath"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Parent directory path. Files will be written to outputPath/jobId/ (e.g., 'E:\\GitHub\\MyProjects' creates 'E:\\GitHub\\MyProjects\\job_xxx\\')" }
+                    },
+                    ["required"] = new[] { "jobId", "outputPath" }
                 }
             },
             
@@ -220,6 +235,7 @@ public class McpHandler : IMcpHandler
             "get_task_status" => HandleGetTaskStatus(arguments),
             "cancel_task" => HandleCancelTask(arguments),
             "list_tasks" => HandleListTasks(),
+            "get_generated_files" => await HandleGetGeneratedFilesAsync(arguments, cancellationToken),
             
             // Design tools
             "design_questionnaire" => await HandleDesignQuestionnaireAsync(cancellationToken),
@@ -267,14 +283,14 @@ public class McpHandler : IMcpHandler
             MaxIterations = GetIntArg(arguments, "maxIterations", 100),  // Default 100
             MinValidationScore = GetIntArg(arguments, "minValidationScore", 8),
             ValidationMode = GetStringArg(arguments, "validationMode", "standard"), // "standard" or "enterprise"
-            AutoWriteFiles = GetBoolArg(arguments, "autoWriteFiles", false)
+            AutoWriteFiles = GetBoolArg(arguments, "autoWriteFiles", true)
         };
 
         var jobId = await _jobManager.StartJobAsync(request, cancellationToken);
         
-        var autoWriteNote = request.AutoWriteFiles 
-            ? "✅ **Auto-write enabled** - Files will be written to workspace automatically"
-            : "📋 **Manual mode** - Files will be returned for you to review and create";
+        var autoWriteNote = request.AutoWriteFiles
+            ? "✅ **Auto-write enabled** - Files sync to workspace incrementally (with job storage backup)"
+            : "📋 **Manual mode** - Files stored in job persistence only, manual extraction needed";
 
         var languageDisplay = GetLanguageDisplayName(request.Language);
 
@@ -710,6 +726,98 @@ public class McpHandler : IMcpHandler
         }
 
         return result.ToString();
+    }
+
+    private async Task<string> HandleGetGeneratedFilesAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken)
+    {
+        var jobId = GetStringArg(arguments, "jobId");
+        var outputPath = GetStringArg(arguments, "outputPath");
+        
+        if (string.IsNullOrEmpty(jobId))
+            return "❌ Error: jobId is required";
+        
+        if (string.IsNullOrEmpty(outputPath))
+            return "❌ Error: outputPath is required";
+        
+        var status = _jobManager.GetJobStatus(jobId);
+        if (status == null)
+            return $"❌ Error: Job '{jobId}' not found";
+        
+        // Get files from result (success) or partial result (failure)
+        var files = status.Status == AgentContracts.Responses.TaskState.Complete && status.Result != null
+            ? status.Result.Files
+            : status.Error?.PartialResult?.Files;
+        
+        if (files == null || !files.Any())
+            return $"❌ Error: No files found in job '{jobId}'";
+        
+        try
+        {
+            // Translate path from Windows to container if needed
+            var translatedPath = _pathTranslation.TranslateToContainerPath(outputPath);
+            
+            // Append jobId as subdirectory name for better organization
+            var finalPath = Path.Combine(translatedPath, jobId);
+            
+            // Create output directory
+            Directory.CreateDirectory(finalPath);
+            
+            var filesWritten = 0;
+            var errors = new List<string>();
+            
+            foreach (var file in files)
+            {
+                try
+                {
+                    var filePath = Path.Combine(finalPath, file.Path);
+                    var fileDir = Path.GetDirectoryName(filePath);
+                    
+                    if (!string.IsNullOrEmpty(fileDir))
+                    {
+                        Directory.CreateDirectory(fileDir);
+                    }
+                    
+                    await File.WriteAllTextAsync(filePath, file.Content ?? "", cancellationToken);
+                    filesWritten++;
+                    _logger.LogInformation("✅ Wrote file: {Path}", filePath);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Failed to write {file.Path}: {ex.Message}");
+                    _logger.LogError(ex, "Failed to write file {Path}", file.Path);
+                }
+            }
+            
+            var result = new System.Text.StringBuilder();
+            result.AppendLine($"# ✅ Files Extracted from Job: {jobId}");
+            result.AppendLine();
+            result.AppendLine($"**Output Path:** `{Path.Combine(outputPath, jobId)}`");
+            result.AppendLine($"**Files Written:** {filesWritten}/{files.Count}");
+            result.AppendLine();
+            
+            if (errors.Any())
+            {
+                result.AppendLine("## ⚠️ Errors:");
+                foreach (var error in errors)
+                {
+                    result.AppendLine($"- {error}");
+                }
+                result.AppendLine();
+            }
+            
+            result.AppendLine("## 📁 Files Written:");
+            foreach (var file in files)
+            {
+                result.AppendLine($"- ✅ `{file.Path}`");
+            }
+            
+            return result.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to extract files from job {JobId}", jobId);
+            return $"❌ Error: Failed to write files - {ex.Message}";
+        }
     }
 
     private static string GetStringArg(Dictionary<string, object> args, string key, string defaultValue = "")

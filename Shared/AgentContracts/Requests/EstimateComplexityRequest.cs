@@ -11,13 +11,13 @@ public class EstimateComplexityRequest
     /// The coding task to estimate
     /// </summary>
     [Required(ErrorMessage = "Task description is required")]
-    [StringLength(10000, MinimumLength = 5, ErrorMessage = "Task must be between 5 and 10000 characters")]
+    [StringLength(500000, MinimumLength = 5, ErrorMessage = "Task must be between 5 and 500000 characters")]
     public required string Task { get; set; }
     
     /// <summary>
     /// Optional language hint
     /// </summary>
-    [RegularExpression(@"^(python|csharp|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart)?$",
+    [RegularExpression(@"^(python|csharp|blazor|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart|flutter|sql|html|css|shell|auto)?$",
         ErrorMessage = "Invalid language specified")]
     public string? Language { get; set; }
     

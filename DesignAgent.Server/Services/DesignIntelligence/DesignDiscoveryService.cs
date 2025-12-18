@@ -739,13 +739,19 @@ Return concise JSON with your evaluation.";
 
                 return new SourceEvaluation
                 {
-                    IsDesignWorthy = root.TryGetProperty("isDesignWorthy", out var worthy) && worthy.GetBoolean(),
-                    TrustScore = root.TryGetProperty("trustScore", out var trust) ? trust.GetDouble() : 5.0,
-                    Category = root.TryGetProperty("category", out var cat) ? cat.GetString() : null,
-                    Tags = root.TryGetProperty("tags", out var tags) 
+                    IsDesignWorthy = root.TryGetProperty("isDesignWorthy", out var worthy) && worthy.ValueKind == JsonValueKind.True,
+                    TrustScore = root.TryGetProperty("trustScore", out var trust) && trust.ValueKind == JsonValueKind.Number 
+                        ? trust.GetDouble() 
+                        : 5.0,
+                    Category = root.TryGetProperty("category", out var cat) && cat.ValueKind == JsonValueKind.String 
+                        ? cat.GetString() 
+                        : null,
+                    Tags = root.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Array
                         ? tags.EnumerateArray().Select(t => t.GetString() ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList()
                         : new List<string>(),
-                    Reason = root.TryGetProperty("reason", out var reason) ? reason.GetString() ?? "" : ""
+                    Reason = root.TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String 
+                        ? reason.GetString() ?? "" 
+                        : ""
                 };
             }
         }

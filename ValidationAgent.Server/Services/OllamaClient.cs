@@ -361,6 +361,82 @@ public class OllamaClient : IOllamaClient
             return new List<string>();
         }
     }
+
+    public async Task<OllamaResponse> GenerateWithVisionAsync(
+        string model,
+        string prompt,
+        List<string> images,
+        string? systemPrompt = null,
+        int? port = null,
+        CancellationToken cancellationToken = default)
+    {
+        var actualPort = port ?? _defaultPort;
+        var url = $"{_baseHost}:{actualPort}/api/generate";
+        
+        var optimalContext = await GetOptimalContextSizeAsync(model, actualPort, cancellationToken, "validation");
+        
+        _logger.LogInformation("Calling Ollama vision generate on port {Port} with model {Model} ({ImageCount} images)", 
+            actualPort, model, images.Count);
+        
+        var request = new OllamaGenerateRequest
+        {
+            Model = model,
+            Prompt = prompt,
+            System = systemPrompt,
+            Images = images,
+            Stream = false,
+            KeepAlive = -1,
+            Options = new OllamaOptions
+            {
+                NumCtx = optimalContext
+            }
+        };
+
+        try
+        {
+            var json = JsonSerializer.Serialize(request, JsonOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync(url, content, cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Ollama vision error: {StatusCode} - {Body}", response.StatusCode, responseBody);
+                return new OllamaResponse 
+                { 
+                    Response = "", 
+                    Success = false, 
+                    Error = $"HTTP {response.StatusCode}: {responseBody}" 
+                };
+            }
+
+            var ollamaResponse = JsonSerializer.Deserialize<OllamaGenerateResponse>(responseBody, JsonOptions);
+            
+            return new OllamaResponse
+            {
+                Response = ollamaResponse?.Response ?? "",
+                Success = true,
+                TotalDurationMs = (int)((ollamaResponse?.TotalDuration ?? 0) / 1_000_000),
+                PromptTokens = ollamaResponse?.PromptEvalCount ?? 0,
+                ResponseTokens = ollamaResponse?.EvalCount ?? 0
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Ollama vision on port {Port}", actualPort);
+            return new OllamaResponse 
+            { 
+                Response = "", 
+                Success = false, 
+                Error = ex.Message 
+            };
+        }
+    }
 }
 
 #region Ollama API DTOs
@@ -370,6 +446,7 @@ internal class OllamaGenerateRequest
     public required string Model { get; set; }
     public required string Prompt { get; set; }
     public string? System { get; set; }
+    public List<string>? Images { get; set; }
     public bool Stream { get; set; }
     [JsonPropertyName("keep_alive")]
     public int KeepAlive { get; set; }

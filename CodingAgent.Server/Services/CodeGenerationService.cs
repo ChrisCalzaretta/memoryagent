@@ -22,6 +22,7 @@ public class CodeGenerationService : ICodeGenerationService
     private readonly IModelOrchestrator _modelOrchestrator;
     private readonly ILlmModelSelector? _llmModelSelector;
     private readonly IAnthropicClient? _anthropicClient;
+    private readonly IClaudeRateLimitTracker? _rateLimitTracker;
     private readonly ILogger<CodeGenerationService> _logger;
     
     /// <summary>
@@ -105,7 +106,8 @@ public class CodeGenerationService : ICodeGenerationService
         IModelOrchestrator modelOrchestrator,
         ILogger<CodeGenerationService> logger,
         ILlmModelSelector? llmModelSelector = null,       // Optional - graceful degradation
-        IAnthropicClient? anthropicClient = null)         // Optional - cloud code gen
+        IAnthropicClient? anthropicClient = null,         // Optional - cloud code gen
+        IClaudeRateLimitTracker? rateLimitTracker = null) // Optional - rate limit tracking
     {
         _promptBuilder = promptBuilder;
         _ollamaClient = ollamaClient;
@@ -113,11 +115,12 @@ public class CodeGenerationService : ICodeGenerationService
         _logger = logger;
         _llmModelSelector = llmModelSelector;
         _anthropicClient = anthropicClient;
+        _rateLimitTracker = rateLimitTracker;
         
         if (_anthropicClient?.IsConfigured == true)
         {
-            _logger.LogInformation("CODE GENERATION: Using Claude ({Model}) for code generation", 
-                _anthropicClient.ModelId);
+            _logger.LogInformation("CODE GENERATION: Using Claude ({Model}) for code generation (rate limit tracking: {Tracking})", 
+                _anthropicClient.ModelId, rateLimitTracker != null ? "enabled" : "disabled");
         }
         else
         {

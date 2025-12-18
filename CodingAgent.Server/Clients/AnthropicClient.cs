@@ -2,6 +2,9 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Polly;
+using Polly.Retry;
+using CodingAgent.Server.Services;
 
 namespace CodingAgent.Server.Clients;
 
@@ -28,8 +31,13 @@ public class AnthropicClient : IAnthropicClient
     private readonly string? _apiKey;
     private readonly string? _modelId;
     private readonly string? _premiumModelId;
+    private readonly IClaudeRateLimitTracker? _rateLimitTracker;
     private const string BaseUrl = "https://api.anthropic.com/v1/messages";
     private const string ApiVersion = "2023-06-01";
+    
+    // 🔒 Global semaphore: ONE Claude API call at a time across ALL jobs/requests
+    // Prevents token racing when multiple jobs run simultaneously
+    private static readonly SemaphoreSlim _claudeSemaphore = new(1, 1);
     
     // Usage tracking
     private readonly AnthropicUsageStats _usageStats = new();
@@ -53,10 +61,11 @@ public class AnthropicClient : IAnthropicClient
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public AnthropicClient(HttpClient httpClient, ILogger<AnthropicClient> logger, IConfiguration config)
+    public AnthropicClient(HttpClient httpClient, ILogger<AnthropicClient> logger, IConfiguration config, IClaudeRateLimitTracker? rateLimitTracker = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _rateLimitTracker = rateLimitTracker;
         
         // Read from environment variables (set in docker-compose or system)
         _apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") 
@@ -69,7 +78,8 @@ public class AnthropicClient : IAnthropicClient
         
         if (!string.IsNullOrEmpty(_apiKey))
         {
-            _logger.LogInformation("[CLAUDE] Configured: {Model}", _modelId);
+            _logger.LogInformation("[CLAUDE] Configured: {Model} (rate limit tracking: {Enabled})", 
+                _modelId, rateLimitTracker != null ? "enabled" : "disabled");
             if (!string.IsNullOrEmpty(_premiumModelId))
             {
                 _logger.LogInformation("[CLAUDE] Premium fallback: {PremiumModel}", _premiumModelId);
@@ -110,10 +120,28 @@ public class AnthropicClient : IAnthropicClient
             _logger.LogInformation("[CLAUDE-PREMIUM] Escalating to premium model: {Model}", modelToUse);
         }
 
+        // Haiku has 4096 token limit, Sonnet/Opus have 8192
+        var maxTokens = modelToUse.Contains("haiku", StringComparison.OrdinalIgnoreCase) ? 4096 : 8192;
+        
+        // 📊 Estimate tokens (rough: 4 chars per token)
+        var estimatedInputTokens = (systemPrompt.Length + userPrompt.Length) / 4;
+        
+        // 🚦 Check rate limits BEFORE making request
+        if (_rateLimitTracker != null)
+        {
+            var (shouldWait, waitMs, reason) = _rateLimitTracker.ShouldThrottle(estimatedInputTokens + maxTokens);
+            if (shouldWait)
+            {
+                _logger.LogWarning("🚦 Rate limit throttle: {Reason}. Waiting {WaitMs}ms...", reason, waitMs);
+                await Task.Delay(waitMs, ct);
+                _logger.LogInformation("✅ Rate limit wait complete, proceeding with request");
+            }
+        }
+        
         var requestBody = new AnthropicRequest
         {
             Model = modelToUse,
-            MaxTokens = 8192,
+            MaxTokens = maxTokens,
             System = systemPrompt,
             Messages = new[]
             {
@@ -129,23 +157,94 @@ public class AnthropicClient : IAnthropicClient
         request.Headers.Add("x-api-key", _apiKey);
         request.Headers.Add("anthropic-version", ApiVersion);
 
-        _logger.LogInformation("[CLAUDE] Calling {Model} ({PromptLen} chars prompt){Premium}", 
-            modelToUse, userPrompt.Length, usePremium ? " [PREMIUM]" : "");
-        var startTime = DateTime.UtcNow;
-
+        // 🔒 WAIT FOR GLOBAL SEMAPHORE: Only ONE Claude call at a time
+        // This prevents multiple jobs from racing for tokens
+        _logger.LogInformation("[CLAUDE] Waiting for Claude semaphore...");
+        await _claudeSemaphore.WaitAsync(ct);
+        
         try
         {
-            var response = await _httpClient.SendAsync(request, ct);
-            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogInformation("[CLAUDE] 🚀 Acquired semaphore! Calling {Model} ({PromptLen} chars prompt, ~{EstTokens} tokens){Premium}", 
+                modelToUse, userPrompt.Length, estimatedInputTokens, usePremium ? " [PREMIUM]" : "");
+            var startTime = DateTime.UtcNow;
 
+            // 🔄 Polly retry policy for rate limits - will wait and retry up to 4 times (30s, 60s, 90s, 120s)
+            var retryPolicy = Policy
+                .HandleResult<(HttpResponseMessage Response, string Body)>(result => 
+                    result.Response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                .Or<HttpRequestException>(ex => 
+                    ex.Message.Contains("TooManyRequests") || 
+                    ex.Message.Contains("rate_limit_error"))
+                .WaitAndRetryAsync(
+                    retryCount: 4, // 4 retries: 30s, 60s, 90s, 120s (ensures we get past full rate limit window)
+                    sleepDurationProvider: (retryAttempt, result, context) =>
+                    {
+                        // Try to get reset time from response
+                        DateTime? resetAt = null;
+                        var response = result?.Result.Response;
+                        
+                        if (response?.Headers.TryGetValues("retry-after", out var retryAfterValues) == true)
+                        {
+                            if (int.TryParse(retryAfterValues.FirstOrDefault(), out var retrySeconds))
+                            {
+                                resetAt = DateTime.UtcNow.AddSeconds(retrySeconds);
+                            }
+                        }
+                        
+                        // Record the rate limit hit
+                        if (_rateLimitTracker != null)
+                        {
+                            _rateLimitTracker.RecordRateLimitHit(resetAt);
+                        }
+                        
+                        // Wait: either until reset or exponential backoff (30s, 60s, 90s, 120s)
+                        var waitTime = resetAt.HasValue 
+                            ? resetAt.Value - DateTime.UtcNow 
+                            : TimeSpan.FromSeconds(30 * retryAttempt);
+                        
+                        var cappedWait = TimeSpan.FromMilliseconds(Math.Max(1000, Math.Min(waitTime.TotalMilliseconds, 150000))); // Cap at 150s
+                        
+                        _logger.LogWarning("🚦 Rate limit hit (attempt {Attempt}/4), waiting {Wait}s before retry...", 
+                            retryAttempt, (int)cappedWait.TotalSeconds);
+                        
+                        return cappedWait;
+                    },
+                    onRetryAsync: async (result, timespan, retryAttempt, context) =>
+                    {
+                        _logger.LogInformation("🔄 Retry {Attempt}: Waited {Wait}s, calling Claude again...", 
+                            retryAttempt, (int)timespan.TotalSeconds);
+                        await Task.CompletedTask;
+                    });
+
+            // Execute with retry policy
+            var (response, responseBody) = await retryPolicy.ExecuteAsync(async () =>
+            {
+                var resp = await _httpClient.SendAsync(request, ct);
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                
+                if (resp.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    // Return result for Polly to evaluate (will trigger retry)
+                    return (resp, body);
+                }
+                
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _logger.LogError("Anthropic API error: {Status} - {Body}", resp.StatusCode, body);
+                    throw new HttpRequestException($"Anthropic API error: {resp.StatusCode} - {body}");
+                }
+                
+                return (resp, body);
+            });
+            
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("Anthropic API error: {Status} - {Body}", response.StatusCode, responseBody);
+                _logger.LogError("Anthropic API error after retries: {Status} - {Body}", response.StatusCode, responseBody);
                 throw new HttpRequestException($"Anthropic API error: {response.StatusCode} - {responseBody}");
             }
 
-            var result = JsonSerializer.Deserialize<AnthropicApiResponse>(responseBody, JsonOptions);
-            if (result == null)
+            var anthropicResult = JsonSerializer.Deserialize<AnthropicApiResponse>(responseBody, JsonOptions);
+            if (anthropicResult == null)
             {
                 throw new InvalidOperationException("Failed to parse Anthropic response");
             }
@@ -155,6 +254,7 @@ public class AnthropicClient : IAnthropicClient
             // Extract rate limit info from headers
             int? tokensRemaining = null;
             int? requestsRemaining = null;
+            DateTime? resetAt = null;
             
             if (response.Headers.TryGetValues("anthropic-ratelimit-tokens-remaining", out var tokenValues))
             {
@@ -166,10 +266,15 @@ public class AnthropicClient : IAnthropicClient
                 if (int.TryParse(reqValues.FirstOrDefault(), out var reqs))
                     requestsRemaining = reqs;
             }
+            if (response.Headers.TryGetValues("anthropic-ratelimit-reset", out var resetValues))
+            {
+                if (DateTime.TryParse(resetValues.FirstOrDefault(), out var reset))
+                    resetAt = reset;
+            }
 
             // Calculate cost
-            var inputTokens = result.Usage?.InputTokens ?? 0;
-            var outputTokens = result.Usage?.OutputTokens ?? 0;
+            var inputTokens = anthropicResult.Usage?.InputTokens ?? 0;
+            var outputTokens = anthropicResult.Usage?.OutputTokens ?? 0;
             var cost = CalculateCost(_modelId!, inputTokens, outputTokens);
 
             // Update usage stats
@@ -181,8 +286,14 @@ public class AnthropicClient : IAnthropicClient
                 _usageStats.TotalCost += cost;
                 _usageStats.LastRequestAt = DateTime.UtcNow;
             }
+            
+            // 📊 Record usage in rate limit tracker
+            if (_rateLimitTracker != null)
+            {
+                _rateLimitTracker.RecordUsage(inputTokens, outputTokens, tokensRemaining, resetAt);
+            }
 
-            var responseText = result.Content?.FirstOrDefault()?.Text ?? "";
+            var responseText = anthropicResult.Content?.FirstOrDefault()?.Text ?? "";
             
             _logger.LogInformation(
                 "☁️ Claude response: {OutputLen} chars, {InputTokens}+{OutputTokens} tokens, ${Cost:F4}, {Duration}ms",
@@ -191,20 +302,26 @@ public class AnthropicClient : IAnthropicClient
             return new AnthropicResponse
             {
                 Content = responseText,
-                Model = result.Model ?? _modelId!,
+                Model = anthropicResult.Model ?? _modelId!,
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
                 Cost = cost,
                 DurationMs = (int)duration.TotalMilliseconds,
                 TokensRemaining = tokensRemaining,
                 RequestsRemaining = requestsRemaining,
-                StopReason = result.StopReason
+                StopReason = anthropicResult.StopReason
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Anthropic API call failed");
             throw;
+        }
+        finally
+        {
+            // 🔓 RELEASE SEMAPHORE: Let next Claude call proceed
+            _claudeSemaphore.Release();
+            _logger.LogInformation("[CLAUDE] ✅ Released semaphore");
         }
     }
 

@@ -98,6 +98,12 @@ builder.Services.AddHttpClient<IDesignAgentClient, DesignAgentClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 }).AddPolicyHandler(combinedPolicy);
 
+// 🧠 Ollama Client - Local LLM for file summarization (saves Claude tokens!)
+builder.Services.AddHttpClient<AgentContracts.Services.IOllamaClient, OllamaClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60); // Summarization can take time
+});
+
 // 🐳 Configure Docker Execution settings
 builder.Services.Configure<DockerExecutionConfig>(
     builder.Configuration.GetSection("DockerExecution"));

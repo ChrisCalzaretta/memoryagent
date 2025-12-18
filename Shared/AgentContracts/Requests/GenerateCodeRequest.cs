@@ -12,7 +12,7 @@ public class GenerateCodeRequest : IValidatableObject
     /// The task description
     /// </summary>
     [Required(ErrorMessage = "Task description is required")]
-    [StringLength(10000, MinimumLength = 5, ErrorMessage = "Task must be between 5 and 10000 characters")]
+    [StringLength(500000, MinimumLength = 5, ErrorMessage = "Task must be between 5 and 500000 characters")]
     public required string Task { get; set; }
 
     /// <summary>

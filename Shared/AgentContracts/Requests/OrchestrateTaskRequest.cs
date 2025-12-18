@@ -34,8 +34,8 @@ public class OrchestrateTaskRequest : IValidatableObject
     /// Supported: python, csharp, typescript, javascript, go, rust, java, ruby, php, swift, kotlin, dart, sql, html, css, shell
     /// If not specified, will be auto-detected from workspace or task description
     /// </summary>
-    [RegularExpression(@"^(python|csharp|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart|sql|html|css|shell|auto)?$", 
-        ErrorMessage = "Invalid language. Supported: python, csharp, typescript, javascript, go, rust, java, ruby, php, swift, kotlin, dart, sql, html, css, shell")]
+    [RegularExpression(@"^(python|csharp|blazor|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart|flutter|sql|html|css|shell|auto)?$", 
+        ErrorMessage = "Invalid language. Supported: python, csharp, blazor, typescript, javascript, go, rust, java, ruby, php, swift, kotlin, dart, flutter, sql, html, css, shell")]
     public string? Language { get; set; }
 
     /// <summary>
@@ -64,10 +64,11 @@ public class OrchestrateTaskRequest : IValidatableObject
     public string ValidationMode { get; set; } = "standard";
     
     /// <summary>
-    /// If true, automatically write generated files to workspace (default: false)
-    /// When false, files are returned in the response for manual review
+    /// If true, automatically write generated files to workspace (default: true)
+    /// Files are written incrementally during iterations AND saved to job storage for backup/review
+    /// When false, files are only stored in job persistence and returned in the response
     /// </summary>
-    public bool AutoWriteFiles { get; set; } = false;
+    public bool AutoWriteFiles { get; set; } = true;
     
     /// <summary>
     /// Execution mode for multi-step tasks:

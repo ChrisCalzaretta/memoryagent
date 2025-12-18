@@ -658,7 +658,7 @@ Return JSON: {{ ""score"": 0-10, ""wcagLevel"": ""A/AA/AAA/Below A"", ""contrast
                     {
                         var catAnalysis = new CategoryAnalysis();
 
-                        if (prop.Value.TryGetProperty("score", out var score))
+                        if (prop.Value.TryGetProperty("score", out var score) && score.ValueKind == JsonValueKind.Number)
                         {
                             catAnalysis.Score = score.GetDouble();
                             result.CategoryScores[prop.Name] = catAnalysis.Score;

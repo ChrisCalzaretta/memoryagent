@@ -26,6 +26,8 @@ public class CodingAgentClient : ICodingAgentClient
     public async Task<GenerateCodeResponse> GenerateAsync(GenerateCodeRequest request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Calling CodingAgent to generate code for: {Task}", request.Task);
+        _logger.LogWarning("🐛 DEBUG: Task length={TaskLen}, Language={Lang}, WorkspacePath={Path}, Context is null={ContextNull}",
+            request.Task?.Length ?? 0, request.Language, request.WorkspacePath, request.Context == null);
 
         try
         {
@@ -45,6 +47,8 @@ public class CodingAgentClient : ICodingAgentClient
     public async Task<GenerateCodeResponse> FixAsync(GenerateCodeRequest request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Calling CodingAgent to fix code for: {Task}", request.Task);
+        _logger.LogWarning("🐛 DEBUG FIX: Task length={TaskLen}, Language={Lang}, WorkspacePath={Path}, Context is null={ContextNull}, Feedback is null={FeedbackNull}",
+            request.Task?.Length ?? 0, request.Language, request.WorkspacePath, request.Context == null, request.PreviousFeedback == null);
 
         try
         {

@@ -9,6 +9,7 @@ namespace CodingOrchestrator.Server.Services;
 /// <summary>
 /// Orchestrates the multi-agent coding workflow
 /// NOW WITH DOCKER EXECUTION! Code is actually run before validation.
+/// NOW WITH OLLAMA SUMMARIZATION! Large files are intelligently summarized to save Claude tokens.
 /// </summary>
 public class TaskOrchestrator : ITaskOrchestrator
 {
@@ -18,6 +19,7 @@ public class TaskOrchestrator : ITaskOrchestrator
     private readonly IExecutionService _executionService;
     private readonly IPathTranslationService _pathTranslation;
     private readonly IDotnetScaffoldService _scaffoldService;
+    private readonly IOllamaClient _ollamaClient;
     private readonly ILogger<TaskOrchestrator> _logger;
     private IJobManager? _jobManager;
     
@@ -31,6 +33,7 @@ public class TaskOrchestrator : ITaskOrchestrator
         IExecutionService executionService,
         IPathTranslationService pathTranslation,
         IDotnetScaffoldService scaffoldService,
+        IOllamaClient ollamaClient,
         ILogger<TaskOrchestrator> logger)
     {
         _codingAgent = codingAgent;
@@ -39,9 +42,10 @@ public class TaskOrchestrator : ITaskOrchestrator
         _executionService = executionService;
         _pathTranslation = pathTranslation;
         _scaffoldService = scaffoldService;
+        _ollamaClient = ollamaClient;
         _logger = logger;
         
-        _logger.LogInformation("🔧 TaskOrchestrator v2025.12.16.C - with null-safe lastValidation");
+        _logger.LogInformation("🔧 TaskOrchestrator v2025.12.18 - with Ollama summarization and smart prompts");
     }
 
     /// <summary>
@@ -264,9 +268,10 @@ public class TaskOrchestrator : ITaskOrchestrator
             
             // 📦 SCAFFOLD PHASE: Use dotnet new for C# projects to get perfect structure
             ScaffoldResult? scaffoldResult = null;
-            var isCSharpProject = request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#" 
+            var isCSharpProject = request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#" or "blazor"
                                   || request.Task.Contains(".NET", StringComparison.OrdinalIgnoreCase)
-                                  || request.Task.Contains("C#", StringComparison.OrdinalIgnoreCase);
+                                  || request.Task.Contains("C#", StringComparison.OrdinalIgnoreCase)
+                                  || request.Task.Contains("Blazor", StringComparison.OrdinalIgnoreCase);
             
             if (isCSharpProject)
             {
@@ -390,21 +395,85 @@ public class TaskOrchestrator : ITaskOrchestrator
                     // No need for hacky extraction logic here!
                 }
 
-                // 📁 Tell the LLM what files already exist WITH their signatures
+                // 📁 Tell the LLM what files already exist WITH their FULL CONTENT (not just signatures!)
+                // 🚫 FILTER OUT BUILD ARTIFACTS from prompt too (saves Claude tokens!)
                 var existingFilesList = "";
                 if (accumulatedFiles.Any())
                 {
-                    existingFilesList = $"\n\n📁 FILES ALREADY GENERATED ({accumulatedFiles.Count}):\n";
-                    foreach (var file in accumulatedFiles)
+                    var filesForPrompt = accumulatedFiles
+                        .Where(kv => !IsBuildArtifact(kv.Key))
+                        .ToDictionary(kv => kv.Key, kv => kv.Value);
+                    
+                    if (filesForPrompt.Count < accumulatedFiles.Count)
+                    {
+                        _logger.LogInformation("🚫 Filtered out {Count} build artifacts from prompt - showing {Remaining} files to Claude",
+                            accumulatedFiles.Count - filesForPrompt.Count, filesForPrompt.Count);
+                    }
+                    
+                    existingFilesList = $"\n\n📁 FILES ALREADY GENERATED ({filesForPrompt.Count}):\n";
+                    
+                    int fullContentCount = 0;
+                    int summarizedCount = 0;
+                    int signatureCount = 0;
+                    
+                    foreach (var file in filesForPrompt)
                     {
                         existingFilesList += $"\n### {file.Key}\n";
-                        // Extract class/interface/function signatures from the content
-                        var signatures = ExtractSignatures(file.Value.Content, request.Language ?? "csharp");
-                        if (!string.IsNullOrEmpty(signatures))
+                        
+                        var fileName = Path.GetFileName(file.Key);
+                        var lineCount = file.Value.Content.Split('\n').Length;
+                        
+                        var extension = Path.GetExtension(file.Key).TrimStart('.');
+                        var language = extension switch
                         {
-                            existingFilesList += $"```\n{signatures}\n```\n";
+                            "cs" => "csharp",
+                            "razor" => "razor",
+                            "json" => "json",
+                            "csproj" => "xml",
+                            "js" => "javascript",
+                            "ts" => "typescript",
+                            "py" => "python",
+                            _ => extension
+                        };
+                        
+                        // 🎯 DECISION TREE: Full Content → Ollama Summary → Signatures
+                        
+                        var isCoreFile = IsCoreFile(fileName);
+                        var isSmallFile = lineCount < 200;
+                        var isEarlyIteration = iteration <= 5;
+                        var isMediumFile = lineCount >= 200 && lineCount < 800;
+                        
+                        if (isCoreFile || isSmallFile || isEarlyIteration)
+                        {
+                            // ✅ FULL CONTENT: Core files, small files, early iterations
+                            existingFilesList += $"```{language}\n{file.Value.Content}\n```\n";
+                            fullContentCount++;
+                        }
+                        else if (isMediumFile)
+                        {
+                            // 🧠 OLLAMA SUMMARY: Medium files (200-800 lines) in later iterations
+                            // Uses FREE local Ollama to save EXPENSIVE Claude tokens!
+                            var summary = await SummarizeFileWithOllamaAsync(fileName, file.Value.Content, language, cancellationToken);
+                            existingFilesList += $"```\n{summary}\n```\n";
+                            existingFilesList += $"// 🧠 AI-summarized from {lineCount} lines\n";
+                            summarizedCount++;
+                        }
+                        else
+                        {
+                            // 📝 SIGNATURES: Very large files (>800 lines)
+                            var signatures = ExtractSignatures(file.Value.Content, request.Language ?? "csharp");
+                            if (!string.IsNullOrEmpty(signatures))
+                            {
+                                existingFilesList += $"```\n{signatures}\n```\n";
+                                existingFilesList += $"// 📝 Signatures from {lineCount} lines\n";
+                                signatureCount++;
+                            }
                         }
                     }
+                    
+                    _logger.LogInformation("📄 Prompt context: {FullContent} full, {Summarized} summarized (Ollama), {Signatures} signatures", 
+                        fullContentCount, summarizedCount, signatureCount);
+                    
                     existingFilesList += "\n⚠️ Generate the MISSING files. Reference the classes/methods above. You may also update existing files if needed.";
                 }
 
@@ -462,8 +531,19 @@ public class TaskOrchestrator : ITaskOrchestrator
                 }
                 
                 // Convert accumulated files to ExistingFile format for the coding agent
-                var existingFilesForAgent = accumulatedFiles.Any()
-                    ? accumulatedFiles.Select(kv => new ExistingFile 
+                // 🚫 FILTER OUT BUILD ARTIFACTS (bin/, obj/, .vs/) to reduce payload size
+                var filteredFiles = accumulatedFiles
+                    .Where(kv => !IsBuildArtifact(kv.Key))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+                
+                if (filteredFiles.Count < accumulatedFiles.Count)
+                {
+                    _logger.LogInformation("🚫 Filtered out {Count} build artifacts (bin/obj/.vs) - sending {Remaining} files",
+                        accumulatedFiles.Count - filteredFiles.Count, filteredFiles.Count);
+                }
+                
+                var existingFilesForAgent = filteredFiles.Any()
+                    ? filteredFiles.Select(kv => new ExistingFile 
                       { 
                           Path = kv.Key, 
                           Content = kv.Value.Content 
@@ -585,6 +665,31 @@ public class TaskOrchestrator : ITaskOrchestrator
                 _logger.LogInformation("📁 Iteration {Iteration}: Generated {NewFiles} files, Total accumulated: {Total}",
                     iteration, lastGeneratedCode.FileChanges.Count, accumulatedFiles.Count);
 
+                // 📝 INCREMENTAL SYNC: Write files to workspace after each iteration (if enabled)
+                // This keeps workspace in sync and allows real-time review while job storage maintains backup
+                if (request.AutoWriteFiles && !string.IsNullOrEmpty(request.WorkspacePath))
+                {
+                    try
+                    {
+                        var currentFiles = accumulatedFiles.Values.Select(f => new GeneratedFile
+                        {
+                            Path = f.Path,
+                            Content = f.Content,
+                            ChangeType = f.Type,
+                            Reason = f.Reason
+                        }).ToList();
+                        
+                        var syncedFiles = await WriteFilesToWorkspaceAsync(currentFiles, request.WorkspacePath, cancellationToken);
+                        _logger.LogInformation("📝 [INCREMENTAL] Synced {Count} files to workspace (iteration {Iteration})", 
+                            syncedFiles.Count, iteration);
+                    }
+                    catch (Exception syncEx)
+                    {
+                        _logger.LogWarning(syncEx, "⚠️ Failed to sync files to workspace (iteration {Iteration}) - job storage unaffected", iteration);
+                        // Don't fail the job if sync fails - job storage is the source of truth
+                    }
+                }
+
                 // ✅ IMPORT VALIDATION: Check imports before Docker execution
                 var importValidationPhase = StartPhase("import_validation", iteration);
                 var allCode = string.Join("\n\n", accumulatedFiles.Values.Select(f => f.Content));
@@ -656,7 +761,7 @@ public class TaskOrchestrator : ITaskOrchestrator
                 
                 // 🧹 CLEAN UP C# FILES BEFORE DOCKER BUILD
                 // Fixes MSB1011 (multiple .csproj) and duplicate file issues
-                if (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#")
+                if (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#" or "blazor")
                 {
                     CleanAccumulatedFilesForCSharp(accumulatedFiles);
                 }
@@ -786,9 +891,20 @@ public class TaskOrchestrator : ITaskOrchestrator
                 var validationPhase = StartPhase("validation_agent", iteration);
 
                 // Validate ALL accumulated files, not just last iteration's!
+                // 🚫 FILTER OUT BUILD ARTIFACTS (bin/, obj/, wwwroot/lib/, etc.)
+                var filteredForValidation = accumulatedFiles
+                    .Where(kv => !IsBuildArtifact(kv.Key))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+                
+                if (filteredForValidation.Count < accumulatedFiles.Count)
+                {
+                    _logger.LogInformation("🚫 Filtered out {Count} build artifacts for validation - validating {Remaining} files",
+                        accumulatedFiles.Count - filteredForValidation.Count, filteredForValidation.Count);
+                }
+                
                 var validateRequest = new ValidateCodeRequest
                 {
-                    Files = accumulatedFiles.Values.Select(f => new CodeFile
+                    Files = filteredForValidation.Values.Select(f => new CodeFile
                     {
                         Path = f.Path,
                         Content = f.Content,
@@ -1755,8 +1871,8 @@ public class TaskOrchestrator : ITaskOrchestrator
                     // 🔧 INTERMEDIATE BUILD CHECK for C# (after step 2+)
                     // For C#, we check compilation incrementally to catch errors early
                     // Step 1 is always accepted (may have forward dependencies)
-                    var isCSharp = (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#") ||
-                                   accumulatedFiles.Keys.Any(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase));
+                    var isCSharp = (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#" or "blazor") ||
+                                   accumulatedFiles.Keys.Any(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".razor", StringComparison.OrdinalIgnoreCase));
                     
                     if (isCSharp && stepNumber > 1 && accumulatedFiles.Count >= 2)
                     {
@@ -1965,7 +2081,7 @@ public class TaskOrchestrator : ITaskOrchestrator
             };
             
             // 🧹 Final cleanup before execution
-            if (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#")
+            if (request.Language?.ToLowerInvariant() is "csharp" or "cs" or "c#" or "blazor")
             {
                 CleanAccumulatedFilesForCSharp(accumulatedFiles);
             }
@@ -2551,6 +2667,111 @@ public class TaskOrchestrator : ITaskOrchestrator
         {
             _logger.LogInformation("🧹 Cleaned {Count} junk/duplicate/polluted files, {Remaining} files remain", 
                 toRemove.Count, accumulatedFiles.Count);
+        }
+    }
+    
+    /// <summary>
+    /// 🚫 Check if a file path is a build artifact OR third-party library that should be excluded from agent payloads
+    /// Filters: bin/, obj/, .vs/, node_modules/, wwwroot/lib/, .dll, .pdb, .exe, .min.js, .map, etc.
+    /// </summary>
+    private static bool IsBuildArtifact(string path)
+    {
+        var normalizedPath = path.Replace('\\', '/').ToLowerInvariant();
+
+        // Exclude folders that contain build artifacts or third-party libraries
+        if (normalizedPath.Contains("/bin/") || normalizedPath.StartsWith("bin/") ||
+            normalizedPath.Contains("/obj/") || normalizedPath.StartsWith("obj/") ||
+            normalizedPath.Contains("/.vs/") || normalizedPath.StartsWith(".vs/") ||
+            normalizedPath.Contains("/node_modules/") || normalizedPath.StartsWith("node_modules/") ||
+            normalizedPath.Contains("/.git/") || normalizedPath.StartsWith(".git/") ||
+            normalizedPath.Contains("/wwwroot/lib/") || normalizedPath.StartsWith("wwwroot/lib/") ||  // Third-party libraries
+            normalizedPath.Contains("/packages/") || normalizedPath.StartsWith("packages/"))          // NuGet packages
+        {
+            return true;
+        }
+
+        // Exclude common build artifacts by file extension
+        var fileName = Path.GetFileName(normalizedPath);
+        if (fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".cache", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".map", StringComparison.OrdinalIgnoreCase) ||          // Source maps
+            fileName.EndsWith(".min.js", StringComparison.OrdinalIgnoreCase) ||       // Minified JS
+            fileName.EndsWith(".min.css", StringComparison.OrdinalIgnoreCase) ||      // Minified CSS
+            fileName.Contains(".nuget.", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines if a file is "core" (should always get full content, not summary)
+    /// </summary>
+    private static bool IsCoreFile(string fileName)
+    {
+        var lower = fileName.ToLowerInvariant();
+        return lower == "program.cs" ||
+               lower.EndsWith(".csproj") ||
+               lower == "app.razor" ||
+               lower == "routes.razor" ||
+               lower == "_imports.razor" ||
+               lower == "appsettings.json" ||
+               lower == "package.json" ||
+               lower == "tsconfig.json" ||
+               lower == "requirements.txt" ||
+               lower == "dockerfile" ||
+               lower == "docker-compose.yml";
+    }
+
+    /// <summary>
+    /// Summarize a code file using local Ollama (FREE!) to save Claude tokens (EXPENSIVE!)
+    /// </summary>
+    private async Task<string> SummarizeFileWithOllamaAsync(string fileName, string content, string language, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var prompt = $@"Summarize this {language} code file for an AI code generator. Be concise but complete (200-400 words).
+
+Include:
+1. Main classes/interfaces/functions (with signatures)
+2. Key dependencies (imports/using statements)
+3. Business logic purpose
+4. Important implementation details
+
+File: {fileName}
+```{language}
+{content}
+```
+
+Provide a technical summary:";
+
+            var response = await _ollamaClient.GenerateAsync(
+                model: "deepseek-coder-v2:16b",
+                prompt: prompt,
+                systemPrompt: null,
+                port: null,
+                cancellationToken: cancellationToken);
+
+            if (response.Success)
+            {
+                _logger.LogDebug("✅ Summarized {File} ({Lines} lines → {SummaryLength} chars) in {Ms}ms",
+                    fileName, content.Split('\n').Length, response.Response.Length, response.TotalDurationMs);
+                return response.Response;
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ Ollama summarization failed for {File}: {Error} - falling back to signatures",
+                    fileName, response.Error);
+                return ExtractSignatures(content, language);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️ Ollama summarization error for {File} - falling back to signatures", fileName);
+            return ExtractSignatures(content, language);
         }
     }
     

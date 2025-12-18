@@ -26,7 +26,7 @@ public class ValidateCodeRequest : IValidatableObject
     /// Target programming language (for language-specific validation rules)
     /// If not specified, will be auto-detected from file extensions
     /// </summary>
-    [RegularExpression(@"^(python|csharp|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart)?$",
+    [RegularExpression(@"^(python|csharp|blazor|typescript|javascript|go|rust|java|ruby|php|swift|kotlin|dart|flutter|sql|html|css|shell|auto)?$",
         ErrorMessage = "Invalid language specified")]
     public string? Language { get; set; }
 

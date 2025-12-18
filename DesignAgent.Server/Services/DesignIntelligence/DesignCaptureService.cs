@@ -537,7 +537,9 @@ Return only the JSON array with selected pages.";
                 foreach (var item in doc.RootElement.EnumerateArray())
                 {
                     if (item.TryGetProperty("url", out var urlProp) &&
-                        item.TryGetProperty("pageType", out var typeProp))
+                        item.TryGetProperty("pageType", out var typeProp) &&
+                        urlProp.ValueKind == JsonValueKind.String &&
+                        typeProp.ValueKind == JsonValueKind.String)
                     {
                         var url = urlProp.GetString();
                         var pageType = typeProp.GetString();

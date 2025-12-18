@@ -206,7 +206,7 @@ services:
       - PathMapping__HostRoot=E:\GitHub
       - PathMapping__ContainerRoot=/workspace
       # ☁️ Anthropic Claude for code generation (if configured)
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-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
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-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}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
       - ANTHROPIC_MODEL_PREMIUM=${ANTHROPIC_MODEL_PREMIUM:-claude-opus-4-20250514}
     depends_on:
@@ -235,9 +235,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5002
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      # ⚡ Route validation to 5070 Ti (port 11435) - phi4 runs there
-      - Ollama__Url=http://10.0.2.20:11435
-      - Ollama__Port=11435
+      # ⚡ Route validation to 3090 (port 11434) - TEMP FIX: 11435 not loading models
+      - Ollama__Url=http://10.0.2.20:11434
+      - Ollama__Port=11434
       - Gpu__ValidationModel=phi4:latest
       # Dual GPU: 3090 (pinned code gen) + 5070 Ti (validation)
       - Gpu__DualGpu=true
@@ -305,7 +305,7 @@ services:
       # Note: Serper no longer has a free tier (paid only: $50/month)
       - DesignIntelligence__SearchQueriesPerRun=5
       - DesignIntelligence__SearchResultsPerQuery=10
-      - DesignIntelligence__EnableBackgroundLearning=true
+      - DesignIntelligence__EnableBackgroundLearning=false
       - DesignIntelligence__BackgroundIntervalSec=3600
       - DesignIntelligence__MaxCpuPercent=30
       - DesignIntelligence__MinFeedbackForEvolution=10
