@@ -284,8 +284,17 @@ services:
       - DesignIntelligence__ScreenshotBreakpoints=[1920,1024,375]
       - DesignIntelligence__EnableVideoCapture=false
       - DesignIntelligence__VideoCaptureDurationSec=10
+      # 🔍 Multi-Provider Search with Automatic Fallback
+      # Primary provider: Google (will auto-fallback: Bing → Brave → DuckDuckGo → Serper)
+      # Rotation happens automatically when rate limits hit or API fails
       - DesignIntelligence__SearchProvider=google
-      - DesignIntelligence__SearchApiKey=
+      - DesignIntelligence__SearchApiKey=<ADD GOOGLE API KEY>
+      - DesignIntelligence__SearchEngineId=<ADD GOOGLE CX ID>
+      # Optional fallback API keys (Bing & DuckDuckGo will use free HTML scraping if empty)
+      - DesignIntelligence__BingApiKey=<ADD BING KEY OR LEAVE EMPTY>
+      - DesignIntelligence__BraveApiKey=<ADD BRAVE KEY OR LEAVE EMPTY>
+      - DesignIntelligence__SerperApiKey=<ADD SERPER KEY OR LEAVE EMPTY>
+      # Note: Serper no longer has a free tier (paid only: $50/month)
       - DesignIntelligence__SearchQueriesPerRun=5
       - DesignIntelligence__SearchResultsPerQuery=10
       - DesignIntelligence__EnableBackgroundLearning=true
@@ -293,7 +302,7 @@ services:
       - DesignIntelligence__MaxCpuPercent=30
       - DesignIntelligence__MinFeedbackForEvolution=10
       - DesignIntelligence__MismatchThreshold=2.0
-      - DesignIntelligence__VisionModel=llava:13b
+      - DesignIntelligence__VisionModel=llava:latest
       - DesignIntelligence__TextModel=phi4
       - DesignIntelligence__LlmTimeoutSec=120
     depends_on:

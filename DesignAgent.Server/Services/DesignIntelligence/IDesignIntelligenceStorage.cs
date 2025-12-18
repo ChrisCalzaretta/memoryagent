@@ -28,6 +28,11 @@ public interface IDesignIntelligenceStorage
     /// Update source status
     /// </summary>
     Task UpdateSourceStatusAsync(string sourceId, string status, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reset stuck "processing" sources back to "pending" (cleanup on restart)
+    /// </summary>
+    Task ResetStuckProcessingSourcesAsync(CancellationToken cancellationToken = default);
     
     // ===== CAPTURED DESIGNS =====
     

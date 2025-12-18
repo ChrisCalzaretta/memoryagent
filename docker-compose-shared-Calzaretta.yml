@@ -206,7 +206,7 @@ services:
       - PathMapping__HostRoot=E:\GitHub
       - PathMapping__ContainerRoot=/workspace
       # ☁️ Anthropic Claude for code generation (if configured)
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-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
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
       - ANTHROPIC_MODEL_PREMIUM=${ANTHROPIC_MODEL_PREMIUM:-claude-opus-4-20250514}
     depends_on:
@@ -292,8 +292,17 @@ services:
       - DesignIntelligence__ScreenshotBreakpoints=[1920,1024,375]
       - DesignIntelligence__EnableVideoCapture=false
       - DesignIntelligence__VideoCaptureDurationSec=10
+      # 🔍 Multi-Provider Search with Automatic Fallback
+      # Primary provider: Google (will auto-fallback: Bing → Brave → DuckDuckGo → Serper)
+      # Rotation happens automatically when rate limits hit or API fails
       - DesignIntelligence__SearchProvider=google
-      - DesignIntelligence__SearchApiKey=
+      - DesignIntelligence__SearchApiKey=AIzaSyC-Cd7PNmIeI-p-I1l4iWSDGv1hnN1CiK4
+      - DesignIntelligence__SearchEngineId=95aa19bb6b9bb462a
+      # Optional fallback API keys (Bing & DuckDuckGo will use free HTML scraping if empty)
+      - DesignIntelligence__BingApiKey=
+      - DesignIntelligence__BraveApiKey=BSA9cc95HtCTdGYUjMeaix1TrAj35R7
+      - DesignIntelligence__SerperApiKey=
+      # Note: Serper no longer has a free tier (paid only: $50/month)
       - DesignIntelligence__SearchQueriesPerRun=5
       - DesignIntelligence__SearchResultsPerQuery=10
       - DesignIntelligence__EnableBackgroundLearning=true
@@ -301,7 +310,7 @@ services:
       - DesignIntelligence__MaxCpuPercent=30
       - DesignIntelligence__MinFeedbackForEvolution=10
       - DesignIntelligence__MismatchThreshold=2.0
-      - DesignIntelligence__VisionModel=llava:13b
+      - DesignIntelligence__VisionModel=llava:latest
       - DesignIntelligence__TextModel=phi4
       - DesignIntelligence__LlmTimeoutSec=120
     depends_on:

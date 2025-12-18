@@ -34,6 +34,9 @@ public class DesignIntelligenceBackgroundService : BackgroundService
         // Wait for startup to complete
         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 
+        // Reset any stuck "processing" sources from previous crashes
+        await ResetStuckProcessingSourcesAsync(stoppingToken);
+
         // Seed curated sources on first run
         await SeedCuratedSourcesAsync(stoppingToken);
 
@@ -163,6 +166,12 @@ public class DesignIntelligenceBackgroundService : BackgroundService
                 await storage.UpdateSourceStatusAsync(source.Id, "rejected", cancellationToken);
             }
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("after 5 retries"))
+        {
+            _logger.LogError("❌ REJECTED: {Url} - Vision model failed after 5 retries (rejecting entire site)", source.Url);
+            await storage.UpdateSourceStatusAsync(source.Id, "failed", cancellationToken);
+            _totalRejected++;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Failed to process: {Url}", source.Url);
@@ -175,6 +184,24 @@ public class DesignIntelligenceBackgroundService : BackgroundService
             var acceptRate = _totalProcessed > 0 ? (_totalAccepted / (double)_totalProcessed) * 100 : 0;
             _logger.LogInformation("📈 Stats: Processed={Processed}, Accepted={Accepted} ({AcceptRate:F1}%), Rejected={Rejected}",
                 _totalProcessed, _totalAccepted, acceptRate, _totalRejected);
+        }
+    }
+
+    /// <summary>
+    /// Reset stuck "processing" sources on startup (handles crash recovery)
+    /// </summary>
+    private async Task ResetStuckProcessingSourcesAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var storage = scope.ServiceProvider.GetRequiredService<IDesignIntelligenceStorage>();
+
+        try
+        {
+            await storage.ResetStuckProcessingSourcesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Failed to reset stuck processing sources");
         }
     }
 

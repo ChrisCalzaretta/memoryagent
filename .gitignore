@@ -53,3 +53,4 @@ publish/
 # Log files
 *.log
 
+/docker-compose-shared-Calzaretta.yml

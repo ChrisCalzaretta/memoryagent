@@ -49,16 +49,46 @@ public class OllamaClient : IOllamaClient
         int? port = null,
         CancellationToken cancellationToken = default)
     {
+        return await GenerateInternalAsync(model, prompt, systemPrompt, null, port, cancellationToken);
+    }
+
+    public async Task<OllamaResponse> GenerateWithVisionAsync(
+        string model, 
+        string prompt, 
+        List<string> images,
+        string? systemPrompt = null,
+        int? port = null,
+        CancellationToken cancellationToken = default)
+    {
+        return await GenerateInternalAsync(model, prompt, systemPrompt, images, port, cancellationToken);
+    }
+
+    private async Task<OllamaResponse> GenerateInternalAsync(
+        string model, 
+        string prompt, 
+        string? systemPrompt,
+        List<string>? images,
+        int? port,
+        CancellationToken cancellationToken)
+    {
         var actualPort = port ?? _defaultPort;
         var url = $"{_baseHost}:{actualPort}/api/generate";
         
-        _logger.LogInformation("🎨 DesignAgent calling {Model} for design generation", model);
+        if (images?.Any() == true)
+        {
+            _logger.LogInformation("🎨 DesignAgent calling {Model} with {ImageCount} image(s)", model, images.Count);
+        }
+        else
+        {
+            _logger.LogInformation("🎨 DesignAgent calling {Model} for design generation", model);
+        }
         
         var request = new OllamaGenerateRequest
         {
             Model = model,
             Prompt = prompt,
             System = systemPrompt,
+            Images = images,
             Stream = false,
             KeepAlive = -1
         };
@@ -216,6 +246,7 @@ internal class OllamaGenerateRequest
     public string Model { get; set; } = "";
     public string Prompt { get; set; } = "";
     public string? System { get; set; }
+    public List<string>? Images { get; set; }
     public bool Stream { get; set; }
     
     [JsonPropertyName("keep_alive")]

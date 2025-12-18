@@ -16,6 +16,17 @@ public interface IOllamaClient
         CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// Generate text using a vision model with images (for models like LLaVA)
+    /// </summary>
+    Task<OllamaResponse> GenerateWithVisionAsync(
+        string model, 
+        string prompt, 
+        List<string> images,
+        string? systemPrompt = null,
+        int? port = null,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
     /// Chat with a model
     /// </summary>
     Task<OllamaResponse> ChatAsync(

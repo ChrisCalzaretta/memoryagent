@@ -116,7 +116,7 @@ public class DesignIntelligenceStorage : IDesignIntelligenceStorage
     public async Task UpdateSourceStatusAsync(string sourceId, string status, CancellationToken cancellationToken = default)
     {
         await using var session = _neo4jDriver.AsyncSession();
-        
+
         var query = @"
             MATCH (s:DesignSource {id: $id})
             SET s.status = $status,
@@ -127,6 +127,34 @@ public class DesignIntelligenceStorage : IDesignIntelligenceStorage
         {
             await tx.RunAsync(query, new { id = sourceId, status });
         });
+    }
+
+    public async Task ResetStuckProcessingSourcesAsync(CancellationToken cancellationToken = default)
+    {
+        await using var session = _neo4jDriver.AsyncSession();
+
+        var query = @"
+            MATCH (s:DesignSource)
+            WHERE s.status = 'processing'
+            SET s.status = 'pending',
+                s.lastCrawledAt = null
+            RETURN count(s) as resetCount";
+
+        var result = await session.ExecuteWriteAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query);
+            var record = await cursor.SingleAsync();
+            return record["resetCount"].As<int>();
+        });
+
+        if (result > 0)
+        {
+            _logger.LogInformation("🔄 Reset {Count} stuck 'processing' sources back to 'pending'", result);
+        }
+        else
+        {
+            _logger.LogInformation("✅ Cleanup complete: No stuck 'processing' sources found");
+        }
     }
 
     // ===== CAPTURED DESIGNS =====

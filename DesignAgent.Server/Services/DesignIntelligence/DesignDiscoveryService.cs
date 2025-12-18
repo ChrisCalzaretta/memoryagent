@@ -2,13 +2,16 @@ using DesignAgent.Server.Models.DesignIntelligence;
 using DesignAgent.Server.Clients;
 using AgentContracts.Services;
 using Microsoft.Extensions.Options;
+using Polly;
+using Polly.Retry;
 using System.Text.Json;
 using System.Text;
+using System.Xml.Linq;
 
 namespace DesignAgent.Server.Services.DesignIntelligence;
 
 /// <summary>
-/// Service for discovering new design sources using LLM-driven search
+/// Service for discovering new design sources using LLM-driven search with quota tracking and Polly resilience
 /// </summary>
 public class DesignDiscoveryService : IDesignDiscoveryService
 {
@@ -17,19 +20,35 @@ public class DesignDiscoveryService : IDesignDiscoveryService
     private readonly ILogger<DesignDiscoveryService> _logger;
     private readonly DesignIntelligenceOptions _options;
     private readonly HttpClient _httpClient;
+    private readonly SearchQuotaTracker _quotaTracker;
+    private readonly AsyncRetryPolicy<List<string>> _retryPolicy;
 
     public DesignDiscoveryService(
         IOllamaClient ollamaClient,
         IDesignIntelligenceStorage storage,
         ILogger<DesignDiscoveryService> logger,
         IOptions<DesignIntelligenceOptions> options,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        SearchQuotaTracker quotaTracker)
     {
         _ollamaClient = ollamaClient;
         _storage = storage;
         _logger = logger;
         _options = options.Value;
         _httpClient = httpClientFactory.CreateClient("SearchClient");
+        _quotaTracker = quotaTracker;
+        
+        // Configure Polly retry policy: 3 retries with exponential backoff
+        _retryPolicy = Policy<List<string>>
+            .Handle<HttpRequestException>(ex => ex.StatusCode != System.Net.HttpStatusCode.TooManyRequests)
+            .WaitAndRetryAsync(
+                retryCount: 3,
+                sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+                onRetry: (outcome, timespan, retryCount, context) =>
+                {
+                    _logger.LogWarning("Search API call failed, retrying in {Delay}s (attempt {Retry}/3): {Error}",
+                        timespan.TotalSeconds, retryCount, outcome.Exception?.Message);
+                });
     }
 
     /// <summary>
@@ -58,27 +77,102 @@ public class DesignDiscoveryService : IDesignDiscoveryService
     }
 
     /// <summary>
-    /// Execute search query and return URLs
+    /// Execute search query and return URLs with quota-aware provider rotation and Polly resilience
     /// </summary>
     public async Task<List<string>> SearchDesignSourcesAsync(string query, int limit = 10, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🔍 Searching: {Query}", query);
+        
+        // Reset expired quotas before checking
+        _quotaTracker.ResetExpiredQuotas();
 
-        try
+        // Define provider rotation order (will try each in sequence if one fails)
+        var allProviders = new List<string> { "google", "bing", "brave", "duckduckgo", "serper" };
+        
+        // Start with the configured provider, then try others
+        var primaryProvider = _options.SearchProvider?.ToLower() ?? "google";
+        if (!allProviders.Contains(primaryProvider))
         {
-            return _options.SearchProvider.ToLower() switch
+            allProviders.Insert(0, primaryProvider);
+        }
+        else
+        {
+            // Move primary provider to front
+            allProviders.Remove(primaryProvider);
+            allProviders.Insert(0, primaryProvider);
+        }
+
+        // Filter providers that have quota remaining
+        var availableProviders = allProviders
+            .Where(p => _quotaTracker.HasQuotaRemaining(p))
+            .ToList();
+            
+        if (!availableProviders.Any())
+        {
+            _logger.LogWarning("⚠️ No providers with quota remaining, falling back to unlimited HTML scrapers");
+            availableProviders = new List<string> { "duckduckgo" };
+        }
+        else
+        {
+            _logger.LogInformation("📊 Available providers with quota: {Providers}", string.Join(", ", availableProviders));
+            foreach (var provider in availableProviders.Where(p => p != "duckduckgo"))
             {
-                "google" => await SearchGoogleAsync(query, limit, cancellationToken),
-                "bing" => await SearchBingAsync(query, limit, cancellationToken),
-                "serper" => await SearchSerperAsync(query, limit, cancellationToken),
-                _ => throw new NotSupportedException($"Search provider '{_options.SearchProvider}' not supported")
-            };
+                var (daily, monthly) = _quotaTracker.GetRemainingCalls(provider);
+                _logger.LogDebug("Provider {Provider} remaining: Daily={Daily}, Monthly={Monthly}", 
+                    provider, daily?.ToString() ?? "unlimited", monthly?.ToString() ?? "unlimited");
+            }
         }
-        catch (Exception ex)
+
+        // Try each provider in sequence until one succeeds
+        Exception? lastException = null;
+        foreach (var provider in availableProviders)
         {
-            _logger.LogError(ex, "Search failed for query: {Query}", query);
-            return new List<string>();
+            try
+            {
+                _logger.LogDebug("Trying search provider: {Provider}", provider);
+                
+                // Use Polly retry policy for resilience (3 retries with exponential backoff)
+                var results = await _retryPolicy.ExecuteAsync(async () =>
+                {
+                    return provider switch
+                    {
+                        "google" => await SearchGoogleAsync(query, limit, cancellationToken),
+                        "bing" => await SearchBingAsync(query, limit, cancellationToken),
+                        "brave" => await SearchBraveAsync(query, limit, cancellationToken),
+                        "duckduckgo" => await SearchDuckDuckGoAsync(query, limit, cancellationToken),
+                        "serper" => await SearchSerperAsync(query, limit, cancellationToken),
+                        _ => new List<string>()
+                    };
+                });
+
+                if (results.Any())
+                {
+                    // Record successful API call for quota tracking
+                    _quotaTracker.RecordCall(provider);
+                    
+                    _logger.LogInformation("✅ Search successful using {Provider}: {Count} results", provider, results.Count);
+                    return results;
+                }
+                
+                _logger.LogWarning("Provider {Provider} returned no results, trying next...", provider);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                _logger.LogWarning("Rate limit hit on {Provider} (429), trying next provider...", provider);
+                lastException = ex;
+                continue;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Search failed on {Provider} after retries, trying next provider...", provider);
+                lastException = ex;
+                continue;
+            }
         }
+
+        // All providers failed
+        _logger.LogError(lastException, "All search providers failed for query: {Query}", query);
+        return new List<string>();
     }
 
     /// <summary>
@@ -230,10 +324,15 @@ public class DesignDiscoveryService : IDesignDiscoveryService
         {
             throw new InvalidOperationException("Google Search API key not configured");
         }
+        
+        if (string.IsNullOrEmpty(_options.SearchEngineId))
+        {
+            throw new InvalidOperationException("Google Search Engine ID not configured");
+        }
 
         // Google Custom Search JSON API
         // https://developers.google.com/custom-search/v1/overview
-        var apiUrl = $"https://www.googleapis.com/customsearch/v1?key={_options.SearchApiKey}&cx=YOUR_SEARCH_ENGINE_ID&q={Uri.EscapeDataString(query)}&num={Math.Min(limit, 10)}";
+        var apiUrl = $"https://www.googleapis.com/customsearch/v1?key={_options.SearchApiKey}&cx={_options.SearchEngineId}&q={Uri.EscapeDataString(query)}&num={Math.Min(limit, 10)}";
 
         var response = await _httpClient.GetAsync(apiUrl, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -258,17 +357,34 @@ public class DesignDiscoveryService : IDesignDiscoveryService
 
     private async Task<List<string>> SearchBingAsync(string query, int limit, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(_options.SearchApiKey))
+        var apiKey = _options.BingApiKey ?? _options.SearchApiKey;
+        
+        // Try API first if key is available
+        if (!string.IsNullOrEmpty(apiKey))
         {
-            throw new InvalidOperationException("Bing Search API key not configured");
+            try
+            {
+                return await SearchBingApiAsync(query, limit, apiKey, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Bing API failed, falling back to HTML scraping");
+            }
         }
+        
+        // Fallback to RSS feed (free, unlimited, fast!)
+        _logger.LogDebug("Using Bing RSS feed (no API key configured)");
+        return await SearchBingHtmlAsync(query, limit, cancellationToken);
+    }
 
+    private async Task<List<string>> SearchBingApiAsync(string query, int limit, string apiKey, CancellationToken cancellationToken)
+    {
         // Bing Web Search API
         // https://docs.microsoft.com/en-us/bing/search-apis/bing-web-search/overview
         var apiUrl = $"https://api.bing.microsoft.com/v7.0/search?q={Uri.EscapeDataString(query)}&count={limit}";
 
         _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", _options.SearchApiKey);
+        _httpClient.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", apiKey);
 
         var response = await _httpClient.GetAsync(apiUrl, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -289,12 +405,179 @@ public class DesignDiscoveryService : IDesignDiscoveryService
             }
         }
 
+        _logger.LogInformation("Bing API returned {Count} results", urls.Count);
         return urls;
+    }
+
+    private async Task<List<string>> SearchBingHtmlAsync(string query, int limit, CancellationToken cancellationToken)
+    {
+        // Use Bing RSS feed - much faster and more reliable than HTML scraping or Selenium!
+        var rssUrl = $"https://www.bing.com/search?q={Uri.EscapeDataString(query)}&count={limit}&format=rss";
+
+        try
+        {
+            _logger.LogDebug("Fetching Bing RSS feed for: {Query}", query);
+            
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            
+            var response = await _httpClient.GetAsync(rssUrl, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var xmlContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            
+            // Parse RSS XML
+            var xml = XDocument.Parse(xmlContent);
+            var ns = xml.Root?.GetDefaultNamespace() ?? XNamespace.None;
+            
+            var urls = new List<string>();
+            
+            // Extract <link> elements from RSS items
+            var items = xml.Descendants("item");
+            
+            _logger.LogDebug("Found {Count} RSS items", items.Count());
+            
+            foreach (var item in items)
+            {
+                var link = item.Element("link")?.Value?.Trim();
+                
+                if (string.IsNullOrWhiteSpace(link))
+                    continue;
+                
+                // Skip Bing's internal links
+                if (link.StartsWith("http") && 
+                    !link.Contains("bing.com") && 
+                    !link.Contains("microsoft.com") &&
+                    !link.Contains("microsofttranslator.com"))
+                {
+                    // Clean up URL (remove tracking parameters)
+                    if (Uri.TryCreate(link, UriKind.Absolute, out var uri))
+                    {
+                        var cleanUrl = $"{uri.Scheme}://{uri.Host}{uri.AbsolutePath}";
+                        urls.Add(cleanUrl);
+                        
+                        if (urls.Count >= limit)
+                            break;
+                    }
+                }
+            }
+            
+            _logger.LogInformation("Bing RSS feed returned {Count} results", urls.Count);
+            
+            if (urls.Count == 0)
+            {
+                _logger.LogWarning("Bing RSS feed returned 0 results. XML length: {Length} chars", xmlContent.Length);
+                _logger.LogDebug("RSS XML sample: {Sample}", 
+                    xmlContent.Length > 500 ? xmlContent.Substring(0, 500) : xmlContent);
+            }
+            
+            return urls;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Bing RSS feed fetch failed");
+            return new List<string>();
+        }
+    }
+
+    private async Task<List<string>> SearchBraveAsync(string query, int limit, CancellationToken cancellationToken)
+    {
+        var apiKey = _options.BraveApiKey ?? _options.SearchApiKey;
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("Brave Search API key not configured");
+        }
+
+        // Brave Search API
+        // https://brave.com/search/api/
+        var apiUrl = $"https://api.search.brave.com/res/v1/web/search?q={Uri.EscapeDataString(query)}&count={limit}";
+
+        _httpClient.DefaultRequestHeaders.Clear();
+        _httpClient.DefaultRequestHeaders.Add("X-Subscription-Token", apiKey);
+        _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+
+        try
+        {
+            var response = await _httpClient.GetAsync(apiUrl, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var doc = JsonDocument.Parse(json);
+
+            var urls = new List<string>();
+            if (doc.RootElement.TryGetProperty("web", out var web) &&
+                web.TryGetProperty("results", out var results))
+            {
+                foreach (var result in results.EnumerateArray())
+                {
+                    if (result.TryGetProperty("url", out var url))
+                    {
+                        urls.Add(url.GetString() ?? string.Empty);
+                    }
+                }
+            }
+
+            _logger.LogInformation("Brave Search returned {Count} results", urls.Count);
+            return urls;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Brave Search failed");
+            return new List<string>();
+        }
+    }
+
+    private async Task<List<string>> SearchDuckDuckGoAsync(string query, int limit, CancellationToken cancellationToken)
+    {
+        // DuckDuckGo HTML search (no API key required - free fallback)
+        // Note: This is a simple HTML scraper and may break if DDG changes their HTML structure
+        var apiUrl = $"https://html.duckduckgo.com/html/?q={Uri.EscapeDataString(query)}";
+
+        try
+        {
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            
+            var response = await _httpClient.GetAsync(apiUrl, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+            
+            // Simple regex to extract URLs from DuckDuckGo HTML results
+            // Look for links in the format: href="//duckduckgo.com/l/?uddg=https://..."
+            var urls = new List<string>();
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                html, 
+                @"uddg=([^&""]+)", 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                if (match.Groups.Count > 1)
+                {
+                    var url = Uri.UnescapeDataString(match.Groups[1].Value);
+                    if (Uri.TryCreate(url, UriKind.Absolute, out _))
+                    {
+                        urls.Add(url);
+                        if (urls.Count >= limit) break;
+                    }
+                }
+            }
+
+            _logger.LogInformation("DuckDuckGo returned {Count} results", urls.Count);
+            return urls;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DuckDuckGo search failed");
+            return new List<string>();
+        }
     }
 
     private async Task<List<string>> SearchSerperAsync(string query, int limit, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(_options.SearchApiKey))
+        var apiKey = _options.SerperApiKey ?? _options.SearchApiKey;
+        if (string.IsNullOrEmpty(apiKey))
         {
             throw new InvalidOperationException("Serper API key not configured");
         }
@@ -315,7 +598,7 @@ public class DesignDiscoveryService : IDesignDiscoveryService
             "application/json");
 
         _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Add("X-API-KEY", _options.SearchApiKey);
+        _httpClient.DefaultRequestHeaders.Add("X-API-KEY", apiKey);
 
         var response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
         response.EnsureSuccessStatusCode();

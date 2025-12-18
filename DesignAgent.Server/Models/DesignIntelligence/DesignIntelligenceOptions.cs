@@ -80,15 +80,42 @@ public class DesignIntelligenceOptions
     // Discovery
     
     /// <summary>
-    /// Search API provider ("google", "bing", "serper")
+    /// Primary search API provider ("google", "bing", "brave", "duckduckgo", "serper")
+    /// Will automatically fallback to other providers if this one fails
     /// Default: "google"
     /// </summary>
     public string SearchProvider { get; set; } = "google";
     
     /// <summary>
-    /// Search API key (required for search)
+    /// Google Search API key (for Google Custom Search)
     /// </summary>
     public string? SearchApiKey { get; set; }
+    
+    /// <summary>
+    /// Google Custom Search Engine ID (required for Google search)
+    /// </summary>
+    public string? SearchEngineId { get; set; }
+    
+    /// <summary>
+    /// Bing Search API key (optional - for Bing fallback)
+    /// Get from: https://portal.azure.com (Bing Search v7)
+    /// Free tier: 3,000 queries/month
+    /// </summary>
+    public string? BingApiKey { get; set; }
+    
+    /// <summary>
+    /// Brave Search API key (optional - for Brave fallback)
+    /// Get from: https://brave.com/search/api/
+    /// Free tier: 2,000 queries/month
+    /// </summary>
+    public string? BraveApiKey { get; set; }
+    
+    /// <summary>
+    /// Serper API key (optional - for Serper fallback)
+    /// Get from: https://serper.dev
+    /// Paid only: $50/month for 5,000 queries (no free tier)
+    /// </summary>
+    public string? SerperApiKey { get; set; }
     
     /// <summary>
     /// Number of search queries per discovery run

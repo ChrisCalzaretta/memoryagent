@@ -41,6 +41,7 @@ builder.Services.AddSingleton<IDesignModelSelector, DesignModelSelector>();
 builder.Services.AddSingleton<ILlmDesignService, LlmDesignService>();
 
 // 🎨 Design Intelligence Services
+builder.Services.AddSingleton<SearchQuotaTracker>(); // Quota tracking for search APIs
 builder.Services.AddSingleton<IDesignIntelligenceStorage, DesignIntelligenceStorage>();
 builder.Services.AddSingleton<IDesignDiscoveryService, DesignDiscoveryService>();
 builder.Services.AddSingleton<IDesignCaptureService, DesignCaptureService>();

@@ -32,12 +32,15 @@ public class DesignDiscoveryServiceTests
             SearchResultsPerQuery = 10
         };
 
+        var quotaTracker = new SearchQuotaTracker(new Mock<ILogger<SearchQuotaTracker>>().Object);
+
         _service = new DesignDiscoveryService(
             _mockOllama.Object,
             _mockStorage.Object,
             _mockLogger.Object,
             Options.Create(_options),
-            _mockHttpFactory.Object
+            _mockHttpFactory.Object,
+            quotaTracker
         );
     }
 

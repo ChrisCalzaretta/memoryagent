@@ -3,6 +3,8 @@ using AgentContracts.Services;
 using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
+using Polly;
+using Polly.Retry;
 
 namespace DesignAgent.Server.Services.DesignIntelligence;
 
@@ -15,6 +17,7 @@ public class DesignAnalysisService : IDesignAnalysisService
     private readonly IDesignIntelligenceStorage _storage;
     private readonly ILogger<DesignAnalysisService> _logger;
     private readonly DesignIntelligenceOptions _options;
+    private readonly AsyncRetryPolicy<string> _visionRetryPolicy;
 
     public DesignAnalysisService(
         IOllamaClient ollamaClient,
@@ -26,6 +29,27 @@ public class DesignAnalysisService : IDesignAnalysisService
         _storage = storage;
         _logger = logger;
         _options = options.Value;
+        
+        // Retry policy for vision model responses with JSON validation
+        _visionRetryPolicy = Policy<string>
+            .HandleResult(response => !IsValidJsonResponse(response))
+            .Or<Exception>()
+            .WaitAndRetryAsync(
+                retryCount: 5,
+                sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+                onRetry: (outcome, timespan, retryCount, context) =>
+                {
+                    if (outcome.Exception != null)
+                    {
+                        _logger.LogWarning("Vision model call failed (attempt {Retry}/5), retrying in {Delay}s: {Error}",
+                            retryCount, timespan.TotalSeconds, outcome.Exception.Message);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Vision model returned invalid JSON (attempt {Retry}/5), retrying in {Delay}s",
+                            retryCount, timespan.TotalSeconds);
+                    }
+                });
     }
 
     /// <summary>
@@ -35,19 +59,14 @@ public class DesignAnalysisService : IDesignAnalysisService
     {
         _logger.LogInformation("🧠 Analyzing design: {Url} ({PageCount} pages)", design.Url, design.Pages.Count);
 
-        // 1. Analyze each page
+        // 1. Analyze each page (if any page fails after retries, reject entire site)
         foreach (var page in design.Pages)
         {
-            try
-            {
-                _logger.LogInformation("📊 Analyzing {PageType} page: {Url}", page.PageType, page.Url);
-                await AnalyzePageAsync(page, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to analyze page: {Url}", page.Url);
-                // Continue with other pages
-            }
+            _logger.LogInformation("📊 Analyzing {PageType} page: {Url}", page.PageType, page.Url);
+            
+            // Note: No try-catch here - if llava fails after 5 retries, exception propagates
+            // and the entire site is rejected (as intended)
+            await AnalyzePageAsync(page, cancellationToken);
         }
 
         // 2. Calculate overall site score
@@ -89,18 +108,23 @@ public class DesignAnalysisService : IDesignAnalysisService
         // Build user prompt
         var userPrompt = BuildPageAnalysisPrompt(page);
 
-        // Call LLaVA with image
+        // Call LLaVA with image (with 5 retries)
         var imageBytes = await File.ReadAllBytesAsync(screenshotPath, cancellationToken);
         var imageBase64 = Convert.ToBase64String(imageBytes);
 
-        // Note: This would need to be updated to support images in IOllamaClient
-        // For now, we'll use a placeholder that calls the vision model
         var response = await CallVisionModelAsync(
             _options.VisionModel,
             userPrompt,
             systemPrompt,
             imageBase64,
             cancellationToken);
+
+        // Validate response after all retries
+        if (!IsValidJsonResponse(response))
+        {
+            _logger.LogError("❌ Vision model failed to return valid JSON after 5 retries for page: {Url}", page.Url);
+            throw new InvalidOperationException($"Vision model failed to analyze page {page.Url} after 5 retries - rejecting entire site");
+        }
 
         // Parse analysis response
         var analysis = ParsePageAnalysis(response, page.PageType);
@@ -345,22 +369,106 @@ public class DesignAnalysisService : IDesignAnalysisService
 
     private async Task<string> CallVisionModelAsync(string model, string prompt, string systemPrompt, string imageBase64, CancellationToken cancellationToken)
     {
-        // TODO: This needs to be implemented in IOllamaClient to support images
-        // For now, we'll use a workaround that calls Ollama's generate API with image
-        
-        // Placeholder: In a real implementation, this would call:
-        // POST /api/generate with { "model": "llava:13b", "prompt": "...", "images": ["base64..."] }
-        
-        _logger.LogWarning("Vision model integration not fully implemented yet - using text-only fallback");
-        
-        // Fallback to text-only analysis
-        var response = await _ollamaClient.GenerateAsync(
-            _options.TextModel,
-            prompt,
-            systemPrompt,
-            cancellationToken: cancellationToken);
+        _logger.LogInformation("🖼️ Calling vision model {Model} for image analysis", model);
 
-        return response.Response;
+        // Use retry policy with JSON validation
+        // NOTE: Each retry sends a FRESH request to llava (not the error message)
+        return await _visionRetryPolicy.ExecuteAsync(async () =>
+        {
+            _logger.LogDebug("Making fresh LLM call to {Model} (each retry is a new request)", model);
+            
+            // Call Ollama with image support for vision models (LLaVA)
+            // This is a completely fresh call - no error message is sent
+            var response = await _ollamaClient.GenerateWithVisionAsync(
+                model,
+                prompt,
+                new List<string> { imageBase64 },
+                systemPrompt,
+                cancellationToken: cancellationToken);
+
+            if (!response.Success || string.IsNullOrWhiteSpace(response.Response))
+            {
+                _logger.LogWarning("Vision model {Model} failed, falling back to text-only with {TextModel}",
+                    model, _options.TextModel);
+
+                // Fallback to text-only analysis
+                response = await _ollamaClient.GenerateAsync(
+                    _options.TextModel,
+                    prompt,
+                    systemPrompt,
+                    cancellationToken: cancellationToken);
+            }
+
+            return response.Response;
+        });
+    }
+    
+    /// <summary>
+    /// Validate that response contains parseable JSON
+    /// </summary>
+    private bool IsValidJsonResponse(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+            return false;
+            
+        try
+        {
+            // Extract JSON from response (llava often adds explanation text)
+            var json = ExtractJsonFromResponse(response);
+            if (string.IsNullOrWhiteSpace(json))
+                return false;
+                
+            // Try to parse it
+            using var doc = JsonDocument.Parse(json);
+            
+            // Ensure it has at least one category with a score
+            var hasValidCategory = false;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Value.ValueKind == JsonValueKind.Object &&
+                    prop.Value.TryGetProperty("score", out var score) &&
+                    score.ValueKind == JsonValueKind.Number)
+                {
+                    hasValidCategory = true;
+                    break;
+                }
+            }
+            
+            return hasValidCategory;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Extract JSON from llava response (handles verbose output)
+    /// </summary>
+    private string ExtractJsonFromResponse(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+            return string.Empty;
+            
+        // Find JSON object boundaries
+        var jsonStart = response.IndexOf('{');
+        var jsonEnd = response.LastIndexOf('}');
+        
+        if (jsonStart < 0 || jsonEnd <= jsonStart)
+            return string.Empty;
+            
+        var json = response.Substring(jsonStart, jsonEnd - jsonStart + 1);
+        
+        // Clean up common llava artifacts
+        json = json
+            .Replace(",\n}", "\n}") // Trailing commas before closing brace
+            .Replace(", }", " }") // Trailing commas (space)
+            .Replace(",}", "}") // Trailing commas (no space)
+            .Replace(",\n]", "\n]") // Trailing commas in arrays
+            .Replace(", ]", " ]") // Trailing commas in arrays (space)
+            .Replace(",]", "]"); // Trailing commas in arrays (no space)
+            
+        return json;
     }
 
     private string GetPromptNameForPageType(string pageType)
@@ -396,12 +504,12 @@ public class DesignAnalysisService : IDesignAnalysisService
 3. **Social Proof** - Logo clouds, testimonials, statistics, placement
 4. **Composition** - Visual hierarchy, whitespace, color harmony, typography
 
-Return JSON:
+IMPORTANT: Return ONLY valid JSON with NO trailing commas, NO extra text:
 {
-  ""hero"": { ""score"": 0-10, ""strengths"": [...], ""weaknesses"": [...] },
-  ""navigation"": { ""score"": 0-10, ""strengths"": [...], ""weaknesses"": [...] },
-  ""socialProof"": { ""score"": 0-10, ""strengths"": [...], ""weaknesses"": [...] },
-  ""composition"": { ""score"": 0-10, ""strengths"": [...], ""weaknesses"": [...] }
+  ""hero"": { ""score"": 8, ""strengths"": [""Clear headline""], ""weaknesses"": [""CTA too small""] },
+  ""navigation"": { ""score"": 7, ""strengths"": [""Good hierarchy""], ""weaknesses"": [""Mobile menu unclear""] },
+  ""socialProof"": { ""score"": 6, ""strengths"": [""Visible logos""], ""weaknesses"": [""No testimonials""] },
+  ""composition"": { ""score"": 9, ""strengths"": [""Great spacing""], ""weaknesses"": [""Color contrast low""] }
 }";
     }
 
@@ -415,7 +523,11 @@ Return JSON:
 4. **CTAs** - Button design, action text, hierarchy, urgency/trust elements
 5. **Trust Elements** - Guarantees, testimonials, security badges, FAQ
 
-Return JSON with scores, strengths, and weaknesses for each category.";
+IMPORTANT: Return ONLY valid JSON with NO trailing commas, NO extra text. Example:
+{
+  ""tierLayout"": { ""score"": 8, ""strengths"": [""Clear tiers""], ""weaknesses"": [""Too many options""] },
+  ""pricePresentation"": { ""score"": 7, ""strengths"": [""Clear pricing""], ""weaknesses"": [""Small font""] }
+}";
     }
 
     private string GetFallbackFeaturesPrompt()
@@ -440,7 +552,11 @@ Return JSON with scores, strengths, and weaknesses.";
 4. **Spacing/Layout** - Whitespace and structure
 5. **Overall Aesthetic** - General design quality
 
-Return JSON with scores, strengths, and weaknesses.";
+IMPORTANT: Return ONLY valid JSON with NO trailing commas, NO extra text. Example:
+{
+  ""visualHierarchy"": { ""score"": 8, ""strengths"": [""Clear flow""], ""weaknesses"": [""Too busy""] },
+  ""typography"": { ""score"": 7, ""strengths"": [""Readable""], ""weaknesses"": [""Small size""] }
+}";
     }
 
     private string GetFallbackSynthesisPrompt()
@@ -527,12 +643,11 @@ Return JSON: {{ ""score"": 0-10, ""wcagLevel"": ""A/AA/AAA/Below A"", ""contrast
 
         try
         {
-            var jsonStart = response.IndexOf('{');
-            var jsonEnd = response.LastIndexOf('}');
-
-            if (jsonStart >= 0 && jsonEnd > jsonStart)
+            // Use improved JSON extraction with artifact cleanup
+            var json = ExtractJsonFromResponse(response);
+            
+            if (!string.IsNullOrWhiteSpace(json))
             {
-                var json = response.Substring(jsonStart, jsonEnd - jsonStart + 1);
                 var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
