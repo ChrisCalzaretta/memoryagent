@@ -505,3 +505,4 @@ public class PatternService : IPatternService
 
 
 
+

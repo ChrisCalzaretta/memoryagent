@@ -328,3 +328,4 @@ public class MockHttpMessageHandler : HttpMessageHandler
         return Task.FromResult(_sendFunc(request));
     }
 }
+

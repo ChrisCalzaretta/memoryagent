@@ -1,0 +1,142 @@
+{
+  "mcpServers": {
+    "memory-router": {
+      "url": "http://localhost:5010/api/mcp",
+      "description": "AI-powered intelligent orchestration of all Memory Agent tools using FunctionGemma",
+      "transport": "http",
+      "methods": {
+        "tools/list": "POST",
+        "tools/call": "POST"
+      },
+      "tools": [
+        {
+          "name": "execute_task",
+          "description": "🧠 Main entry point for ALL operations. Uses FunctionGemma AI to intelligently orchestrate 44+ tools from MemoryAgent and CodingOrchestrator. Just describe what you want in natural language - the AI figures out which tools to call, creates an execution plan, and returns complete results.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "request": {
+                "type": "string",
+                "description": "Natural language description of what you want to accomplish. Examples: 'Find all authentication code and validate security', 'Create a REST API in Python', 'Analyze code complexity', 'Create a brand system for my healthcare app'"
+              }
+            },
+            "required": ["request"]
+          },
+          "examples": [
+            "Find all database query code in this project",
+            "Create a user authentication service in TypeScript with JWT validation",
+            "Analyze security vulnerabilities and suggest fixes",
+            "Generate a plan for implementing user profiles",
+            "Create a modern tech brand and validate UI code against it",
+            "Search for examples of error handling patterns"
+          ],
+          "categories": [
+            "orchestration",
+            "code-generation",
+            "search",
+            "analysis",
+            "validation",
+            "design",
+            "planning"
+          ]
+        },
+        {
+          "name": "list_available_tools",
+          "description": "📋 Discover all 44+ available tools and their capabilities. Optionally filter by keyword to find tools for specific tasks. Returns tool names, descriptions, use cases, and which service provides them.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "filter": {
+                "type": "string",
+                "description": "Optional keyword to filter tools (e.g., 'search', 'design', 'validate', 'plan', 'transform')"
+              }
+            },
+            "required": []
+          },
+          "examples": [
+            "Show all available tools",
+            "Find tools related to 'search'",
+            "List design and branding tools",
+            "Show validation tools"
+          ],
+          "categories": [
+            "discovery",
+            "documentation"
+          ]
+        }
+      ],
+      "underlying_services": {
+        "memory-agent": {
+          "tool_count": 33,
+          "categories": [
+            "search",
+            "code-understanding",
+            "indexing",
+            "validation",
+            "planning",
+            "intelligence",
+            "learning",
+            "transformation",
+            "session-management"
+          ],
+          "description": "Code search, analysis, validation, learning, and workspace intelligence"
+        },
+        "coding-orchestrator": {
+          "tool_count": 11,
+          "categories": [
+            "code-generation",
+            "task-management",
+            "design-system",
+            "brand-validation"
+          ],
+          "description": "Multi-agent code generation and design system management"
+        }
+      },
+      "features": {
+        "ai_orchestration": true,
+        "multi_step_workflows": true,
+        "automatic_tool_selection": true,
+        "natural_language_input": true,
+        "dynamic_tool_discovery": true,
+        "quality_enforcement": true,
+        "search_before_write": true,
+        "supported_languages": [
+          "python",
+          "typescript",
+          "javascript",
+          "csharp",
+          "go",
+          "rust",
+          "java",
+          "ruby",
+          "php",
+          "swift",
+          "kotlin",
+          "dart",
+          "sql",
+          "html",
+          "css",
+          "shell"
+        ]
+      }
+    }
+  },
+  "configuration": {
+    "default_server": "memory-router",
+    "health_check": {
+      "url": "http://localhost:5010/health",
+      "expected_response": {
+        "status": "healthy",
+        "service": "MemoryRouter"
+      }
+    },
+    "notes": [
+      "MemoryRouter is the ONLY MCP server exposed to Cursor",
+      "It provides AI-powered orchestration of 44+ underlying tools",
+      "Uses FunctionGemma (Ollama) for intelligent tool selection and workflow planning",
+      "Automatically discovers tools from MemoryAgent and CodingOrchestrator",
+      "All tools are augmented with metadata (keywords, use cases) for better AI routing"
+    ]
+  }
+}
+

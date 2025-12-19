@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "execute_task",
+    "arguments": {
+      "request": "create an execution plan for Blazor C# chess game",
+      "context": {
+        "workspace": "e:/GitHub/MemoryAgent"
+      }
+    }
+  }
+}
+

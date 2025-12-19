@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "id": 25,
+  "params": {
+    "name": "execute_task",
+    "arguments": {
+      "context": {
+        "workspace": "e:/GitHub/MemoryAgent"
+      },
+      "request": "get existing database schema"
+    }
+  }
+}

@@ -10,6 +10,36 @@ services:
     profiles:
       - build-only  # Won't start with normal docker-compose up
 
+  # 🧠 MemoryRouter - FunctionGemma-powered smart routing
+  # Single entry point for all agent tools with AI-powered decision making
+  memory-router:
+    build:
+      context: .
+      dockerfile: MemoryRouter.Server/Dockerfile
+    container_name: memory-router
+    ports:
+      - "5010:5010"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5010
+      - Ollama__BaseUrl=<ADD OLLAMA URL>
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+      - CodingOrchestrator__BaseUrl=http://memory-coding-orchestrator:5003
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+      coding-orchestrator:
+        condition: service_healthy
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5010/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
   mcp-server:
     build:
       context: .

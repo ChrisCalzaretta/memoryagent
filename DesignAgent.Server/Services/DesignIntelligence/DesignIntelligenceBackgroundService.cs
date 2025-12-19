@@ -128,9 +128,15 @@ public class DesignIntelligenceBackgroundService : BackgroundService
             // 6. Analyze design
             var analyzedDesign = await analysisService.AnalyzeDesignAsync(design, cancellationToken);
 
+            // 7. Check quality gate (this was missing!)
+            analyzedDesign.PassedQualityGate = await analysisService.PassesQualityGateAsync(
+                analyzedDesign.OverallScore, 
+                source.TrustScore, 
+                cancellationToken);
+
             _totalProcessed++;
 
-            // 7. Quality gate decision
+            // 8. Quality gate decision
             if (analyzedDesign.PassedQualityGate)
             {
                 _totalAccepted++;

@@ -1,0 +1,452 @@
+🎯 **How to Add a New Tool - The Easy Way**
+
+===============================================================================
+
+Step 1: Pick Where the Tool Lives
+----------------------------------
+
+Tools can go in **two places**:
+- **MemoryAgent** (`MemoryAgent.Server`) - for search, analysis, validation, learning tools
+- **CodingOrchestrator** (`CodingOrchestrator.Server`) - for code generation, design, task management
+
+===============================================================================
+
+Step 2: Create a Tool Handler (if adding to MemoryAgent)
+---------------------------------------------------------
+
+Create a new handler in `MemoryAgent.Server/Services/Mcp/`:
+
+```csharp
+using MemoryAgent.Server.Models;
+
+namespace MemoryAgent.Server.Services.Mcp;
+
+public class MyNewToolHandler : IMcpToolHandler
+{
+    private readonly ILogger<MyNewToolHandler> _logger;
+    // Add any services you need
+
+    public MyNewToolHandler(ILogger<MyNewToolHandler> logger)
+    {
+        _logger = logger;
+    }
+
+    // Define your tools
+    public IEnumerable<McpTool> GetTools()
+    {
+        return new[]
+        {
+            new McpTool
+            {
+                Name = "my_awesome_tool",
+                Description = "Does something awesome with code",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string", description = "What to search for" },
+                        context = new { type = "string", description = "Project context" },
+                        maxResults = new { type = "number", description = "Max results", @default = 10 }
+                    },
+                    required = new[] { "query", "context" }
+                }
+            }
+        };
+    }
+
+    // Handle the tool call
+    public async Task<McpToolResult> HandleToolAsync(
+        string toolName,
+        Dictionary<string, object>? args,
+        CancellationToken cancellationToken = default)
+    {
+        if (toolName != "my_awesome_tool")
+        {
+            throw new ArgumentException($"Unknown tool: {toolName}");
+        }
+
+        // Extract arguments
+        var query = args?["query"]?.ToString() ?? "";
+        var context = args?["context"]?.ToString() ?? "";
+        
+        // DO YOUR THING HERE
+        var result = await DoAwesomeStuff(query, context);
+
+        // Return result
+        return new McpToolResult
+        {
+            IsError = false,
+            Content = new List<McpContent>
+            {
+                new McpContent
+                {
+                    Type = "text",
+                    Text = result
+                }
+            }
+        };
+    }
+
+    private async Task<string> DoAwesomeStuff(string query, string context)
+    {
+        // Your implementation
+        return $"Found {query} in {context}";
+    }
+}
+```
+
+===============================================================================
+
+Step 3: Register the Handler (MemoryAgent only)
+------------------------------------------------
+
+Add to `MemoryAgent.Server/Program.cs`:
+
+```csharp
+// In the dependency injection section
+builder.Services.AddScoped<IMcpToolHandler, MyNewToolHandler>();
+```
+
+===============================================================================
+
+Step 4: For CodingOrchestrator (simpler approach)
+--------------------------------------------------
+
+Just add to `CodingOrchestrator.Server/Services/McpHandler.cs` in the `GetToolDefinitions()` method:
+
+```csharp
+public IEnumerable<object> GetToolDefinitions()
+{
+    var tools = new List<object>
+    {
+        // ... existing tools ...
+        
+        // YOUR NEW TOOL
+        new Dictionary<string, object>
+        {
+            ["name"] = "my_new_design_tool",
+            ["description"] = "Creates amazing designs",
+            ["inputSchema"] = new Dictionary<string, object>
+            {
+                ["type"] = "object",
+                ["properties"] = new Dictionary<string, object>
+                {
+                    ["brandName"] = new Dictionary<string, object> 
+                    { 
+                        ["type"] = "string", 
+                        ["description"] = "Name of the brand" 
+                    },
+                    ["style"] = new Dictionary<string, object>
+                    {
+                        ["type"] = "string",
+                        ["description"] = "Design style (modern, minimal, bold)",
+                        ["enum"] = new[] { "modern", "minimal", "bold" }
+                    }
+                },
+                ["required"] = new[] { "brandName" }
+            }
+        }
+    };
+    
+    return tools;
+}
+```
+
+Then add the handler in `HandleToolCallAsync()` method:
+
+```csharp
+public async Task<string> HandleToolCallAsync(
+    string toolName,
+    Dictionary<string, object> arguments,
+    CancellationToken cancellationToken)
+{
+    return toolName switch
+    {
+        "orchestrate_task" => await HandleOrchestrateAsync(arguments, cancellationToken),
+        "my_new_design_tool" => await HandleMyNewToolAsync(arguments, cancellationToken),
+        // ... other tools ...
+        _ => JsonSerializer.Serialize(new { error = $"Unknown tool: {toolName}" })
+    };
+}
+
+private async Task<string> HandleMyNewToolAsync(
+    Dictionary<string, object> args,
+    CancellationToken ct)
+{
+    var brandName = args["brandName"].ToString();
+    var style = args.GetValueOrDefault("style")?.ToString() ?? "modern";
+    
+    // Do your thing
+    return JsonSerializer.Serialize(new { 
+        success = true,
+        message = $"Created {style} brand for {brandName}"
+    });
+}
+```
+
+===============================================================================
+
+🚀 That's It! The Tool is Auto-Discovered
+------------------------------------------
+
+**NO RESTART OF MEMORYROUTER NEEDED!** The ToolRegistry automatically:
+
+1. ✅ Discovers your tool from MemoryAgent/CodingOrchestrator's `/api/mcp/tools` endpoint
+2. ✅ Adds smart keywords based on the tool name (e.g., "search", "find" for search tools)
+3. ✅ Adds use cases automatically
+4. ✅ Makes it available to FunctionGemma AI for routing
+
+Just restart **MemoryAgent** or **CodingOrchestrator** (whichever you modified), and the tool is live!
+
+===============================================================================
+
+📝 Quick JSON Reference
+-----------------------
+
+The tool definition structure:
+
+```json
+{
+  "name": "tool_name_in_snake_case",
+  "description": "Clear description of what it does",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "param1": { "type": "string", "description": "What this does" },
+      "param2": { "type": "number", "description": "How many", "default": 10 }
+    },
+    "required": ["param1"]
+  }
+}
+```
+
+===============================================================================
+
+COMPLETE MODEL DEFINITIONS
+===========================
+
+1️⃣ MCP Tool (What services return)
+------------------------------------
+
+```json
+{
+  "name": "semantic_search",
+  "description": "Search code by semantic similarity using vector embeddings",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search query to find relevant code"
+      },
+      "file_patterns": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Optional file patterns to filter (e.g., ['*.cs', '*.ts'])"
+      },
+      "max_results": {
+        "type": "integer",
+        "description": "Maximum number of results to return",
+        "default": 10
+      }
+    },
+    "required": ["query"]
+  }
+}
+```
+
+2️⃣ Augmented Tool (After ToolRegistry enrichment)
+---------------------------------------------------
+
+```json
+{
+  "name": "semantic_search",
+  "description": "Search codebase for existing code, patterns, functions, or files using semantic search",
+  "service": "memory-agent",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string", "description": "Search query" }
+    },
+    "required": ["query"]
+  },
+  "keywords": [
+    "search",
+    "find",
+    "query",
+    "lookup",
+    "discover",
+    "locate",
+    "where is",
+    "semantic search"
+  ],
+  "useCases": [
+    "Find existing code or files",
+    "Search for patterns or examples",
+    "Locate specific functionality",
+    "Discover how something works",
+    "Find authentication/API/database code"
+  ]
+}
+```
+
+3️⃣ Real Examples from Your System
+-----------------------------------
+
+**Search Tool:**
+```json
+{
+  "name": "smartsearch",
+  "description": "Advanced multi-strategy semantic search optimized for code discovery",
+  "service": "memory-agent",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "What to search for"
+      },
+      "context": {
+        "type": "string",
+        "description": "Search context (project, file, function)"
+      }
+    },
+    "required": ["query"]
+  },
+  "keywords": ["search", "find", "query", "lookup", "discover", "locate"],
+  "useCases": [
+    "Find existing code or files",
+    "Search for patterns or examples",
+    "Locate specific functionality"
+  ]
+}
+```
+
+**Code Generation Tool:**
+```json
+{
+  "name": "orchestrate_task",
+  "description": "Generate complete applications, features, or code files from natural language descriptions",
+  "service": "coding-orchestrator",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task": {
+        "type": "string",
+        "description": "What to build/create"
+      },
+      "language": {
+        "type": "string",
+        "description": "Programming language",
+        "enum": ["python", "typescript", "csharp", "go", "java"]
+      },
+      "requirements": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Additional requirements or constraints"
+      }
+    },
+    "required": ["task"]
+  },
+  "keywords": ["code", "generate", "create", "build", "implement"],
+  "useCases": [
+    "Generate new code from scratch",
+    "Create complete features or apps",
+    "Build REST APIs or services"
+  ]
+}
+```
+
+**Design Tool:**
+```json
+{
+  "name": "design_create_brand",
+  "description": "Create a complete brand identity and design system",
+  "service": "coding-orchestrator",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "brand_name": {
+        "type": "string",
+        "description": "Name of the brand"
+      },
+      "industry": {
+        "type": "string",
+        "description": "Industry/sector (healthcare, fintech, e-commerce, etc.)"
+      },
+      "style": {
+        "type": "string",
+        "description": "Design style (modern, minimal, bold, elegant, playful)"
+      },
+      "target_audience": {
+        "type": "string",
+        "description": "Who is this for?"
+      }
+    },
+    "required": ["brand_name", "industry"]
+  },
+  "keywords": ["design", "brand", "UI", "UX", "style", "guidelines"],
+  "useCases": [
+    "Create design system",
+    "Manage brand guidelines",
+    "Generate style guides"
+  ]
+}
+```
+
+4️⃣ MCP Protocol Format (What Cursor sends)
+--------------------------------------------
+
+**Calling a tool:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "execute_task",
+    "arguments": {
+      "request": "Find all authentication code and validate security",
+      "context": "my-project",
+      "workspacePath": "E:/GitHub/MyApp"
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "✅ Found 15 authentication files...\n✅ Security validation passed..."
+      }
+    ]
+  }
+}
+```
+
+===============================================================================
+
+5️⃣ Quick Reference Table
+-------------------------
+
+| Field         | Required | Description                              |
+|---------------|----------|------------------------------------------|
+| name          | ✅ Yes   | Unique tool identifier (snake_case)      |
+| description   | ✅ Yes   | What the tool does                       |
+| service       | ✅ Yes   | "memory-agent" or "coding-orchestrator"  |
+| inputSchema   | ✅ Yes   | JSON Schema for parameters               |
+| keywords      | Auto     | Search terms for discovery               |
+| useCases      | Auto     | When to use this tool                    |
+
+**The ToolRegistry automatically adds keywords and use cases based on the tool name!** 🎯
+
+===============================================================================
+
+That's literally it! 🎉

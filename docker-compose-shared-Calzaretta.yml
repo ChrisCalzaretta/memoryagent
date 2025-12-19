@@ -10,6 +10,36 @@ services:
     profiles:
       - build-only  # Won't start with normal docker-compose up
 
+  # 🧠 MemoryRouter - FunctionGemma-powered smart routing
+  # Single entry point for all agent tools with AI-powered decision making
+  memory-router:
+    build:
+      context: .
+      dockerfile: MemoryRouter.Server/Dockerfile
+    container_name: memory-router
+    ports:
+      - "5010:5010"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5010
+      - Ollama__BaseUrl=http://10.0.2.20:11434
+      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+      - CodingOrchestrator__BaseUrl=http://memory-coding-orchestrator:5003
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+      coding-orchestrator:
+        condition: service_healthy
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5010/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
   mcp-server:
     build:
       context: .
@@ -166,6 +196,12 @@ services:
         condition: service_healthy
     networks:
       - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     # Need elevated permissions for Docker socket access
     privileged: false
     user: root
@@ -305,7 +341,7 @@ services:
       # Note: Serper no longer has a free tier (paid only: $50/month)
       - DesignIntelligence__SearchQueriesPerRun=5
       - DesignIntelligence__SearchResultsPerQuery=10
-      - DesignIntelligence__EnableBackgroundLearning=false
+      - DesignIntelligence__EnableBackgroundLearning=true
       - DesignIntelligence__BackgroundIntervalSec=3600
       - DesignIntelligence__MaxCpuPercent=30
       - DesignIntelligence__MinFeedbackForEvolution=10

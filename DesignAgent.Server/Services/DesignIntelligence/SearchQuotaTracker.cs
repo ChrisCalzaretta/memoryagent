@@ -167,3 +167,4 @@ public class SearchQuotaTracker
         public int ResetHour { get; set; }
     }
 }
+
