@@ -144,13 +144,17 @@ public class McpController : ControllerBase
                 });
             }
 
+            _logger.LogInformation("📨 Request ID: {RequestId}, Tool: {Tool}", request.Id, request.Params.Name);
+            
             var result = await _mcpHandler.HandleToolCallAsync(
                 request.Params.Name,
                 request.Params.Arguments ?? new Dictionary<string, object>(),
                 cancellationToken
             );
 
-            return Ok(new McpResponse
+            _logger.LogInformation("✅ Tool call completed, sending response to Cursor (ID: {RequestId}, {Length} chars)", request.Id, result?.Length ?? 0);
+
+            var response = new McpResponse
             {
                 Jsonrpc = "2.0",
                 Id = request.Id,
@@ -165,7 +169,11 @@ public class McpController : ControllerBase
                         }
                     }
                 }
-            });
+            };
+
+            _logger.LogInformation("📤 Sending MCP response: {Response}", System.Text.Json.JsonSerializer.Serialize(new { jsonrpc = response.Jsonrpc, id = response.Id, hasResult = response.Result != null }));
+
+            return Ok(response);
         }
         catch (Exception ex)
         {
@@ -212,7 +220,11 @@ public class McpResponse
 {
     public string Jsonrpc { get; set; } = "2.0";
     public object? Id { get; set; }  // Can be string or number
+    
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public object? Result { get; set; }
+    
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public McpError? Error { get; set; }
 }
 
@@ -221,4 +233,5 @@ public class McpError
     public int Code { get; set; }
     public string? Message { get; set; }
 }
+
 

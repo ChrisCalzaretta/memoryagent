@@ -66,6 +66,7 @@ public class SemgrepService : ISemgrepService
         };
 
         var stopwatch = Stopwatch.StartNew();
+        Process? process = null;
 
         try
         {
@@ -85,7 +86,11 @@ public class SemgrepService : ISemgrepService
 
             _logger.LogInformation("Running Semgrep scan on: {File}", filePath);
 
-            var process = new Process
+            // ⏱️ Add 5-second timeout for Semgrep to prevent hanging during indexing
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -99,9 +104,9 @@ public class SemgrepService : ISemgrepService
             };
 
             process.Start();
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var errorOutput = await process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
+            var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+            var errorOutput = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+            await process.WaitForExitAsync(linkedCts.Token);
 
             stopwatch.Stop();
             report.DurationSeconds = stopwatch.Elapsed.TotalSeconds;
@@ -147,6 +152,17 @@ public class SemgrepService : ISemgrepService
             _logger.LogInformation("Semgrep scan complete: {Findings} findings in {Duration}s",
                 report.Findings.Count, report.DurationSeconds);
 
+            return report;
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            report.DurationSeconds = stopwatch.Elapsed.TotalSeconds;
+            _logger.LogWarning("Semgrep scan timed out after {Seconds}s for {File} - skipping security scan", stopwatch.Elapsed.TotalSeconds, filePath);
+            report.Success = false;
+            report.Errors.Add($"Scan timed out after {stopwatch.Elapsed.TotalSeconds:F1}s");
+            // Kill the process if it's still running
+            try { if (process != null && !process.HasExited) process.Kill(entireProcessTree: true); } catch { }
             return report;
         }
         catch (Exception ex)

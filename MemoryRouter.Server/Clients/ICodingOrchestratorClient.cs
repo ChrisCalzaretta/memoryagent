@@ -18,3 +18,4 @@ public interface ICodingOrchestratorClient
     Task<IEnumerable<McpToolDefinition>> GetToolsAsync(CancellationToken cancellationToken = default);
 }
 
+

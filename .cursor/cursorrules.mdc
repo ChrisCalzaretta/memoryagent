@@ -4,212 +4,204 @@ alwaysApply: true
 
 # MemoryRouter - AI-Powered Intelligent Agent Orchestration
 
-## 🚨 CRITICAL - SINGLE ENTRY POINT FOR ALL OPERATIONS
+## 🚨 CRITICAL - SINGLE ENTRY POINT
 
-**MemoryRouter** is the **ONLY** MCP server exposed to Cursor. It uses **FunctionGemma AI** to intelligently orchestrate all 44+ tools from MemoryAgent and CodingOrchestrator.
+**MemoryRouter** is the **ONLY** MCP server exposed to Cursor. It uses **FunctionGemma AI** to intelligently orchestrate 44+ tools from MemoryAgent and CodingOrchestrator.
 
-**ALWAYS** use `execute_task` with natural language - the AI figures out which tools to call!
+**ALWAYS use `execute_task` with natural language - the AI figures out everything else!**
 
 ---
 
-## 🧠 How MemoryRouter Works
+## 🧠 How It Works
 
 ### Single Entry Point: `execute_task`
-```
-execute_task(request: "Find all authentication code and validate it for security issues")
+```javascript
+execute_task({ request: "Find all authentication code and validate it for security issues" })
 ```
 
-**What happens internally:**
+**Behind the scenes:**
 1. FunctionGemma analyzes your natural language request
 2. Creates an execution plan with the right tools
 3. Executes tools from MemoryAgent & CodingOrchestrator
-4. Returns a complete result
+4. Returns complete results
 
-**You don't need to know which tools exist!** Just describe what you want.
-
----
-
-## 🎯 Common Use Cases
-
-### 🔍 Code Search & Understanding
-```
-execute_task(request: "Find all database query code")
-execute_task(request: "Explain how authentication works in this project")
-execute_task(request: "Show me examples of error handling patterns")
-```
-
-### 🏗️ Code Generation
-```
-execute_task(request: "Create a REST API endpoint for user management in Python")
-execute_task(request: "Generate a React component for displaying user profiles")
-execute_task(request: "Write unit tests for the Calculator class")
-```
-
-### ✅ Code Analysis & Validation
-```
-execute_task(request: "Analyze security vulnerabilities in this codebase")
-execute_task(request: "Check code complexity and suggest refactoring")
-execute_task(request: "Validate all imports and dependencies")
-```
-
-### 🎨 Design & Branding
-```
-execute_task(request: "Create a brand system for my healthcare app")
-execute_task(request: "Validate this UI code against our brand guidelines")
-execute_task(request: "Get the design tokens for our brand")
-```
-
-### 📋 Planning & Task Management
-```
-execute_task(request: "Create a plan for implementing user authentication")
-execute_task(request: "Check status of all active coding tasks")
-execute_task(request: "Find similar successful tasks for guidance")
-```
-
-### 🧠 Knowledge & Learning
-```
-execute_task(request: "What similar questions have been asked before?")
-execute_task(request: "Remember that we decided to use JWT for auth")
-execute_task(request: "Get workspace status and learning health")
-```
+**You don't need to know which tools exist - just describe what you want!**
 
 ---
 
-## 📊 Tool Discovery
+## 📊 Tool Discovery by Category
 
-If you want to see **all available tools** and their capabilities:
+MemoryRouter organizes **44+ tools** into **6 core categories**:
 
+```javascript
+list_available_tools()                         // All tools
+list_available_tools({ category: "discovery" }) // 🔍 Search & analyze
+list_available_tools({ category: "generation" }) // 🚀 Code & design generation
+list_available_tools({ category: "validation" }) // ✅ Quality & security
+list_available_tools({ category: "planning" })   // 📋 Planning & tasks
+list_available_tools({ category: "knowledge" })  // 🧠 Learning & indexing
+list_available_tools({ category: "management" }) // 📊 Status & control
 ```
-list_available_tools()                    # List all 44+ tools
-list_available_tools(filter: "search")    # Filter by keyword
-list_available_tools(filter: "design")    # Show design-related tools
-```
 
-This returns:
-- **33 MemoryAgent tools**: Search, analysis, validation, learning, planning
-- **11 CodingOrchestrator tools**: Code generation, design, branding
+### 🔍 Discovery - Search, Find, Analyze
+Find existing code and understand systems
+- Search codebase semantically
+- Analyze structure and dependencies
+- Explain how features work
+- Map system architecture
+
+### 🚀 Generation - Create, Build, Design
+Generate new code, features, and designs
+- Create applications from scratch
+- Build REST APIs and services
+- Generate UI components
+- Design brand systems
+
+### ✅ Validation - Review, Check, Audit
+Ensure quality and security
+- Review code quality
+- Check security vulnerabilities
+- Validate best practices
+- Audit compliance
+
+### 📋 Planning - Plan, Organize, Manage
+Break down work and track progress
+- Create execution plans
+- Generate task breakdowns
+- Manage todos and reminders
+- Organize development strategy
+
+### 🧠 Knowledge - Learn, Store, Index
+Build and retrieve project knowledge
+- Index workspace for search
+- Store Q&A and decisions
+- Learn from conversations
+- Retrieve historical context
+
+### 📊 Management - Status, Control, Monitor
+Monitor and control operations
+- Check task/job status
+- Monitor running operations
+- Control background jobs
+- Cancel long-running tasks
 
 ---
 
-## 🔧 Available Tool Categories
+## 🎯 Example Use Cases
 
-### From MemoryAgent (33 tools):
-- **Search**: `smartsearch`, `find_examples`, `find_similar_questions`
-- **Code Understanding**: `explain_code`, `dependency_chain`, `analyze_complexity`
-- **Indexing**: `index` (file, directory, reindex)
-- **Validation**: `validate`, `validate_imports`
-- **Planning**: `manage_plan`, `generate_task_plan`, `manage_todos`
-- **Intelligence**: `get_recommendations`, `get_important_files`, `get_insights`
-- **Learning**: `store_qa`, `store_successful_task`, `query_task_lessons`
-- **Transformation**: `transform` (CSS, pages, components)
-- **Impact Analysis**: `impact_analysis`, `get_coedited_files`
-- **Session Management**: `get_context`, `workspace_status`
-- **Pattern Management**: `manage_patterns`, `manage_prompts`, `feedback`
+### Code Search & Understanding
+```javascript
+execute_task({ request: "Find all database query code" })
+execute_task({ request: "Explain how authentication works" })
+```
 
-### From CodingOrchestrator (11 tools):
-- **Code Generation**: `orchestrate_task`, `get_task_status`, `get_generated_files`
-- **Task Management**: `list_tasks`, `cancel_task`
-- **Design System**: `design_questionnaire`, `design_create_brand`, `design_get_brand`
-- **Brand Validation**: `design_validate`, `design_list_brands`, `design_update_brand`
+### Code Generation
+```javascript
+execute_task({ request: "Create a REST API endpoint for user management in Python" })
+execute_task({ request: "Generate a React dashboard with charts" })
+```
+
+### Analysis & Validation
+```javascript
+execute_task({ request: "Analyze security vulnerabilities in this codebase" })
+execute_task({ request: "Check code complexity and suggest refactoring" })
+```
+
+### Design & Branding
+```javascript
+execute_task({ request: "Create a brand system for my healthcare app" })
+execute_task({ request: "Validate this UI code against brand guidelines" })
+```
+
+### Planning & Tasks
+```javascript
+execute_task({ request: "Create a plan for implementing user authentication" })
+execute_task({ request: "Check status of all active coding tasks" })
+```
 
 ---
 
 ## 🚀 Best Practices
 
 ### ✅ DO:
-- Use natural language with `execute_task` - be specific about what you want
+- Use natural language with `execute_task` - be specific
 - Let the AI orchestrator choose the right tools
-- Use `list_available_tools(filter: "keyword")` to explore capabilities
-- Trust the AI to create multi-step plans automatically
+- Use `list_available_tools({ category: "..." })` to explore
+- Trust the AI to create multi-step plans
 
 ### ❌ DON'T:
-- Try to call MemoryAgent or CodingOrchestrator tools directly (they're not exposed!)
-- Manually orchestrate multiple tool calls (let FunctionGemma do it!)
+- Try to call MemoryAgent or CodingOrchestrator directly
+- Manually orchestrate multiple tool calls
 - Worry about which service a tool comes from
 
 ---
 
-## 🎯 Example Workflows
+## 🎯 Complex Workflow Examples
 
-### Code Generation with Quality Checks
-```
-execute_task(request: "Create a user authentication service in TypeScript with JWT, 
-             then validate it for security issues and check code complexity")
+### Code Generation + Quality Checks
+```javascript
+execute_task({ 
+  request: "Create a user authentication service in TypeScript with JWT, validate for security, and check complexity"
+})
 ```
 
-**What MemoryRouter does:**
-1. `orchestrate_task` → Generate authentication code
-2. `validate` (security scope) → Check for vulnerabilities
-3. `analyze_complexity` → Ensure code quality
+**MemoryRouter automatically:**
+1. Generates authentication code
+2. Validates for security issues
+3. Checks code complexity
 4. Returns complete workflow results
 
-### Brand System Creation & Validation
-```
-execute_task(request: "Create a modern tech brand for 'CloudSync' and validate 
-             the homepage HTML against the brand guidelines")
+### Brand System + Validation
+```javascript
+execute_task({ 
+  request: "Create a modern tech brand for 'CloudSync' and validate homepage HTML against guidelines"
+})
 ```
 
-**What MemoryRouter does:**
-1. `design_create_brand` → Generate brand system
-2. `design_validate` → Check HTML compliance
+**MemoryRouter automatically:**
+1. Generates brand system
+2. Validates HTML compliance
 3. Returns brand tokens + validation report
 
-### Smart Code Search & Refactoring Plan
-```
-execute_task(request: "Find all deprecated authentication patterns and create 
-             a migration plan to modern approaches")
+### Smart Search + Refactoring Plan
+```javascript
+execute_task({ 
+  request: "Find deprecated authentication patterns and create migration plan to modern approaches"
+})
 ```
 
-**What MemoryRouter does:**
-1. `smartsearch` → Find deprecated patterns
-2. `get_migration_path` → Get step-by-step migration guide
-3. `manage_plan` (create) → Create actionable plan
+**MemoryRouter automatically:**
+1. Finds deprecated patterns
+2. Gets migration guidance
+3. Creates actionable plan
 4. Returns complete refactoring roadmap
 
 ---
 
-## 🧪 Multi-Language Code Generation
+## 🧪 Multi-Language Support
 
-MemoryRouter supports **ANY programming language**:
-- Python, TypeScript, JavaScript, C#, Go, Rust, Java, Ruby, PHP
-- Swift, Kotlin, Dart, SQL, HTML, CSS, Shell, and more!
+**MemoryRouter supports ANY programming language:**
+- Python, TypeScript, JavaScript, C#, Go, Rust, Java
+- Ruby, PHP, Swift, Kotlin, Dart, SQL, HTML, CSS
+- Shell scripts and more!
 
 **Language is auto-detected** from your request or workspace context.
 
 ---
 
-## 📝 Context & Session Management
+## 🔒 Automatic Quality Enforcement
 
-**Automatic Context Detection:**
-- Context = workspace folder name (e.g., "memoryagent", "my-app")
-- Sessions start automatically on first tool use
-- Files in tool arguments are auto-tracked as "discussed"
-
-**Manual Context Management:**
-```
-execute_task(request: "Get context for implementing user profiles")
-execute_task(request: "Show workspace learning status")
-```
-
----
-
-## 🔒 Security & Quality
-
-MemoryRouter automatically enforces quality standards:
+MemoryRouter enforces quality standards automatically:
 - **Search Before Write**: Checks for existing code before generating
-- **Multi-Agent Validation**: Code is reviewed before delivery
-- **Iterative Refinement**: Keeps improving until quality score >= 8/10
-- **Security Scanning**: Validates against known vulnerabilities
+- **Multi-Agent Validation**: Code reviewed before delivery
+- **Iterative Refinement**: Improves until quality score >= 8/10
+- **Security Scanning**: Validates against vulnerabilities
 
----
-
-## 📊 Quality Thresholds
-
-### Code Generation Quality
+### Quality Thresholds
 - **9-10 (A)**: ✅ Ship it
 - **8 (B)**: ✅ Good to go
 - **7 (C)**: ⚠️ Address before release
-- **< 7**: ❌ Automatically retried until score >= 8
+- **< 7**: ❌ Automatically retried
 
 ### Security Scores
 - **10/10**: 🔒 Perfect security
@@ -221,15 +213,10 @@ MemoryRouter automatically enforces quality standards:
 ## 🎓 Learning & Evolution
 
 MemoryRouter learns from every interaction:
-- **Q&A Storage**: Remembers useful answers for instant recall
+- **Q&A Storage**: Remembers useful answers
 - **Task Success Tracking**: Learns from successful approaches
 - **Failure Analysis**: Avoids repeating mistakes
 - **Pattern Evolution**: Improves code generation over time
-
-```
-execute_task(request: "Find similar questions about authentication")
-execute_task(request: "Store this Q&A: 'We use bcrypt for password hashing'")
-```
 
 ---
 
@@ -237,32 +224,32 @@ execute_task(request: "Store this Q&A: 'We use bcrypt for password hashing'")
 
 **For EVERY coding task:**
 
-1. **Start with Context**
-   ```
-   execute_task(request: "Get context for [your task]")
+1. **Get Context**
+   ```javascript
+   execute_task({ request: "Get context for [your task]" })
    ```
 
 2. **Search First**
-   ```
-   execute_task(request: "Search for existing [feature] code")
+   ```javascript
+   execute_task({ request: "Search for existing [feature] code" })
    ```
 
 3. **Execute Task**
-   ```
-   execute_task(request: "Create/modify/analyze [specific task]")
+   ```javascript
+   execute_task({ request: "Create/modify/analyze [specific task]" })
    ```
 
 4. **Validate & Store**
-   ```
-   execute_task(request: "Validate the changes and store this successful approach")
+   ```javascript
+   execute_task({ request: "Validate changes and store this successful approach" })
    ```
 
 ---
 
-## 📞 Router Configuration
+## 📞 Configuration
 
 **Service URLs:**
-- **MemoryRouter**: `http://localhost:5010` (MCP entry point)
+- **MemoryRouter**: `http://localhost:5010` (MCP entry point for Cursor)
 - **MemoryAgent**: Internal at `http://memory-agent-server:5000`
 - **CodingOrchestrator**: Internal at `http://memory-coding-orchestrator:5003`
 

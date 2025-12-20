@@ -145,3 +145,4 @@ public class PerformanceStats
     public string RecentTrend { get; set; } = "stable";
 }
 
+

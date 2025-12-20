@@ -16,3 +16,4 @@ public interface IMcpHandler
     Task<string> HandleToolCallAsync(string toolName, Dictionary<string, object> arguments, CancellationToken cancellationToken);
 }
 
+

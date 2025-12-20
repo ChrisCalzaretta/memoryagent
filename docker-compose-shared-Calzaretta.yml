@@ -12,6 +12,7 @@ services:
 
   # 🧠 MemoryRouter - FunctionGemma-powered smart routing
   # Single entry point for all agent tools with AI-powered decision making
+  # ✅ NOW WITH BACKGROUND JOB SUPPORT - non-blocking async workflows
   memory-router:
     build:
       context: .
@@ -72,7 +73,7 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      # Ollama runs externally at 10.0.0.20:11434
+      # Ollama runs externally at 10.0.2.20:11434
     deploy:
       resources:
         limits:
@@ -150,7 +151,7 @@ services:
     stop_grace_period: 120s
     restart: unless-stopped
 
-  # Ollama runs externally on dual GPUs at 10.0.0.20
+  # Ollama runs externally on dual GPUs at 10.0.2.20
   # Start with: .\scripts\start-ollama-dual-gpu.ps1
   # - Port 11434 (3090): PINNED - deepseek-coder-v2:16b, phi3.5:3.8b, mxbai-embed-large (~14.2GB)
   # - Port 11435 (5070 Ti): SWAP - alternative models, auto-unload after 5 min
@@ -370,4 +371,3 @@ networks:
   memory-net:
     name: memory-shared-net
     driver: bridge
-

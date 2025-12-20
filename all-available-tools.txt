@@ -1,0 +1,122 @@
+# 🛠️ Available Tools (44)
+
+## 🔍 Search (3 tools)
+
+### 🧠 memory-agent
+
+#### `find_examples`
+Find usage examples of a function, class, or pattern in the codebase.
+**Use Cases:** Find existing code or files, Search for patterns or examples, Locate specific functionality
+
+#### `find_similar_questions`
+Find previously asked similar questions. CALL THIS FIRST BEFORE ANSWERING ANY QUESTION - may provide instant recall!
+**Use Cases:** Find existing code or files, Search for patterns or examples, Locate specific functionality
+
+#### `smartsearch`
+Unified smart search across all code memory. Automatically detects optimal search strategy (semantic, graph, pattern, or hybrid). Use this for ALL code questions.
+**Use Cases:** Find existing code or files, Search for patterns or examples, Locate specific functionality
+
+## 📦 Index (2 tools)
+
+### 🧠 memory-agent
+
+#### `get_project_symbols`
+Get all indexed symbols (classes, methods, functions) in a project context. Includes signatures, descriptions, and import statements.
+**Use Cases:** First-time project setup, Make codebase searchable, Enable semantic search
+
+#### `index`
+Index code into memory. Use scope='file' for single file, scope='directory' for folder, scope='reindex' to update after changes. Use background=true for large projects to avoid timeout.
+**Use Cases:** First-time project setup, Make codebase searchable, Enable semantic search
+
+## 🔬 Analysis (3 tools)
+
+### 🧠 memory-agent
+
+#### `analyze_complexity`
+Analyze code complexity metrics (cyclomatic, cognitive, LOC, nesting, code smells). Returns grades and recommendations.
+**Use Cases:** Understand code structure, Learn how feature works, Find dependencies between files
+
+#### `dependency_chain`
+Get the dependency chain for a class. Shows all dependencies and optionally detects circular dependencies.
+**Use Cases:** Understand code structure, Learn how feature works, Find dependencies between files
+
+#### `explain_code`
+Explain what a piece of code or file does. Analyzes structure, dependencies, and purpose.
+**Use Cases:** Understand code structure, Learn how feature works, Find dependencies between files
+
+## ✅ Validation (3 tools)
+
+### 🎯 coding-orchestrator
+
+#### `design_validate`
+Validate code against brand guidelines. Checks colors, typography, spacing, components, and accessibility. Returns score, grade, and issues with fixes.
+**Use Cases:** Review code quality, Check for security issues, Validate best practices
+
+### 🧠 memory-agent
+
+#### `validate`
+Unified validation tool. Use scope to choose what to validate: 'best_practices', 'security', 'pattern_quality', 'anti_patterns', 'project' (comprehensive), 'list_best_practices' (list available), or 'all'.
+**Use Cases:** Review code quality, Check for security issues, Validate best practices
+
+#### `validate_imports`
+Validate that all imports in code exist and are available. Returns list of valid/invalid imports with suggestions.
+**Use Cases:** Review code quality, Check for security issues, Validate best practices
+
+## 📋 Planning (2 tools)
+
+### 🧠 memory-agent
+
+#### `generate_task_plan`
+Generate an execution plan with checklist before code generation. Returns semantic breakdown, required classes/methods, and file dependency order.
+**Use Cases:** Create execution plan for feature, Break down complex project, Generate implementation roadmap
+
+#### `manage_plan`
+Manage development plans. Actions: 'create', 'get_status', 'update_task', 'complete', 'search', 'validate_task'.
+**Use Cases:** Create execution plan for feature, Break down complex project, Generate implementation roadmap
+
+## 📝 Todo (6 tools)
+
+### 🎯 coding-orchestrator
+
+#### `orchestrate_task`
+Start a multi-agent coding task. The coding agent generates code and the validation agent reviews it until quality standards are met. Supports ANY programming language! Uses 'Search Before Write' to avoid duplicating existing code.
+
+### 🧠 memory-agent
+
+#### `manage_todos`
+Manage TODO items. Actions: 'add', 'search', 'update_status'.
+
+#### `query_similar_tasks`
+Query similar successful tasks for guidance on how to approach a new task.
+
+#### `query_task_lessons`
+Query lessons learned from similar failed tasks. Returns what to avoid and what approaches to try.
+
+#### `store_successful_task`
+Store a successful task approach for future learning. Saved to both context-specific and shared collections.
+
+#### `store_task_failure`
+Store detailed information about a failed task for future learning. Includes what failed, why, and approaches tried.
+
+## 🎨 Design (5 tools)
+
+### 🎯 coding-orchestrator
+
+#### `design_create_brand`
+Create a complete brand system from questionnaire answers. Returns design tokens, components, themes, voice guidelines, and accessibility requirements.
+
+#### `design_get_brand`
+Get an existing brand definition by context name. Returns full brand with tokens, components, themes, voice, and accessibility.
+
+#### `design_list_brands`
+List all available brand definitions
+
+#### `design_questionnaire`
+Get the brand builder questionnaire. Returns questions to answer for creating a complete brand system with colors, typography, components, and guidelines.
+
+
+---
+⚠️ **Response truncated** - showing partial list due to size limits.
+💡 Use category filter for specific tools: `list_available_tools` with `category` parameter
+   Available categories: search, planning, codegen, design, validation, status
+

@@ -35,6 +35,58 @@ public class IndexingService : IIndexingService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Comprehensive file exclusion logic for indexing
+    /// Excludes build artifacts, dependencies, caches, and large generated files
+    /// </summary>
+    private static bool ShouldExcludeFile(string filePath)
+    {
+        var path = filePath.Replace('\\', '/').ToLowerInvariant();
+        var fileName = Path.GetFileName(path);
+
+        // Exclude common dependency/build directories
+        string[] excludedDirs = new[]
+        {
+            "/.git/", "/bin/", "/obj/", "/node_modules/", "/packages/",
+            "/dist/", "/build/", "/.next/", "/.turbo/", "/.cache/",
+            "/target/", "/out/", "/.vscode/", "/.vs/", "/.idea/",
+            "/coverage/", "/test-results/", "/__pycache__/",
+            "/vendor/", "/bower_components/", "/.nuget/", 
+            "/debug/", "/release/", "/.angular/", "/.dart_tool/",
+            "/clientbin/", "/stylecop/", "/testsresults/"
+        };
+
+        foreach (var dir in excludedDirs)
+        {
+            if (path.Contains(dir))
+                return true;
+        }
+
+        // Exclude minified files
+        if (fileName.EndsWith(".min.js") || fileName.EndsWith(".min.css"))
+            return true;
+
+        // Exclude source maps
+        if (fileName.EndsWith(".map"))
+            return true;
+
+        // Exclude log files
+        if (fileName.EndsWith(".log"))
+            return true;
+
+        // Exclude large package lock files
+        if (fileName == "package-lock.json" || fileName == "yarn.lock" || 
+            fileName == "pnpm-lock.yaml" || fileName == "packages.lock.json")
+            return true;
+
+        // Exclude compiled/temporary files
+        if (fileName.EndsWith(".dll") || fileName.EndsWith(".exe") || 
+            fileName.EndsWith(".pdb") || fileName.EndsWith(".cache"))
+            return true;
+
+        return false;
+    }
+
     public async Task<IndexResult> IndexFileAsync(string filePath, string? context = null, CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -296,8 +348,7 @@ public class IndexingService : IIndexingService
             
             var codeFiles = patterns
                 .SelectMany(pattern => Directory.GetFiles(containerPath, pattern, searchOption))
-                .Where(f => !f.Contains("\\obj\\") && !f.Contains("\\bin\\") && !f.Contains("/obj/") && !f.Contains("/bin/") 
-                         && !f.Contains("\\node_modules\\") && !f.Contains("/node_modules/"))
+                .Where(f => !ShouldExcludeFile(f))
                 // Exclude .cshtml.cs and .razor.cs files (they'll be picked up by *.cs pattern)
                 .Where(f => !f.EndsWith(".cshtml.cs") && !f.EndsWith(".razor.cs"))
                 .Distinct()

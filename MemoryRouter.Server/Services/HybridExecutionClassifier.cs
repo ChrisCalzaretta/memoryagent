@@ -223,6 +223,45 @@ public class HybridExecutionClassifier : IHybridExecutionClassifier
         var lower = userRequest.ToLowerInvariant();
         var lowerTool = toolName.ToLowerInvariant();
 
+        // 🗂️ Indexing tools - ALWAYS async (can take 5-10 minutes for large directories)
+        if (lowerTool.Contains("index") || lowerTool.Contains("reindex"))
+        {
+            // Check scope indicators
+            if (lower.Contains("src") || lower.Contains("directory") || lower.Contains("recursive") || lower.Contains("entire"))
+            {
+                return new ExecutionPrediction
+                {
+                    Complexity = TaskComplexity.High,
+                    EstimatedSeconds = 600, // 10 minutes for large directories (833 files)
+                    ShouldRunAsync = true,
+                    ConfidencePercent = 95,
+                    Reasoning = "Metadata: Large directory indexing (can take 5-10 minutes)"
+                };
+            }
+            else if (lower.Contains("file") && !lower.Contains("files"))
+            {
+                return new ExecutionPrediction
+                {
+                    Complexity = TaskComplexity.Low,
+                    EstimatedSeconds = 20, // Single file with Semgrep
+                    ShouldRunAsync = true, // Still async to avoid blocking
+                    ConfidencePercent = 90,
+                    Reasoning = "Metadata: Single file indexing"
+                };
+            }
+            else
+            {
+                return new ExecutionPrediction
+                {
+                    Complexity = TaskComplexity.Medium,
+                    EstimatedSeconds = 180, // 3 minutes for medium directories
+                    ShouldRunAsync = true,
+                    ConfidencePercent = 85,
+                    Reasoning = "Metadata: Standard indexing operation"
+                };
+            }
+        }
+
         // Code generation tools - typically long
         if (lowerTool.Contains("orchestrate") || lowerTool.Contains("generate"))
         {
@@ -327,4 +366,5 @@ public class HistoricalContext
     public long P90DurationMs { get; set; }
     public string Trend { get; set; } = "stable";
 }
+
 

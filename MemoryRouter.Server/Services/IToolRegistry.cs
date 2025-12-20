@@ -18,6 +18,11 @@ public interface IToolRegistry
     IEnumerable<ToolDefinition> GetAllTools();
 
     /// <summary>
+    /// Get tools filtered by category
+    /// </summary>
+    IEnumerable<ToolDefinition> GetToolsByCategory(ToolCategory category);
+
+    /// <summary>
     /// Get a specific tool by name
     /// </summary>
     ToolDefinition? GetTool(string name);
@@ -27,4 +32,5 @@ public interface IToolRegistry
     /// </summary>
     IEnumerable<ToolDefinition> SearchTools(string query);
 }
+
 

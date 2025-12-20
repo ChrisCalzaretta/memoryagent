@@ -18,3 +18,4 @@ public interface IMemoryAgentClient
     Task<IEnumerable<McpToolDefinition>> GetToolsAsync(CancellationToken cancellationToken = default);
 }
 
+

@@ -8,6 +8,28 @@ public class McpToolDefinition
     public required string Name { get; set; }
     public string? Description { get; set; }
     public Dictionary<string, object>? InputSchema { get; set; }
+    
+    // Optional category hint from source service (used during enrichment)
+    public string? CategoryHint { get; set; }
+}
+
+/// <summary>
+/// Tool categories for better organization and filtering
+/// </summary>
+public enum ToolCategory
+{
+    Search,      // Search, find existing code/patterns
+    Index,       // Index workspace for searchability
+    Analysis,    // Analyze code structure/dependencies
+    Validation,  // Review, validate, check quality/security
+    Planning,    // Plan, organize, manage projects
+    Todo,        // TODO/task management
+    CodeGen,     // Generate new code/features
+    Design,      // Design systems, brand management
+    Knowledge,   // Learn, store, retrieve facts/context
+    Status,      // Check status, monitor operations
+    Control,     // Cancel, stop, control operations
+    Other        // Uncategorized tools
 }
 
 /// <summary>
@@ -19,6 +41,7 @@ public class ToolDefinition
     public required string Description { get; set; }
     public required string Service { get; set; } // "memory-agent" or "coding-orchestrator"
     public required Dictionary<string, object> InputSchema { get; set; }
+    public ToolCategory Category { get; set; } = ToolCategory.Other;
     public List<string> UseCases { get; set; } = new();
     public List<string> Keywords { get; set; } = new();
 }
@@ -78,4 +101,5 @@ public class WorkflowResult
     public string? Error { get; set; }
     public long TotalDurationMs { get; set; }
 }
+
 

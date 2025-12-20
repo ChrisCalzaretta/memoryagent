@@ -1,0 +1,59 @@
+[
+  {
+    "name": "execute_task",
+    "description": "🧠 **Smart AI Router** - Single entry point for ANY development task. \r\n\r\nUses FunctionGemma to automatically figure out which tools to call and in what order.\r\n\r\n**What it does:**\r\n- Analyzes your natural language request\r\n- Searches for existing code/patterns when needed\r\n- Generates code in any language\r\n- Validates and checks quality\r\n- Creates designs and brands\r\n- Plans and breaks down complex tasks\r\n\r\n**Examples:**\r\n- \"Create a REST API for users with authentication\"\r\n- \"Find all code that handles database transactions\"\r\n- \"Generate a React dashboard with charts\"\r\n- \"Design a brand system for my fintech app\"\r\n- \"Explain how the authentication system works\"\r\n\r\nJust describe what you want - the router figures out the rest!",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "type": "string",
+          "description": "Your task in natural language (e.g., 'Create a user service', 'Find authentication code', 'Design a dark mode theme')"
+        },
+        "context": {
+          "type": "string",
+          "description": "Optional project context name for memory/continuity"
+        },
+        "workspacePath": {
+          "type": "string",
+          "description": "Optional workspace path for file operations"
+        },
+        "background": {
+          "type": "boolean",
+          "description": "Run workflow in background and return immediately with workflow ID (default: true for long tasks)",
+          "default": true
+        }
+      },
+      "required": [
+        "request"
+      ]
+    }
+  },
+  {
+    "name": "list_available_tools",
+    "description": "List all tools that MemoryRouter can use (from MemoryAgent and CodingOrchestrator). Shows capabilities of the system.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "Optional: filter by category",
+          "enum": [
+            "all",
+            "search",
+            "index",
+            "analysis",
+            "validation",
+            "planning",
+            "todo",
+            "codegen",
+            "design",
+            "knowledge",
+            "status",
+            "control",
+            "other"
+          ]
+        }
+      }
+    }
+  }
+]

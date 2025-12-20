@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  # Memory Agent - Code search and intelligence
+  memory-agent:
+    build:
+      context: .
+      dockerfile: MemoryAgent.Server/Dockerfile
+    container_name: memory-agent
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - Qdrant__Url=http://qdrant:6333
+      - Neo4j__Url=bolt://neo4j:7687
+      - Neo4j__User=neo4j
+      - Neo4j__Password=memoryagent123
+      - Ollama__Url=http://ollama:11434
+    depends_on:
+      - qdrant
+      - neo4j
+      - ollama
+    networks:
+      - memoryagent-network
+    restart: unless-stopped
+
+  # Coding Orchestrator - Multi-agent code generation
+  coding-orchestrator:
+    build:
+      context: .
+      dockerfile: CodingOrchestrator.Server/Dockerfile
+    container_name: coding-orchestrator
+    ports:
+      - "5003:5003"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5003
+      - MemoryAgent__BaseUrl=http://memory-agent:5000
+      - CodingAgent__BaseUrl=http://coding-agent:5001
+      - ValidationAgent__BaseUrl=http://validation-agent:5002
+      - DesignAgent__BaseUrl=http://design-agent:5004
+      - Ollama__BaseUrl=http://ollama:11434
+    depends_on:
+      - memory-agent
+      - ollama
+    networks:
+      - memoryagent-network
+    restart: unless-stopped
+
+  # Memory Router - Smart AI routing with FunctionGemma
+  memory-router:
+    build:
+      context: .
+      dockerfile: MemoryRouter.Server/Dockerfile
+    container_name: memory-router
+    ports:
+      - "5010:5010"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5010
+      - Ollama__BaseUrl=http://ollama:11434
+      - MemoryAgent__BaseUrl=http://memory-agent:5000
+      - CodingOrchestrator__BaseUrl=http://coding-orchestrator:5003
+    depends_on:
+      - memory-agent
+      - coding-orchestrator
+      - ollama
+    networks:
+      - memoryagent-network
+    restart: unless-stopped
+
+  # Ollama - LLM inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - memoryagent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Qdrant - Vector database
+  qdrant:
+    image: qdrant/qdrant:v1.7.0
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - memoryagent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Neo4j - Graph database
+  neo4j:
+    image: neo4j:5.15.0
+    container_name: neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/memoryagent123
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_memory_heap_max__size=2G
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - memoryagent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p memoryagent123 'RETURN 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ollama_data:
+  qdrant_data:
+  neo4j_data:
+  neo4j_logs:
+
+networks:
+  memoryagent-network:
+    driver: bridge

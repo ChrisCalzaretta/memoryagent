@@ -1,0 +1,218 @@
+{
+  "description": "Test category-based tool discovery in MemoryRouter",
+  "tests": [
+    {
+      "name": "List all tools",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {}
+        }
+      },
+      "expectedResult": "Should return all available tools organized by category"
+    },
+    {
+      "name": "List search tools",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {
+            "category": "search"
+          }
+        }
+      },
+      "expectedResult": "Should return only search category tools"
+    },
+    {
+      "name": "List code generation tools",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {
+            "category": "codegen"
+          }
+        }
+      },
+      "expectedResult": "Should return only code generation category tools"
+    },
+    {
+      "name": "List validation tools",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {
+            "category": "validation"
+          }
+        }
+      },
+      "expectedResult": "Should return only validation category tools"
+    },
+    {
+      "name": "List design tools",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {
+            "category": "design"
+          }
+        }
+      },
+      "expectedResult": "Should return only design category tools"
+    },
+    {
+      "name": "List planning tools",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {
+            "category": "planning"
+          }
+        }
+      },
+      "expectedResult": "Should return only planning category tools"
+    },
+    {
+      "name": "List analysis tools",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {
+            "category": "analysis"
+          }
+        }
+      },
+      "expectedResult": "Should return only analysis category tools"
+    },
+    {
+      "name": "List status tools",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {
+            "category": "status"
+          }
+        }
+      },
+      "expectedResult": "Should return only status category tools"
+    },
+    {
+      "name": "Test invalid category",
+      "method": "POST",
+      "url": "http://localhost:5100/api/mcp",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {
+          "name": "list_available_tools",
+          "arguments": {
+            "category": "invalid_category"
+          }
+        }
+      },
+      "expectedResult": "Should return all tools (graceful fallback)"
+    }
+  ],
+  "categories": [
+    {
+      "name": "search",
+      "icon": "🔍",
+      "description": "Finding existing code, documentation, patterns"
+    },
+    {
+      "name": "index",
+      "icon": "📦",
+      "description": "Making workspace searchable"
+    },
+    {
+      "name": "analysis",
+      "icon": "🔬",
+      "description": "Understanding code structure and dependencies"
+    },
+    {
+      "name": "validation",
+      "icon": "✅",
+      "description": "Code review and quality checks"
+    },
+    {
+      "name": "planning",
+      "icon": "📋",
+      "description": "Breaking down work into tasks and roadmaps"
+    },
+    {
+      "name": "todo",
+      "icon": "📝",
+      "description": "Task and reminder management"
+    },
+    {
+      "name": "codegen",
+      "icon": "🚀",
+      "description": "Generating new code and features"
+    },
+    {
+      "name": "design",
+      "icon": "🎨",
+      "description": "UI/UX and brand management"
+    },
+    {
+      "name": "knowledge",
+      "icon": "🧠",
+      "description": "Storing and retrieving project knowledge"
+    },
+    {
+      "name": "status",
+      "icon": "📊",
+      "description": "Checking progress and monitoring state"
+    },
+    {
+      "name": "control",
+      "icon": "🛑",
+      "description": "Canceling and controlling operations"
+    },
+    {
+      "name": "other",
+      "icon": "🔧",
+      "description": "Uncategorized tools"
+    }
+  ]
+}

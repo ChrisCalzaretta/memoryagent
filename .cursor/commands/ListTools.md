@@ -1,29 +1,55 @@
 ---
-description: 📋 Discover all available tools and their capabilities
+description: 📋 Discover all available tools organized by category
 alwaysApply: false
 ---
 
 # List Available Tools
 
-Discover all 44+ available tools from MemoryAgent and CodingOrchestrator.
+Discover all 44+ available tools from MemoryAgent and CodingOrchestrator, organized into 6 core categories.
 
 ## Usage
 
-```
-list_available_tools()                    # Show all tools
-list_available_tools(filter: "search")    # Filter by keyword
+```javascript
+list_available_tools()                         // Show all tools
+list_available_tools({ category: "discovery" }) // Filter by category
 ```
 
-## Common Filters
+## Categories
 
-### By Category
+### 🔍 Discovery
+Search, find, and analyze existing code
+```javascript
+list_available_tools({ category: "discovery" })
 ```
-list_available_tools(filter: "search")      # Search & discovery tools
-list_available_tools(filter: "generate")    # Code generation tools
-list_available_tools(filter: "validate")    # Validation & quality tools
-list_available_tools(filter: "design")      # Design & branding tools
-list_available_tools(filter: "plan")        # Planning & task tools
-list_available_tools(filter: "transform")   # Code transformation tools
+
+### 🚀 Generation
+Create and generate new code, features, and designs
+```javascript
+list_available_tools({ category: "generation" })
+```
+
+### ✅ Validation
+Review, validate, and check quality/security
+```javascript
+list_available_tools({ category: "validation" })
+```
+
+### 📋 Planning
+Plan, organize, and manage tasks/todos
+```javascript
+list_available_tools({ category: "planning" })
+```
+
+### 🧠 Knowledge
+Learn, store, and retrieve facts/context
+```javascript
+list_available_tools({ category: "knowledge" })
+```
+
+### 📊 Management
+Monitor status, control operations
+```javascript
+list_available_tools({ category: "management" })
 ```
 
 ## What You Get
@@ -31,27 +57,10 @@ list_available_tools(filter: "transform")   # Code transformation tools
 For each tool:
 - **Name**: Tool identifier
 - **Description**: What it does
-- **Service**: Which backend provides it (memory-agent or coding-orchestrator)
+- **Service**: Backend provider (memory-agent or coding-orchestrator)
+- **Category**: Functional grouping
 - **Use Cases**: Common scenarios
 - **Keywords**: Related terms
-
-## Tool Categories
-
-### MemoryAgent (33 tools)
-- Search & discovery
-- Code understanding
-- Indexing
-- Validation & quality
-- Planning & tasks
-- Intelligence & insights
-- Learning & knowledge
-- Code transformation
-
-### CodingOrchestrator (11 tools)
-- Multi-agent code generation
-- Task management
-- Design system creation
-- Brand validation
 
 ## Remember
 
@@ -60,4 +69,3 @@ For each tool:
 Use `execute_task` with natural language instead - the AI will choose the right tools automatically.
 
 Use this command when you want to **explore capabilities** or **understand what's available**.
-

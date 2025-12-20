@@ -232,3 +232,4 @@ After updating `mcp.json`, restart Cursor to see the tools.
 
 The AI router can now orchestrate all 44 underlying tools automatically! 🎉
 
+

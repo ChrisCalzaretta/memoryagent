@@ -5,7 +5,7 @@ namespace MemoryRouter.Server.Services;
 
 /// <summary>
 /// Uses DeepSeek AI to analyze task complexity and predict execution time
-/// Provides intelligent estimates even for first-time requests
+/// DeepSeek provides better reasoning for complexity estimation than FunctionGemma
 /// </summary>
 public class AIComplexityAnalyzer : IAIComplexityAnalyzer
 {
@@ -227,4 +227,5 @@ public class ExecutionPrediction
     public string Reasoning { get; set; } = string.Empty;
     public List<string> KeyFactors { get; set; } = new();
 }
+
 

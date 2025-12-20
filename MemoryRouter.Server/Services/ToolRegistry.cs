@@ -57,7 +57,15 @@ public class ToolRegistry : IToolRegistry
 
     public IEnumerable<ToolDefinition> GetAllTools()
     {
-        return _tools.Values.OrderBy(t => t.Service).ThenBy(t => t.Name);
+        return _tools.Values.OrderBy(t => t.Category).ThenBy(t => t.Service).ThenBy(t => t.Name);
+    }
+
+    public IEnumerable<ToolDefinition> GetToolsByCategory(ToolCategory category)
+    {
+        return _tools.Values
+            .Where(t => t.Category == category)
+            .OrderBy(t => t.Service)
+            .ThenBy(t => t.Name);
     }
 
     public ToolDefinition? GetTool(string name)
@@ -98,7 +106,8 @@ public class ToolRegistry : IToolRegistry
             };
             
             // Augment with orchestration metadata for better AI routing
-            AugmentToolMetadata(tool);
+            // Pass category hint if provided by source service
+            AugmentToolMetadata(tool, mcpTool.CategoryHint);
             RegisterTool(tool);
         }
         
@@ -125,7 +134,8 @@ public class ToolRegistry : IToolRegistry
             };
             
             // Augment with orchestration metadata for better AI routing
-            AugmentToolMetadata(tool);
+            // Pass category hint if provided by source service
+            AugmentToolMetadata(tool, mcpTool.CategoryHint);
             RegisterTool(tool);
         }
         
@@ -133,10 +143,12 @@ public class ToolRegistry : IToolRegistry
     }
 
     /// <summary>
-    /// Augment discovered tools with keywords and use cases for better FunctionGemma orchestration
+    /// Augment discovered tools with keywords, use cases, and categories for better FunctionGemma orchestration
     /// This metadata helps the AI understand WHEN to use each tool
     /// </summary>
-    private void AugmentToolMetadata(ToolDefinition tool)
+    /// <param name="tool">The tool to augment</param>
+    /// <param name="categoryHint">Optional category hint from source service (e.g., "discovery", "generation")</param>
+    private void AugmentToolMetadata(ToolDefinition tool, string? categoryHint = null)
     {
         // Extract keywords from tool name and description
         var keywords = new List<string>();
@@ -145,9 +157,20 @@ public class ToolRegistry : IToolRegistry
         var lowerName = tool.Name.ToLowerInvariant();
         var lowerDesc = tool.Description.ToLowerInvariant();
         
-        // 🔍 SEARCH TOOLS - Finding existing code, documentation, patterns
-        if (lowerName.Contains("search") || lowerName.Contains("find") || lowerName == "smartsearch")
+        // 1️⃣ First priority: Use category hint from source service if provided
+        if (!string.IsNullOrEmpty(categoryHint))
         {
+            tool.Category = ParseCategoryHint(categoryHint);
+            _logger.LogDebug("   🏷️  Tool {Tool} categorized as {Category} from hint: {Hint}", 
+                tool.Name, tool.Category, categoryHint);
+        }
+        
+        // 2️⃣ Second priority: Pattern matching on tool name/description
+        // 🔍 SEARCH TOOLS - Finding existing code, documentation, patterns
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("search") || lowerName.Contains("find") || lowerName == "smartsearch"))
+        {
+            tool.Category = ToolCategory.Search;
             keywords.AddRange(new[] { "search", "find", "query", "lookup", "discover", "locate", "where is" });
             useCases.AddRange(new[] { 
                 "Find existing code or files", 
@@ -157,7 +180,6 @@ public class ToolRegistry : IToolRegistry
                 "Find authentication/API/database code"
             });
             
-            // Enhanced description
             if (string.IsNullOrEmpty(tool.Description))
             {
                 tool.Description = "Search codebase for existing code, patterns, functions, or files using semantic search";
@@ -165,8 +187,10 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 📦 INDEXING TOOLS - Making workspace searchable
-        if (lowerName.Contains("index") || lowerDesc.Contains("index"))
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("index") || lowerDesc.Contains("index")))
         {
+            tool.Category = ToolCategory.Index;
             keywords.AddRange(new[] { "index", "workspace", "setup", "initialize", "prepare", "scan" });
             useCases.AddRange(new[] { 
                 "First-time project setup", 
@@ -183,8 +207,10 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 🔬 ANALYSIS TOOLS - Understanding code structure
-        if (lowerName.Contains("analyze") || lowerName.Contains("explain") || lowerName.Contains("dependency"))
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("analyze") || lowerName.Contains("explain") || lowerName.Contains("dependency")))
         {
+            tool.Category = ToolCategory.Analysis;
             keywords.AddRange(new[] { "analyze", "understand", "explain", "dependencies", "relationships", "how does", "what is" });
             useCases.AddRange(new[] { 
                 "Understand code structure", 
@@ -200,9 +226,11 @@ public class ToolRegistry : IToolRegistry
             }
         }
         
-        // ✅ VALIDATION TOOLS - Code review and quality checks
-        if (lowerName.Contains("validate") || lowerName.Contains("check") || lowerName.Contains("review"))
+        // ✅ VALIDATION TOOLS - Review, validate, check quality/security
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("validate") || lowerName.Contains("check") || lowerName.Contains("review")))
         {
+            tool.Category = ToolCategory.Validation;
             keywords.AddRange(new[] { "validate", "check", "review", "quality", "security", "compliance", "best practices" });
             useCases.AddRange(new[] { 
                 "Review code quality", 
@@ -219,8 +247,10 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 📋 PLANNING TOOLS - Breaking down work into tasks
-        if (lowerName.Contains("plan") || lowerName.Contains("manage_plan"))
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("plan") || lowerName.Contains("manage_plan")))
         {
+            tool.Category = ToolCategory.Planning;
             keywords.AddRange(new[] { "plan", "strategy", "breakdown", "roadmap", "execution plan", "task list" });
             useCases.AddRange(new[] { 
                 "Create execution plan for feature", 
@@ -237,16 +267,29 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 📝 TODO/TASK MANAGEMENT - Tracking work items
-        if (lowerName.Contains("todo") && !lowerName.Contains("plan"))
+        // NOTE: Don't catch "get_task_status", "list_tasks" (Status), or "cancel_task" (Control)
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("todo") || 
+             (lowerName.Contains("task") && 
+              !lowerName.Contains("status") && 
+              !lowerName.Contains("list") && 
+              !lowerName.Contains("cancel"))) && 
+            !lowerName.Contains("plan"))
         {
-            keywords.AddRange(new[] { "todo", "task", "reminder", "track", "manage", "list" });
-            useCases.AddRange(new[] { 
-                "Add TODO reminders", 
-                "Track work items", 
-                "Manage task list",
-                "Create reminders",
-                "List pending tasks"
-            });
+            tool.Category = ToolCategory.Todo;
+            keywords.AddRange(new[] { "todo", "task", "reminder", "track", "manage" });
+            
+            // Only add generic use cases if tool doesn't have a good description
+            if (tool.Description.Length < 30)
+            {
+                useCases.AddRange(new[] { 
+                    "Add TODO reminders", 
+                    "Track work items", 
+                    "Manage task list",
+                    "Create reminders",
+                    "List pending tasks"
+                });
+            }
             
             if (string.IsNullOrEmpty(tool.Description))
             {
@@ -255,8 +298,11 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 🚀 CODE GENERATION/ORCHESTRATION - Creating new code
-        if (lowerName.Contains("orchestrate") || (lowerName.Contains("task") && !lowerName.Contains("todo")))
+        // Only catch orchestrate_task, NOT get_task_status or list_tasks
+        if (tool.Category == ToolCategory.Other && 
+            lowerName.Contains("orchestrate"))
         {
+            tool.Category = ToolCategory.CodeGen;
             keywords.AddRange(new[] { "code", "generate", "create", "build", "implement", "develop", "write", "make" });
             useCases.AddRange(new[] { 
                 "Generate new code from scratch", 
@@ -274,8 +320,10 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 🎨 DESIGN/BRAND TOOLS - UI/UX and brand management
-        if (lowerName.Contains("design") || lowerName.Contains("brand"))
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("design") || lowerName.Contains("brand")))
         {
+            tool.Category = ToolCategory.Design;
             keywords.AddRange(new[] { "design", "brand", "UI", "UX", "style", "guidelines", "theme", "colors" });
             useCases.AddRange(new[] { 
                 "Create design system", 
@@ -292,8 +340,10 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 🧠 LEARNING/KNOWLEDGE TOOLS - Storing and retrieving facts
-        if (lowerName.Contains("learn") || lowerName.Contains("knowledge") || lowerName.Contains("qa") || lowerName.Contains("question"))
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("learn") || lowerName.Contains("knowledge") || lowerName.Contains("qa") || lowerName.Contains("question")))
         {
+            tool.Category = ToolCategory.Knowledge;
             keywords.AddRange(new[] { "learn", "knowledge", "remember", "store", "fact", "qa", "question", "answer" });
             useCases.AddRange(new[] { 
                 "Remember project decisions", 
@@ -310,16 +360,23 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 📊 STATUS/MONITORING TOOLS - Checking progress and state
-        if (lowerName.Contains("status") || (lowerName.Contains("list") && !lowerName.Contains("plan")) || lowerName.Contains("get_"))
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("status") || (lowerName.Contains("list") && !lowerName.Contains("plan")) || lowerName.Contains("get_")))
         {
+            tool.Category = ToolCategory.Status;
             keywords.AddRange(new[] { "status", "list", "check", "monitor", "view", "show", "get", "progress" });
-            useCases.AddRange(new[] { 
-                "Check task/job status", 
-                "View progress", 
-                "Monitor running operations",
-                "List completed work",
-                "Get task results"
-            });
+            
+            // Only add generic use cases if tool doesn't have a good description
+            if (tool.Description.Length < 30)
+            {
+                useCases.AddRange(new[] { 
+                    "Check task/job status", 
+                    "View progress", 
+                    "Monitor running operations",
+                    "List completed work",
+                    "Get task results"
+                });
+            }
             
             if (string.IsNullOrEmpty(tool.Description))
             {
@@ -328,8 +385,10 @@ public class ToolRegistry : IToolRegistry
         }
         
         // 🛑 CANCEL/STOP TOOLS - Canceling operations
-        if (lowerName.Contains("cancel") || lowerName.Contains("stop") || lowerName.Contains("abort"))
+        if (tool.Category == ToolCategory.Other && 
+            (lowerName.Contains("cancel") || lowerName.Contains("stop") || lowerName.Contains("abort")))
         {
+            tool.Category = ToolCategory.Control;
             keywords.AddRange(new[] { "cancel", "stop", "abort", "terminate", "kill", "end" });
             useCases.AddRange(new[] { 
                 "Cancel running operations", 
@@ -353,6 +412,52 @@ public class ToolRegistry : IToolRegistry
         tool.UseCases = useCases.Distinct().ToList();
     }
 
+    /// <summary>
+    /// Parse category hint from source service into ToolCategory enum
+    /// </summary>
+    private static ToolCategory ParseCategoryHint(string hint)
+    {
+        var lowerHint = hint.ToLowerInvariant().Trim();
+        
+        return lowerHint switch
+        {
+            // Search category
+            "search" or "find" => ToolCategory.Search,
+            
+            // Index category
+            "index" => ToolCategory.Index,
+            
+            // Analysis category
+            "analyze" or "analysis" => ToolCategory.Analysis,
+            
+            // Validation category
+            "validation" or "validate" or "check" or "review" => ToolCategory.Validation,
+            
+            // Planning category
+            "planning" or "plan" => ToolCategory.Planning,
+            
+            // Todo category
+            "todo" or "task" => ToolCategory.Todo,
+            
+            // CodeGen category
+            "codegen" or "generate" or "create" => ToolCategory.CodeGen,
+            
+            // Design category
+            "design" => ToolCategory.Design,
+            
+            // Knowledge category
+            "knowledge" or "learn" or "store" => ToolCategory.Knowledge,
+            
+            // Status category
+            "status" or "monitor" => ToolCategory.Status,
+            
+            // Control category
+            "control" or "cancel" or "stop" => ToolCategory.Control,
+            
+            // Default to Other
+            _ => ToolCategory.Other
+        };
+    }
 
     private void RegisterTool(ToolDefinition tool)
     {

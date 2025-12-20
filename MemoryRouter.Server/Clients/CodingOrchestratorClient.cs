@@ -57,16 +57,11 @@ public class CodingOrchestratorClient : ICodingOrchestratorClient
 
         try
         {
+            // CodingOrchestrator expects simple format: { "Name": "tool", "Arguments": {...} }
             var request = new
             {
-                jsonrpc = "2.0",
-                id = Guid.NewGuid().ToString(),
-                method = "tools/call",
-                @params = new
-                {
-                    name = toolName,
-                    arguments = arguments
-                }
+                Name = toolName,
+                Arguments = arguments
             };
 
             var requestJson = JsonSerializer.Serialize(request, _jsonOptions);
@@ -76,15 +71,17 @@ public class CodingOrchestratorClient : ICodingOrchestratorClient
             response.EnsureSuccessStatusCode();
 
             var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = JsonSerializer.Deserialize<McpResponse>(responseJson, _jsonOptions);
+            
+            // Response format: { "content": [{ "type": "text", "text": "..." }] }
+            var result = JsonSerializer.Deserialize<CodingOrchestratorResponse>(responseJson, _jsonOptions);
 
-            if (result?.Result == null)
+            if (result?.Content == null || result.Content.Length == 0)
             {
                 throw new InvalidOperationException($"CodingOrchestrator returned null result for {toolName}");
             }
 
             _logger.LogInformation("✅ CodingOrchestrator {Tool} completed successfully", toolName);
-            return result.Result;
+            return result.Content[0].Text;
         }
         catch (Exception ex)
         {
@@ -98,16 +95,17 @@ public class CodingOrchestratorClient : ICodingOrchestratorClient
         public List<McpToolDefinition> Tools { get; set; } = new();
     }
 
-    private class McpResponse
+    private class CodingOrchestratorResponse
     {
-        public object? Result { get; set; }
-        public McpError? Error { get; set; }
+        public ContentItem[] Content { get; set; } = Array.Empty<ContentItem>();
+        public bool? IsError { get; set; }
     }
 
-    private class McpError
+    private class ContentItem
     {
-        public int Code { get; set; }
-        public string? Message { get; set; }
+        public string Type { get; set; } = "";
+        public string Text { get; set; } = "";
     }
 }
+
 

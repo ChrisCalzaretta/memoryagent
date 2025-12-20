@@ -15,7 +15,7 @@ builder.Services.AddHttpClient<IFunctionGemmaClient, FunctionGemmaClient>(client
     client.Timeout = TimeSpan.FromMinutes(2); // FunctionGemma can take time for complex planning
 });
 
-// 🤖 Configure DeepSeek client for AI complexity analysis
+// 🤖 Configure DeepSeek client for AI complexity analysis (better reasoning than FunctionGemma)
 builder.Services.AddHttpClient<IAIComplexityAnalyzer, AIComplexityAnalyzer>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Ollama:BaseUrl"] ?? "http://ollama:11435");
@@ -26,7 +26,9 @@ builder.Services.AddHttpClient<IAIComplexityAnalyzer, AIComplexityAnalyzer>(clie
 builder.Services.AddHttpClient<IMemoryAgentClient, MemoryAgentClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["MemoryAgent:BaseUrl"] ?? "http://memory-agent:5000");
-    client.Timeout = TimeSpan.FromSeconds(120);
+    // ⏱️ Increase timeout to 10 minutes for large indexing operations
+    // Background jobs don't block the HTTP response, but we need enough time for job creation
+    client.Timeout = TimeSpan.FromMinutes(10);
 });
 
 builder.Services.AddHttpClient<ICodingOrchestratorClient, CodingOrchestratorClient>(client =>
@@ -64,12 +66,13 @@ app.MapControllers();
 app.Logger.LogInformation("🧠 MemoryRouter.Server starting on port {Port}", 
     app.Configuration["ASPNETCORE_URLS"] ?? "5010");
 app.Logger.LogInformation("🤖 Hybrid AI + Statistical Intelligence enabled:");
-app.Logger.LogInformation("   - FunctionGemma (tool selection) @ {Url}", 
+app.Logger.LogInformation("   - FunctionGemma (tool selection) @ {Url}",
     builder.Configuration["Ollama:BaseUrl"] ?? "http://ollama:11435");
-app.Logger.LogInformation("   - DeepSeek AI (complexity analysis) @ {Url}", 
+app.Logger.LogInformation("   - DeepSeek (complexity analysis) @ {Url}",
     builder.Configuration["Ollama:BaseUrl"] ?? "http://ollama:11435");
 app.Logger.LogInformation("   - Statistical learning (performance tracking)");
 app.Logger.LogInformation("   - Automatic async execution for long tasks (>15s)");
 
 app.Run();
+
 
