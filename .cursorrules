@@ -127,48 +127,35 @@ The **Design Agent** manages brand systems, design tokens, and validates UI code
 
 ## 🤖 Multi-Agent Code Generation
 
-The **CodingOrchestrator** provides multi-agent code generation with automatic validation:
-- **CodingAgent**: Generates/fixes code using LLM (deepseek-v2:16b)
-- **ValidationAgent**: Validates code quality using rules + LLM (phi4)
-- **Smart Model Rotation**: Uses different models on retry for fresh perspectives
-
-### When to Use Multi-Agent Generation
+### When to Use
 **USE** `orchestrate_task` for:
 - Creating new services, classes, or components
 - Complex multi-file implementations
-- Tasks requiring quality validation (score >= 8/10)
-- When you want iterative refinement until quality passes
+- Tasks requiring quality validation and iterative refinement
 
 **DON'T USE** for:
 - Simple one-line changes
 - Quick fixes that don't need validation
-- Tasks you can complete faster manually
 
-### Orchestrator Tools
-| Tool | Description |
+### Available Tools
+| Tool | When to Use |
 |------|-------------|
-| `orchestrate_task` | Start multi-agent coding (returns job ID) |
+| `orchestrate_task` | Start code generation (returns job ID) |
 | `get_task_status` | Check progress and validation scores |
-| `apply_task_files` | Get files with write instructions (when complete) |
-| `cancel_task` | Cancel a running task |
-| `list_tasks` | List all active/recent tasks |
-| `design_questionnaire` | Get brand builder questions |
-| `design_create_brand` | Create brand system from answers |
-| `design_get_brand` | Get existing brand definition |
-| `design_list_brands` | List all brands |
-| `design_validate` | Validate code against brand |
-| `design_update_brand` | Update brand settings |
+| `apply_task_files` | Write generated files to workspace |
+| `cancel_task` | Cancel a running job |
+| `list_tasks` | List all jobs |
 
-### Example Workflow
+### Example Usage
 ```
-1. orchestrate_task(task: "Create a UserService with CRUD operations")
-   → Returns jobId: "abc123"
+1. orchestrate_task(task: "Create a Calculator class", maxIterations: 10)
+   → Returns jobId for tracking
 
-2. get_task_status(jobId: "abc123")
-   → Shows progress: 40%, iteration 2/5, validation score 6/10
+2. get_task_status(jobId: "...")
+   → Shows progress, validation score, issues
 
-3. get_task_status(jobId: "abc123")  (later)
-   → COMPLETE! Score 9/10, shows generated files
+3. apply_task_files(jobId: "...", basePath: "./src")
+   → Writes files to workspace
 ```
 
 ---

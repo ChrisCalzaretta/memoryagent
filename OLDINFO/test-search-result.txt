@@ -1,0 +1,16 @@
+# Γ£à Task Completed Successfully
+
+**Request:** Find all C# controller files in this project
+**Duration:** 12155ms
+
+## 🤖 FunctionGemma's Plan
+> Execute smartsearch
+
+## 📋 Execution Steps
+
+Γ£à **smartsearch** (7588ms)
+
+## 🎯 Final Result
+
+{"content":[{"type":"text","text":"\uD83D\uDD0D Smart Search Results\n\nQuery: all c# controller files in this project\nStrategy: semantic-first\nFound: 0 results (showing 0)\nTime: 7362ms\nLearning Enhanced: True\n\nΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü\n\nNo results found. Try:\nΓÇó Using different keywords\nΓÇó Broadening your search\nΓÇó Checking if the codebase is indexed\n"}],"isError":false}
+

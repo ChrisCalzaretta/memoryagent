@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 99,
+  "method": "tools/call",
+  "params": {
+    "name": "execute_task",
+    "arguments": {
+      "request": "find authentication code in the project",
+      "context": {"workspace": "e:/GitHub/MemoryAgent"}
+    }
+  }
+}
+
+
+

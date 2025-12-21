@@ -55,3 +55,4 @@ Write-Host "🧪 Test MemoryRouter:" -ForegroundColor Cyan
 Write-Host "   Invoke-RestMethod http://localhost:5010/health" -ForegroundColor Gray
 Write-Host ""
 Write-Host "⚠️  Note: Watch each service window for startup logs!" -ForegroundColor Yellow
+

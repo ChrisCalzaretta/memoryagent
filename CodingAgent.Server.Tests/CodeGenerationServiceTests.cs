@@ -36,8 +36,8 @@ public class CodeGenerationServiceTests
             .Returns(("deepseek-v2:16b", 11434));
         _mockModelOrchestrator.Setup(x => x.SelectModelAsync(It.IsAny<ModelPurpose>(), It.IsAny<HashSet<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(("phi4:latest", 11434));
-        _mockModelOrchestrator.Setup(x => x.RecordModelPerformanceAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        // _mockModelOrchestrator.Setup(x => x.RecordModelPerformanceAsync(...))
+        //     .Returns(Task.CompletedTask);
             
         // Setup Ollama client to return generated code
         _mockOllamaClient.Setup(x => x.GenerateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))

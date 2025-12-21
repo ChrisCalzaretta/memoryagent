@@ -1,0 +1,6 @@
+{
+  "task": "Create a simple Calculator class in C# with add, subtract, multiply, and divide methods. Include proper error handling for division by zero.",
+  "language": "csharp",
+  "maxIterations": 10
+}
+

@@ -1,6 +1,7 @@
 using AgentContracts.Services;
 using CodingAgent.Server.Clients;
 using CodingAgent.Server.Services;
+using CodingAgent.Server.Templates;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -78,11 +79,34 @@ builder.Services.AddSingleton<IModelOrchestrator>(sp =>
 });
 
 // 🧠 LLM Model Selector - uses LLM to confirm model selection based on task + historical rates
-builder.Services.AddScoped<ILlmModelSelector, LlmModelSelector>();
+builder.Services.AddSingleton<ILlmModelSelector, LlmModelSelector>();
 
-// Register services (Scoped to ensure fresh instances per request)
-builder.Services.AddScoped<ICodeGenerationService, CodeGenerationService>();
-builder.Services.AddScoped<IPromptBuilder, PromptBuilder>();
+// Register services (Singleton for job manager compatibility)
+builder.Services.AddSingleton<ICodeGenerationService, CodeGenerationService>();
+builder.Services.AddSingleton<IPromptBuilder, PromptBuilder>();
+
+// 🎨 Template Service - project templates for C#, Flutter, etc.
+builder.Services.AddSingleton<ITemplateService, TemplateService>();
+
+// 🧠 Phi4 Thinking Service - project planning and failure analysis (Singleton for JobManager)
+builder.Services.AddSingleton<IPhi4ThinkingService, Phi4ThinkingService>();
+
+// 🛠️ Resilience Services - stub and failure report generation (Singleton for JobManager)
+builder.Services.AddSingleton<IStubGenerator, StubGenerator>();
+builder.Services.AddSingleton<IFailureReportGenerator, FailureReportGenerator>();
+
+// 📊 ValidationAgent Client - for code quality validation in retry loop
+builder.Services.AddHttpClient<IValidationAgentClient, ValidationAgentClient>(client =>
+{
+    var validationHost = builder.Configuration["ValidationAgent:Host"] ?? "localhost";
+    var validationPort = builder.Configuration["ValidationAgent:Port"] ?? "5003";
+    client.BaseAddress = new Uri($"http://{validationHost}:{validationPort}");
+    client.Timeout = TimeSpan.FromMinutes(2); // Validation can take time
+});
+
+// 🚀 NEW Project Orchestrator - multi-language project generation with templates, planning, and stubs
+builder.Services.AddSingleton<IProjectOrchestrator, ProjectOrchestrator>();
+builder.Services.AddSingleton<IJobManager, JobManager>();
 
 // Add health checks
 builder.Services.AddHealthChecks();

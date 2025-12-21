@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 13,
+  "method": "tools/call",
+  "params": {
+    "name": "execute_task",
+    "arguments": {
+      "request": "where is the database connection code?",
+      "context": {"workspace": "e:/GitHub/MemoryAgent"}
+    }
+  }
+}
+
+
+

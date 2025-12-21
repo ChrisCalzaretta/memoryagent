@@ -1,69 +1,60 @@
-# MemoryRouter Commands
+# Cursor Commands - Split Architecture
 
-Quick reference for MemoryRouter MCP commands available in Cursor.
+## 🧠 Memory Agent Commands
 
-## Primary Commands
+| Command | File | Use For |
+|---------|------|---------|
+| **Execute Task** | `ExecuteTask.md` | Search, analysis, understanding |
+| **List Tools** | `ListTools.md` | Discover available tools |
+| **Discover by Category** | `DiscoverByCategory.md` | Browse tools by category |
+| **Track Workflow** | `TrackWorkflow.md` | Monitor background jobs |
 
-### 🧠 execute_task
-**Main entry point for ALL operations**
+## 🚀 Code Generator Commands
 
-Use natural language to describe what you want - the AI figures out which tools to call.
+| Command | File | Use For |
+|---------|------|---------|
+| **Generate Code** | `GenerateCode.md` | Multi-agent code generation |
 
+---
+
+## Quick Reference
+
+### Search for Code (memory-agent)
 ```javascript
-execute_task({ request: "Your task in natural language" })
+execute_task({ request: "Find all authentication code" })
 ```
 
-See [ExecuteTask.md](./ExecuteTask.md) for details.
-
-### 📋 list_available_tools
-**Discover available tools by category**
-
-Explore the 44+ tools organized into 6 core categories.
-
+### Generate Code (code-generator)
 ```javascript
-list_available_tools()                         // All tools
-list_available_tools({ category: "discovery" }) // Specific category
+orchestrate_task({ 
+  task: "Create REST API for user management",
+  language: "python"
+})
 ```
 
-See [ListTools.md](./ListTools.md) for details.
-
-## Tool Categories
-
-- **🔍 Discovery**: Search, find, and analyze code
-- **🚀 Generation**: Create and generate new code/designs
-- **✅ Validation**: Review, validate, and check quality
-- **📋 Planning**: Plan, organize, and manage tasks
-- **🧠 Knowledge**: Learn, store, and retrieve context
-- **📊 Management**: Monitor status and control operations
-
-See [DiscoverByCategory.md](./DiscoverByCategory.md) for category guide.
-
-## Quick Start
-
-**Most common workflow:**
+### Check Job Status (code-generator)
 ```javascript
-// Just use natural language!
-execute_task({ request: "Find all authentication code and validate it for security" })
+get_task_status({ jobId: "job_..." })
 ```
 
-**The AI automatically:**
-1. Analyzes your request
-2. Chooses the right tools
-3. Creates an execution plan
-4. Returns complete results
+### Create Brand (code-generator)
+```javascript
+design_create_brand({
+  brand_name: "MyApp",
+  industry: "SaaS",
+  // ...
+})
+```
 
-## When to Use What
+---
 
-### Use `execute_task` (99% of the time)
-- Any coding task
-- Code search and analysis
-- Code generation
-- Validation and review
-- Planning and task management
+## Decision Guide
 
-### Use `list_available_tools` (rarely)
-- Exploring capabilities
-- Learning what's available
-- Discovering tools for specific categories
-
-**Remember**: You almost never need to know which specific tools exist. Just describe what you want with `execute_task`!
+| I want to... | Server | Command |
+|--------------|--------|---------|
+| Find existing code | memory-agent | ExecuteTask |
+| Understand a feature | memory-agent | ExecuteTask |
+| Create new code | code-generator | GenerateCode |
+| Create brand system | code-generator | GenerateCode |
+| Analyze code quality | memory-agent | ExecuteTask |
+| Monitor code gen job | code-generator | GenerateCode |

@@ -1,9 +1,33 @@
 #!/usr/bin/env node
 
 /**
- * MCP STDIO Wrapper for CodingOrchestrator
- * Bridges Cursor's STDIO transport to the CodingOrchestrator HTTP API
- * Provides tools: orchestrate_task, get_task_status, cancel_task, list_tasks
+ * 🚀 CODE GENERATOR MCP Server v2.0
+ * 
+ * Direct access to CodingAgent.Server for multi-language code generation.
+ * Connects to the NEW CodingAgent.Server v2.0 architecture.
+ * 
+ * Tools provided:
+ * - orchestrate_task: Start code generation job (background)
+ * - get_task_status: Check job progress and get generated files
+ * - cancel_task: Stop a running job
+ * - list_tasks: See all active jobs
+ * - apply_task_files: Get generated files ready for writing
+ * 
+ * Note: Design tools (design_*) are available through the memory-agent MCP server
+ * 
+ * Usage: Add to Cursor MCP config:
+ * {
+ *   "code-generator": {
+ *     "command": "node",
+ *     "args": ["orchestrator-mcp-wrapper.js", "${workspaceFolder}"]
+ *   }
+ * }
+ * 
+ * Server Architecture (v2.0):
+ * - CodingAgent.Server (port 5001) - Code generation with Ollama/Claude
+ * - ProjectOrchestrator - Template-based scaffolding + LLM generation
+ * - JobManager - Background job execution with persistence
+ * - Supports: C#, Python, TypeScript, JavaScript, Dart, Flutter, Go, Rust, and more
  */
 
 const http = require('http');
@@ -11,8 +35,9 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const ORCHESTRATOR_PORT = process.env.ORCHESTRATOR_PORT || 5003;
-const LOG_FILE = process.env.LOG_FILE || 'E:\\GitHub\\MemoryAgent\\orchestrator-wrapper.log';
+const ORCHESTRATOR_HOST = process.env.ORCHESTRATOR_HOST || 'localhost';
+const ORCHESTRATOR_PORT = process.env.ORCHESTRATOR_PORT || 5001; // NEW CodingAgent.Server!
+const LOG_FILE = process.env.LOG_FILE || path.join(__dirname, 'orchestrator-wrapper.log');
 
 // Detect workspace path from multiple sources
 let WORKSPACE_PATH = null;
@@ -20,23 +45,20 @@ let WORKSPACE_PATH = null;
 // 1. Try command-line argument (highest priority)
 if (process.argv.length > 2 && process.argv[2] !== '${workspaceFolder}') {
   WORKSPACE_PATH = process.argv[2];
-  log(`Using workspace from command-line argument: ${WORKSPACE_PATH}`);
 }
 
 // 2. Try environment variable
 if (!WORKSPACE_PATH && process.env.WORKSPACE_PATH && process.env.WORKSPACE_PATH !== '${workspaceFolder}') {
   WORKSPACE_PATH = process.env.WORKSPACE_PATH;
-  log(`Using workspace from environment variable: ${WORKSPACE_PATH}`);
 }
 
-// 3. Fallback
+// 3. Fallback to current directory
 if (!WORKSPACE_PATH) {
-  WORKSPACE_PATH = 'E:\\GitHub';
-  log('⚠️ Using default workspace path');
+  WORKSPACE_PATH = process.cwd();
 }
 
 // Extract context from workspace path (last directory name)
-const CONTEXT_NAME = path.basename(WORKSPACE_PATH).toLowerCase();
+const CONTEXT_NAME = path.basename(WORKSPACE_PATH).toLowerCase().replace(/[^a-z0-9]/g, '');
 
 function log(message) {
   const timestamp = new Date().toISOString();
@@ -46,12 +68,14 @@ function log(message) {
   } catch (err) {
     // Ignore logging errors
   }
+  // Also log to stderr for debugging
+  console.error(`[code-generator] ${message}`);
 }
 
-log('Orchestrator MCP Wrapper started');
-log(`  Workspace: ${WORKSPACE_PATH}`);
-log(`  Context: ${CONTEXT_NAME}`);
-log(`  Orchestrator Port: ${ORCHESTRATOR_PORT}`);
+log('🚀 Code Generator MCP Server started');
+log(`   Workspace: ${WORKSPACE_PATH}`);
+log(`   Context: ${CONTEXT_NAME}`);
+log(`   Orchestrator: http://${ORCHESTRATOR_HOST}:${ORCHESTRATOR_PORT}`);
 
 // Tool definitions
 const TOOLS = [
@@ -151,98 +175,20 @@ const TOOLS = [
       required: ['jobId', 'basePath']
     }
   },
-  
-  // ═══════════════════════════════════════════════════════════
-  // 🎨 DESIGN TOOLS - Brand guidelines and validation
-  // ═══════════════════════════════════════════════════════════
-  
-  {
-    name: 'design_questionnaire',
-    description: 'Get the brand builder questionnaire. Returns questions to answer for creating a complete brand system with colors, typography, components, and guidelines.',
-    inputSchema: {
-      type: 'object',
-      properties: {}
-    }
-  },
-  {
-    name: 'design_create_brand',
-    description: 'Create a complete brand system from questionnaire answers. Returns design tokens, components, themes, voice guidelines, and accessibility requirements.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        brand_name: { type: 'string', description: 'Name of the brand/product' },
-        tagline: { type: 'string', description: 'Optional tagline' },
-        description: { type: 'string', description: '1-2 sentence product description' },
-        target_audience: { type: 'string', description: 'Who is the target audience?' },
-        industry: { type: 'string', description: 'Industry: SaaS, E-commerce, Finance, Health, Education, Entertainment, Enterprise, Consumer, Other' },
-        personality_traits: { type: 'array', items: { type: 'string' }, description: '3-5 traits: Professional, Playful, Trustworthy, Bold, Minimal, etc.' },
-        brand_voice: { type: 'string', description: 'Voice: Encouraging coach, Trusted advisor, Friendly helper, Expert authority, Playful friend, Calm guide' },
-        theme_preference: { type: 'string', description: 'Theme: Dark mode, Light mode, Both' },
-        visual_style: { type: 'string', description: 'Style: Minimal, Rich, Bold, Soft, Technical' },
-        platforms: { type: 'array', items: { type: 'string' }, description: 'Platforms: Web, iOS, Android, Desktop' },
-        frameworks: { type: 'array', items: { type: 'string' }, description: 'Frameworks: Blazor, React, Vue, SwiftUI, Flutter, etc.' }
-      },
-      required: ['brand_name', 'description', 'industry', 'personality_traits', 'brand_voice', 'visual_style', 'platforms', 'frameworks']
-    }
-  },
-  {
-    name: 'design_get_brand',
-    description: 'Get an existing brand definition by context name. Returns full brand with tokens, components, themes, voice, and accessibility.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        context: { type: 'string', description: 'Brand context name (e.g., "fittrack-pro")' }
-      },
-      required: ['context']
-    }
-  },
-  {
-    name: 'design_list_brands',
-    description: 'List all available brand definitions',
-    inputSchema: {
-      type: 'object',
-      properties: {}
-    }
-  },
-  {
-    name: 'design_validate',
-    description: 'Validate code against brand guidelines. Checks colors, typography, spacing, components, and accessibility. Returns score, grade, and issues with fixes.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        context: { type: 'string', description: 'Brand context name' },
-        code: { type: 'string', description: 'Code to validate (HTML, CSS, Blazor, React, etc.)' }
-      },
-      required: ['context', 'code']
-    }
-  },
-  {
-    name: 'design_update_brand',
-    description: 'Update an existing brand settings (colors, fonts, etc.)',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        context: { type: 'string', description: 'Brand context name to update' },
-        primary_color: { type: 'string', description: 'New primary color (hex)' },
-        font_family: { type: 'string', description: 'New font family' },
-        theme_preference: { type: 'string', description: 'Theme: Dark mode, Light mode, Both' }
-      },
-      required: ['context']
-    }
-  }
 ];
 
 // Send HTTP request to orchestrator
 function sendToOrchestrator(endpoint, method = 'GET', body = null) {
   return new Promise((resolve, reject) => {
     const options = {
-      hostname: 'localhost',
+      hostname: ORCHESTRATOR_HOST,
       port: ORCHESTRATOR_PORT,
       path: endpoint,
       method: method,
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 120000 // 2 minute timeout for code generation
     };
 
     if (body) {
@@ -300,94 +246,69 @@ async function handleToolCall(toolName, args) {
       const body = {
         task: args.task,
         language: args.language || 'auto',
-        context: args.context,
-        workspacePath: args.workspacePath,
-        background: args.background !== false,
-        maxIterations: Math.max(args.maxIterations || 50, 50), // Minimum 50 iterations
-        minValidationScore: args.minValidationScore || 8
+        maxIterations: Math.max(args.maxIterations || 50, 50) // Minimum 50 iterations
       };
       
-      const result = await sendToOrchestrator('/api/orchestrator/task', 'POST', body);
+      const result = await sendToOrchestrator('/api/orchestrator/orchestrate', 'POST', body);
       
       return `🚀 **Multi-Agent Coding Task Started**
 
 **Job ID:** \`${result.jobId}\`
 **Task:** ${args.task}
 **Language:** ${body.language}
-**Context:** ${args.context}
-**Status:** ${result.status}
+**Message:** ${result.message}
 
-The CodingAgent and ValidationAgent are now working on your task.
+The CodingAgent is now working on your task.
 
 **Progress:**
 - Max iterations: ${body.maxIterations}
-- Min validation score: ${body.minValidationScore}/10
 
 **To check status:** Call \`get_task_status\` with jobId: \`${result.jobId}\``;
     }
     
     case 'get_task_status': {
-      const result = await sendToOrchestrator(`/api/orchestrator/task/${args.jobId}`);
+      const result = await sendToOrchestrator(`/api/orchestrator/status/${args.jobId}`);
       
-      if (result.error) {
+      if (!result || !result.jobId) {
         return `❌ Job \`${args.jobId}\` not found`;
       }
       
-      // Convert numeric status to string
-      const statusNames = ['Queued', 'Running', 'Complete', 'Failed', 'Cancelled', 'TimedOut'];
-      const statusName = typeof result.status === 'number' ? statusNames[result.status] : result.status;
+      // Status is a string: "running", "completed", "failed", "cancelled"
+      const statusName = result.status;
       const statusIcon = {
-        'Queued': '⏳',
-        'Running': '🔄',
-        'Complete': '✅',
-        'Failed': '❌',
-        'Cancelled': '🚫',
-        'TimedOut': '⏱️'
-      }[statusName] || '❓';
+        'running': '🔄',
+        'completed': '✅',
+        'failed': '❌',
+        'cancelled': '🚫'
+      }[statusName.toLowerCase()] || '❓';
       
-      let output = `📊 **Task Status: ${statusIcon} ${statusName}**
+      let output = `📊 **Task Status: ${statusIcon} ${statusName.toUpperCase()}**
 
 **Job ID:** \`${result.jobId}\`
+**Task:** ${result.task}
 **Progress:** ${result.progress}%
-**Current Phase:** ${result.currentPhase || 'N/A'}
-**Iteration:** ${result.iteration}/${result.maxIterations}
+**Started:** ${result.startedAt}
 `;
 
-      if (result.timeline && result.timeline.length > 0) {
-        output += '\n**Timeline:**\n';
-        for (const phase of result.timeline) {
-          const duration = phase.durationMs ? ` (${phase.durationMs}ms)` : '';
-          const iter = phase.iteration ? ` [iter ${phase.iteration}]` : '';
-          output += `- ✅ ${phase.name}${iter}${duration}\n`;
-        }
+      if (result.completedAt) {
+        output += `**Completed:** ${result.completedAt}\n`;
       }
       
-      // TaskState enum: Queued=0, Running=1, Complete=2, Failed=3, Cancelled=4, TimedOut=5
-      const isComplete = result.status === 2 || result.status === 'Complete';
-      const isFailed = result.status === 3 || result.status === 'Failed';
-      
-      // DEBUG: Log what we're working with
-      log(`DEBUG: status=${result.status}, isComplete=${isComplete}, isFailed=${isFailed}`);
-      log(`DEBUG: result.result exists=${!!result.result}`);
-      if (result.result) {
-        log(`DEBUG: result.result.files type=${typeof result.result.files}, isArray=${Array.isArray(result.result.files)}, length=${result.result.files?.length}`);
-      }
-      if (result.error?.partialResult) {
-        log(`DEBUG: partialResult.files type=${typeof result.error.partialResult.files}, isArray=${Array.isArray(result.error.partialResult.files)}, length=${result.error.partialResult.files?.length}`);
-      }
+      const isComplete = result.status === 'completed';
+      const isFailed = result.status === 'failed';
       
       if (isComplete && result.result) {
         output += `\n**✅ COMPLETED**
-- Validation Score: ${result.result.validationScore}/10
-- Total Iterations: ${result.result.totalIterations}
-- Duration: ${result.result.totalDurationMs}ms
-- Files Generated: ${result.result.files?.length || 0}
-- Summary: ${result.result.summary || 'N/A'}
+- Success: ${result.result.success}
+- Model Used: ${result.result.modelUsed || 'N/A'}
+- Tokens Used: ${result.result.tokensUsed || 0}
+- Files Generated: ${result.result.fileChanges?.length || 0}
+- Explanation: ${result.result.explanation || 'N/A'}
 `;
         
-        if (result.result.files && result.result.files.length > 0) {
-          log(`Returning ${result.result.files.length} files in response`);
-          for (const file of result.result.files) {
+        if (result.result.fileChanges && result.result.fileChanges.length > 0) {
+          log(`Returning ${result.result.fileChanges.length} files in response`);
+          for (const file of result.result.fileChanges) {
             // Detect language from file extension
             const ext = file.path.split('.').pop()?.toLowerCase() || '';
             const langMap = {
@@ -408,25 +329,23 @@ The CodingAgent and ValidationAgent are now working on your task.
             };
             const lang = langMap[ext] || '';
             
-            output += `\n---\n### 📄 ${file.path}\n**Change Type:** ${file.changeType}\n`;
+            output += `\n---\n### 📄 ${file.path}\n**Type:** ${file.type}\n`;
             if (file.reason) {
               output += `**Reason:** ${file.reason}\n`;
             }
             output += `\n\`\`\`${lang}\n${file.content || '// Empty content'}\n\`\`\`\n`;
           }
         } else {
-          output += '\n⚠️ **No files in result** - Check orchestrator logs for parsing errors\n';
+          output += '\n⚠️ **No files in result** - Check orchestrator logs\n';
         }
-      } else if (isFailed && result.error) {
+      } else if (isFailed) {
         output += `\n**❌ FAILED**
-- Error: ${result.error.message}
-- Type: ${result.error.type}
-- Can retry: ${result.error.canRetry ? 'Yes' : 'No'}`;
+- Error: ${result.error || 'Unknown error'}`;
         
-        // Include partial result if available
-        if (result.error.partialResult?.files?.length > 0) {
-          output += `\n\n**Partial Results (${result.error.partialResult.files.length} files):**\n`;
-          for (const file of result.error.partialResult.files) {
+        // Check if there's a partial result in result.result (not result.error.partialResult)
+        if (result.result?.fileChanges?.length > 0) {
+          output += `\n\n**Partial Results (${result.result.fileChanges.length} files):**\n`;
+          for (const file of result.result.fileChanges) {
             output += `\n**${file.path}**\n\`\`\`\n${file.content}\n\`\`\`\n`;
           }
         }
@@ -437,7 +356,7 @@ The CodingAgent and ValidationAgent are now working on your task.
     
     case 'cancel_task': {
       try {
-        await sendToOrchestrator(`/api/orchestrator/task/${args.jobId}`, 'DELETE');
+        await sendToOrchestrator(`/api/orchestrator/cancel/${args.jobId}`, 'POST');
         return `✅ Job \`${args.jobId}\` has been cancelled`;
       } catch (err) {
         return `❌ Could not cancel job \`${args.jobId}\` - ${err.message}`;
@@ -445,48 +364,42 @@ The CodingAgent and ValidationAgent are now working on your task.
     }
     
     case 'list_tasks': {
-      const tasks = await sendToOrchestrator('/api/orchestrator/tasks');
+      const tasks = await sendToOrchestrator('/api/orchestrator/jobs');
       
       if (!tasks || tasks.length === 0) {
         return 'No active tasks';
       }
       
-      const statusNames = ['Queued', 'Running', 'Complete', 'Failed', 'Cancelled', 'TimedOut'];
       const iconMap = {
-        'Queued': '⏳',
-        'Running': '🔄',
-        'Complete': '✅',
-        'Failed': '❌',
-        'Cancelled': '🚫',
-        'TimedOut': '⏱️'
+        'running': '🔄',
+        'completed': '✅',
+        'failed': '❌',
+        'cancelled': '🚫'
       };
       
       let output = '**Active Tasks:**\n\n';
       for (const task of tasks) {
-        const statusName = typeof task.status === 'number' ? statusNames[task.status] : task.status;
-        const icon = iconMap[statusName] || '❓';
+        const icon = iconMap[task.status.toLowerCase()] || '❓';
         
-        output += `${icon} \`${task.jobId}\` - ${statusName} (${task.progress}%) - ${task.currentPhase || 'N/A'}\n`;
+        output += `${icon} \`${task.jobId}\` - ${task.status.toUpperCase()} (${task.progress}%) - ${task.task}\n`;
       }
       
       return output;
     }
     
     case 'apply_task_files': {
-      const result = await sendToOrchestrator(`/api/orchestrator/task/${args.jobId}`);
+      const result = await sendToOrchestrator(`/api/orchestrator/status/${args.jobId}`);
       
-      if (result.error && !result.error.partialResult) {
-        return `❌ Job \`${args.jobId}\` not found or has no files`;
+      if (!result || !result.jobId) {
+        return `❌ Job \`${args.jobId}\` not found`;
       }
       
-      const isComplete = result.status === 2 || result.status === 'Complete';
-      const isFailed = result.status === 3 || result.status === 'Failed';
+      const isComplete = result.status === 'completed';
+      const isFailed = result.status === 'failed';
       
       let files = [];
-      if (isComplete && result.result?.files) {
-        files = result.result.files;
-      } else if (isFailed && result.error?.partialResult?.files) {
-        files = result.error.partialResult.files;
+      if (result.result?.fileChanges) {
+        files = result.result.fileChanges;
       }
       
       if (!files || files.length === 0) {
@@ -527,37 +440,30 @@ The CodingAgent and ValidationAgent are now working on your task.
     }
     
     // ═══════════════════════════════════════════════════════════
-    // 🎨 DESIGN TOOL HANDLERS
+    // 🎨 DESIGN TOOL HANDLERS - Route to DesignAgent via MemoryRouter
     // ═══════════════════════════════════════════════════════════
     
-    case 'design_questionnaire': {
-      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_questionnaire', arguments: {} });
-      return result.content?.[0]?.text || 'Error getting questionnaire';
-    }
-    
-    case 'design_create_brand': {
-      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_create_brand', arguments: args });
-      return result.content?.[0]?.text || 'Error creating brand';
-    }
-    
-    case 'design_get_brand': {
-      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_get_brand', arguments: args });
-      return result.content?.[0]?.text || 'Error getting brand';
-    }
-    
-    case 'design_list_brands': {
-      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_list_brands', arguments: {} });
-      return result.content?.[0]?.text || 'Error listing brands';
-    }
-    
-    case 'design_validate': {
-      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_validate', arguments: args });
-      return result.content?.[0]?.text || 'Error validating';
-    }
-    
+    case 'design_questionnaire':
+    case 'design_create_brand':
+    case 'design_get_brand':
+    case 'design_list_brands':
+    case 'design_validate':
     case 'design_update_brand': {
-      const result = await sendToOrchestrator('/api/mcp/call', 'POST', { name: 'design_update_brand', arguments: args });
-      return result.content?.[0]?.text || 'Error updating brand';
+      return `⚠️ Design tools must be called through the memory-agent MCP server, not the code-generator server.
+      
+**To use design tools:**
+1. Ensure you have the memory-agent MCP server configured in your MCP settings
+2. Call the design tools through that server instead
+
+**Available design tools in memory-agent:**
+- design_questionnaire
+- design_create_brand
+- design_get_brand
+- design_list_brands
+- design_validate
+- design_update_brand
+
+The code-generator server focuses on code generation only.`;
     }
     
     default:
@@ -573,6 +479,14 @@ async function handleRequest(request) {
   
   switch (method) {
     case 'initialize':
+      // Health check orchestrator on init
+      try {
+        await sendToOrchestrator('/health');
+        log('✅ CodingOrchestrator is healthy');
+      } catch (err) {
+        log(`⚠️ CodingOrchestrator not reachable: ${err.message}`);
+      }
+      
       return {
         jsonrpc: '2.0',
         id,
@@ -582,8 +496,9 @@ async function handleRequest(request) {
             tools: {}
           },
           serverInfo: {
-            name: 'coding-orchestrator',
-            version: '1.0.0'
+            name: 'code-generator',
+            version: '2.0.0',
+            description: 'Multi-language code generation via CodingAgent.Server v2.0'
           }
         }
       };

@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "execute_task",
+    "arguments": {
+      "request": "Find all C# controller files in this project",
+      "context": "memoryagent",
+      "workspacePath": "E:\\GitHub\\MemoryAgent"
+    }
+  }
+}

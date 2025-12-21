@@ -52,6 +52,17 @@ public interface IMemoryAgentClient
     /// 🧠 MODEL LEARNING: Get aggregated stats for all models
     /// </summary>
     Task<List<ModelStats>> GetModelStatsAsync(string? language, string? taskType, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🎨 DESIGN AGENT: Get brand guidelines for a project context
+    /// </summary>
+    Task<BrandInfo?> GetBrandAsync(string context, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 🎨 DESIGN AGENT: Validate UI code against brand guidelines
+    /// Returns validation score and issues to fix
+    /// </summary>
+    Task<DesignValidationResult?> ValidateDesignAsync(string context, string code, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -231,6 +242,43 @@ public class SimilarImplementation
     public required string Description { get; set; }
     public double Similarity { get; set; }
     public string? CodeSnippet { get; set; }
+}
+
+/// <summary>
+/// Brand information from Design Agent
+/// </summary>
+public class BrandInfo
+{
+    public required string BrandName { get; set; }
+    public string? PrimaryColor { get; set; }
+    public string? SecondaryColor { get; set; }
+    public string? FontFamily { get; set; }
+    public string? ThemePreference { get; set; }
+    public string? VisualStyle { get; set; }
+    public List<string> ComponentGuidelines { get; set; } = new();
+    public string? FullBrandJson { get; set; } // Full brand system as JSON
+}
+
+/// <summary>
+/// Design validation result from Design Agent
+/// </summary>
+public class DesignValidationResult
+{
+    public int Score { get; set; } // 0-10
+    public string? Grade { get; set; } // A, B, C, D, F
+    public List<DesignIssue> Issues { get; set; } = new();
+    public string? Summary { get; set; }
+}
+
+/// <summary>
+/// A design issue found during validation
+/// </summary>
+public class DesignIssue
+{
+    public required string Type { get; set; } // color, typography, spacing, accessibility, etc.
+    public required string Message { get; set; }
+    public string? Suggestion { get; set; }
+    public string? Severity { get; set; } // critical, warning, info
 }
 
 

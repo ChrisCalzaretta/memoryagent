@@ -1,0 +1,6 @@
+{
+  "task": "Create a UserService class in C# with methods for CreateUser, GetUserById, UpdateUser, and DeleteUser. Include proper async/await, error handling, and logging. Add XML documentation comments.",
+  "language": "csharp",
+  "maxIterations": 10,
+  "minValidationScore": 8
+}

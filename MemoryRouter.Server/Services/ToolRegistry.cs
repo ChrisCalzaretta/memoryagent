@@ -12,18 +12,15 @@ public class ToolRegistry : IToolRegistry
 {
     private readonly ILogger<ToolRegistry> _logger;
     private readonly IMemoryAgentClient _memoryAgent;
-    private readonly ICodingOrchestratorClient _codingOrchestrator;
     private readonly ConcurrentDictionary<string, ToolDefinition> _tools = new();
     private bool _initialized = false;
 
     public ToolRegistry(
         ILogger<ToolRegistry> logger, 
-        IMemoryAgentClient memoryAgent,
-        ICodingOrchestratorClient codingOrchestrator)
+        IMemoryAgentClient memoryAgent)
     {
         _logger = logger;
         _memoryAgent = memoryAgent;
-        _codingOrchestrator = codingOrchestrator;
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -34,24 +31,18 @@ public class ToolRegistry : IToolRegistry
             return;
         }
 
-        _logger.LogInformation("🔧 Initializing ToolRegistry - dynamically discovering all tools...");
+        _logger.LogInformation("🔧 Initializing ToolRegistry - dynamically discovering MemoryAgent tools...");
 
-        try
-        {
-            // Dynamically discover tools from both services
-            await DiscoverMemoryAgentToolsAsync(cancellationToken);
-            await DiscoverCodingOrchestratorToolsAsync(cancellationToken);
+        // Dynamically discover tools from MemoryAgent ONLY (CodingAgent is exposed via orchestrator-mcp-wrapper.js)
+        await DiscoverMemoryAgentToolsAsync(cancellationToken);
 
-            _initialized = true;
-            
-            _logger.LogInformation("✅ ToolRegistry initialized with {ToolCount} tools", _tools.Count);
-            _logger.LogInformation("   📦 MemoryAgent tools: {Count}", _tools.Count(t => t.Value.Service == "memory-agent"));
-            _logger.LogInformation("   🎯 CodingOrchestrator tools: {Count}", _tools.Count(t => t.Value.Service == "coding-orchestrator"));
-        }
-        catch (Exception ex)
+        _initialized = true;
+        
+        _logger.LogInformation("✅ ToolRegistry initialized with {ToolCount} MemoryAgent tools", _tools.Count);
+        
+        if (_tools.Count == 0)
         {
-            _logger.LogError(ex, "❌ Failed to initialize ToolRegistry");
-            throw;
+            _logger.LogWarning("⚠️ No tools discovered - all backend services may be unavailable");
         }
     }
 
@@ -87,60 +78,50 @@ public class ToolRegistry : IToolRegistry
     }
 
     /// <summary>
-    /// Dynamically discover tools from MemoryAgent MCP server
+    /// Dynamically discover tools from MemoryAgent Lightning server (graceful failure)
     /// </summary>
     private async Task DiscoverMemoryAgentToolsAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("🔍 Discovering MemoryAgent tools...");
         
-        var mcpTools = await _memoryAgent.GetToolsAsync(cancellationToken);
-        
-        foreach (var mcpTool in mcpTools)
+        try
         {
-            var tool = new ToolDefinition
-            {
-                Name = mcpTool.Name,
-                Description = mcpTool.Description ?? string.Empty,
-                Service = "memory-agent",
-                InputSchema = mcpTool.InputSchema ?? new Dictionary<string, object>()
-            };
+            var mcpTools = await _memoryAgent.GetToolsAsync(cancellationToken);
             
-            // Augment with orchestration metadata for better AI routing
-            // Pass category hint if provided by source service
-            AugmentToolMetadata(tool, mcpTool.CategoryHint);
-            RegisterTool(tool);
+            foreach (var mcpTool in mcpTools)
+            {
+                var tool = new ToolDefinition
+                {
+                    Name = mcpTool.Name,
+                    Description = mcpTool.Description ?? string.Empty,
+                    Service = "memory-agent",
+                    InputSchema = mcpTool.InputSchema ?? new Dictionary<string, object>()
+                };
+                
+                // Augment with orchestration metadata for better AI routing
+                // Pass category hint if provided by source service
+                AugmentToolMetadata(tool, mcpTool.CategoryHint);
+                RegisterTool(tool);
+            }
+            
+            _logger.LogInformation("✅ Discovered {Count} MemoryAgent tools", _tools.Count(t => t.Value.Service == "memory-agent"));
         }
-        
-        _logger.LogInformation("✅ Discovered {Count} MemoryAgent tools", _tools.Count(t => t.Value.Service == "memory-agent"));
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning("⚠️ MemoryAgent unavailable (connection refused) - continuing without memory tools. Error: {Error}", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️ Failed to discover MemoryAgent tools - continuing without memory tools");
+        }
     }
 
     /// <summary>
-    /// Dynamically discover tools from CodingOrchestrator MCP server
+    /// Dynamically discover tools from CodingAgent MCP server (graceful failure)
     /// </summary>
-    private async Task DiscoverCodingOrchestratorToolsAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("🔍 Discovering CodingOrchestrator tools...");
-        
-        var mcpTools = await _codingOrchestrator.GetToolsAsync(cancellationToken);
-        
-        foreach (var mcpTool in mcpTools)
-        {
-            var tool = new ToolDefinition
-            {
-                Name = mcpTool.Name,
-                Description = mcpTool.Description ?? string.Empty,
-                Service = "coding-orchestrator",
-                InputSchema = mcpTool.InputSchema ?? new Dictionary<string, object>()
-            };
-            
-            // Augment with orchestration metadata for better AI routing
-            // Pass category hint if provided by source service
-            AugmentToolMetadata(tool, mcpTool.CategoryHint);
-            RegisterTool(tool);
-        }
-        
-        _logger.LogInformation("✅ Discovered {Count} CodingOrchestrator tools", _tools.Count(t => t.Value.Service == "coding-orchestrator"));
-    }
+    // 🔥 REMOVED: DiscoverCodingOrchestratorToolsAsync
+    // CodingAgent tools are now exposed DIRECTLY via orchestrator-mcp-wrapper.js (port 5001)
+    // MemoryRouter ONLY exposes MemoryAgent tools via mcp-wrapper.js (port 5010)
 
     /// <summary>
     /// Augment discovered tools with keywords, use cases, and categories for better FunctionGemma orchestration

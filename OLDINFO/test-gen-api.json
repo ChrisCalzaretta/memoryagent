@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "tools/call",
+  "params": {
+    "name": "execute_task",
+    "arguments": {
+      "request": "create a Python REST API",
+      "context": {"workspace": "e:/GitHub/MemoryAgent"}
+    }
+  }
+}
+
+
+

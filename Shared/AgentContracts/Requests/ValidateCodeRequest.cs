@@ -43,6 +43,23 @@ public class ValidateCodeRequest : IValidatableObject
     /// </summary>
     [RegularExpression(@"^(standard|enterprise)?$", ErrorMessage = "ValidationMode must be 'standard' or 'enterprise'")]
     public string ValidationMode { get; set; } = "standard";
+    
+    /// <summary>
+    /// Ensemble validation strategy (for model collaboration)
+    /// Default: Single model (fastest)
+    /// </summary>
+    public string EnsembleStrategy { get; set; } = "single";
+    
+    /// <summary>
+    /// Current iteration number (for adaptive ensemble selection)
+    /// Used to determine when to enable ensemble validation
+    /// </summary>
+    public int? IterationNumber { get; set; }
+    
+    /// <summary>
+    /// Maximum iterations (for adaptive ensemble selection)
+    /// </summary>
+    public int? MaxIterations { get; set; }
 
     /// <summary>
     /// The original task (for context)

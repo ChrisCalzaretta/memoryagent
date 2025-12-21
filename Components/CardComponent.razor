@@ -1,0 +1,97 @@
+[Parameter] public Card Card { get; set; } = null!;
+
+    private string GetCardClass()
+    {
+        return $"card-{Card.GetSuitColor()}";
+    }
+}
+
+<style>
+    .card {
+        width: 80px;
+        height: 112px;
+        background: white;
+        border-radius: 8px;
+        border: 2px solid #333;
+        position: relative;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        transition: transform 0.2s ease;
+        cursor: pointer;
+    }
+
+    .card:hover {
+        transform: translateY(-5px);
+    }
+
+    .card-red {
+        color: #DC143C;
+    }
+
+    .card-black {
+        color: #000;
+    }
+
+    .card-corner {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-weight: bold;
+    }
+
+    .top-left {
+        top: 6px;
+        left: 6px;
+    }
+
+    .bottom-right {
+        bottom: 6px;
+        right: 6px;
+        transform: rotate(180deg);
+    }
+
+    .card-rank {
+        font-size: 12px;
+        line-height: 1;
+        font-weight: bold;
+    }
+
+    .card-suit {
+        font-size: 10px;
+        line-height: 1;
+    }
+
+    .card-center {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card-suit-large {
+        font-size: 24px;
+        font-weight: bold;
+    }
+
+    @media (max-width: 768px) {
+        .card {
+            width: 60px;
+            height: 84px;
+        }
+        
+        .card-rank {
+            font-size: 10px;
+        }
+        
+        .card-suit {
+            font-size: 8px;
+        }
+        
+        .card-suit-large {
+            font-size: 18px;
+        }
+    }
+</style>

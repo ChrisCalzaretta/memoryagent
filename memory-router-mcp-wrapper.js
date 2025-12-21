@@ -1,10 +1,27 @@
 #!/usr/bin/env node
 
 /**
- * MCP STDIO Wrapper for MemoryRouter
+ * 🧠 MEMORY AGENT MCP Server
  * 
- * Bridges Cursor's STDIO-based MCP protocol to MemoryRouter's HTTP endpoint.
- * Provides AI-powered orchestration of 44+ tools from MemoryAgent and CodingOrchestrator.
+ * AI-powered semantic search, code analysis, and knowledge management.
+ * Routes through MemoryRouter with FunctionGemma for intelligent tool selection.
+ * 
+ * Tools provided (33+):
+ * - Search: semantic_search, smart_search, graph_search
+ * - Analysis: explain_code, impact_analysis, complexity_analysis
+ * - Knowledge: store_qa, get_insights, start_session
+ * - Planning: create_plan, estimate_complexity
+ * - Indexing: index_workspace, reindex_all
+ * 
+ * Usage: Add to Cursor MCP config:
+ * {
+ *   "memory-agent": {
+ *     "command": "node",
+ *     "args": ["memory-router-mcp-wrapper.js", "${workspaceFolder}"]
+ *   }
+ * }
+ * 
+ * For code generation, use the separate 'code-generator' MCP server.
  */
 
 const http = require('http');
@@ -19,10 +36,11 @@ const WORKSPACE_NAME = path.basename(WORKSPACE_FOLDER);
 const context = WORKSPACE_NAME.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Log configuration (to stderr so it doesn't interfere with STDIO protocol)
-console.error(`🧠 MemoryRouter MCP Wrapper Starting...`);
+console.error(`🧠 Memory Agent MCP Server Starting...`);
 console.error(`   Workspace: ${WORKSPACE_FOLDER}`);
 console.error(`   Context: ${context}`);
 console.error(`   Router URL: ${MEMORY_ROUTER_URL}`);
+console.error(`   💡 For code generation, use 'code-generator' MCP server`);
 
 /**
  * Call MemoryRouter HTTP endpoint
@@ -94,8 +112,9 @@ async function handleRequest(request) {
               tools: {}
             },
             serverInfo: {
-              name: 'memory-router',
-              version: '1.0.0'
+              name: 'memory-agent',
+              version: '2.0.0',
+              description: 'AI-powered semantic search and code analysis'
             }
           }
         };
@@ -277,5 +296,6 @@ main().catch((error) => {
   console.error(`💥 Fatal error: ${error.message}`);
   process.exit(1);
 });
+
 
 

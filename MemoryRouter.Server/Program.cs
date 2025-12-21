@@ -31,11 +31,8 @@ builder.Services.AddHttpClient<IMemoryAgentClient, MemoryAgentClient>(client =>
     client.Timeout = TimeSpan.FromMinutes(10);
 });
 
-builder.Services.AddHttpClient<ICodingOrchestratorClient, CodingOrchestratorClient>(client =>
-{
-    client.BaseAddress = new Uri(builder.Configuration["CodingOrchestrator:BaseUrl"] ?? "http://coding-orchestrator:5003");
-    client.Timeout = TimeSpan.FromSeconds(120);
-});
+// 🔥 REMOVED: CodingOrchestrator client - CodingAgent is accessed directly via orchestrator-mcp-wrapper.js
+// MemoryRouter ONLY exposes MemoryAgent tools (via mcp-wrapper.js)
 
 // 📊 Register intelligence services (Statistical Learning + AI)
 builder.Services.AddSingleton<IPerformanceTracker, PerformanceTracker>();

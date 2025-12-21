@@ -1,0 +1,271 @@
+protected override void OnInitialized()
+    {
+        BlackjackService.GameStateChanged += StateHasChanged;
+    }
+
+    private void StartNewGame()
+    {
+        BlackjackService.StartNewGame();
+    }
+
+    private void Hit()
+    {
+        BlackjackService.Hit();
+    }
+
+    private void Stand()
+    {
+        BlackjackService.Stand();
+    }
+
+    private void DoubleDown()
+    {
+        BlackjackService.DoubleDown();
+    }
+
+    private void Split()
+    {
+        // TODO: Implement split functionality
+    }
+
+    private string GetResultClass()
+    {
+        return BlackjackService.GameResult switch
+        {
+            GameResult.PlayerWin or GameResult.PlayerBlackjack => "win",
+            GameResult.DealerWin => "loss",
+            GameResult.Push => "push",
+            _ => ""
+        };
+    }
+
+    public void Dispose()
+    {
+        BlackjackService.GameStateChanged -= StateHasChanged;
+    }
+}
+
+<style>
+    .blackjack-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .game-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+
+    .game-header h1 {
+        margin: 0 0 20px 0;
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+
+    .stats {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        flex-wrap: wrap;
+    }
+
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .stat-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+        margin-bottom: 5px;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+
+    .stat-value.wins { color: #4CAF50; }
+    .stat-value.losses { color: #F44336; }
+    .stat-value.pushes { color: #FF9800; }
+
+    .welcome-screen {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+
+    .welcome-screen h2 {
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    .welcome-screen p {
+        color: #666;
+        font-size: 1.1rem;
+        margin-bottom: 30px;
+    }
+
+    .game-area {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        border-radius: 20px;
+        padding: 30px;
+        min-height: 600px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .hand-section {
+        margin-bottom: 40px;
+        padding: 20px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 15px;
+        backdrop-filter: blur(10px);
+    }
+
+    .hand-section h3 {
+        color: white;
+        margin-bottom: 20px;
+        font-size: 1.4rem;
+    }
+
+    .hand-value {
+        color: #FFD700;
+        font-weight: bold;
+    }
+
+    .bust-indicator {
+        color: #FF4444;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .blackjack-indicator {
+        color: #44FF44;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .cards-container {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+
+    .controls-section {
+        text-align: center;
+        padding: 30px 0;
+    }
+
+    .controls-section .btn {
+        margin: 0 10px 10px 0;
+        padding: 12px 24px;
+        font-size: 1.1rem;
+        font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .controls-section .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .dealer-turn-message {
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .game-result {
+        color: white;
+    }
+
+    .result-message {
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+
+    .result-message.win {
+        color: #4CAF50;
+    }
+
+    .result-message.loss {
+        color: #F44336;
+    }
+
+    .result-message.push {
+        color: #FF9800;
+    }
+
+    .card {
+        width: 80px;
+        height: 112px;
+        background: white;
+        border-radius: 8px;
+        border: 2px solid #333;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        transition: transform 0.2s ease;
+    }
+
+    .card:hover {
+        transform: translateY(-5px);
+    }
+
+    .card.face-down {
+        background: linear-gradient(135deg, #8B0000, #CD5C5C);
+        border-color: #8B0000;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .card-back {
+        font-size: 3rem;
+        color: white;
+        text-align: center;
+    }
+
+    @media (max-width: 768px) {
+        .stats {
+            gap: 15px;
+        }
+        
+        .stat-item {
+            min-width: 80px;
+        }
+        
+        .game-area {
+            padding: 15px;
+        }
+        
+        .cards-container {
+            justify-content: center;
+        }
+        
+        .controls-section .btn {
+            margin: 5px;
+            padding: 10px 20px;
+        }
+        
+        .game-header h1 {
+            font-size: 2rem;
+        }
+    }
+</style>

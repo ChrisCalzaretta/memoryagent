@@ -1,66 +1,69 @@
----
-description: 🧠 AI-powered task execution using FunctionGemma orchestration
-alwaysApply: false
----
+# Execute Task - Memory Agent
 
-# Execute Task
+**Server:** `memory-agent` (via MemoryRouter)
 
-**MAIN ENTRY POINT for ALL operations!**
-
-Uses FunctionGemma AI to intelligently orchestrate 44+ tools from MemoryAgent and CodingOrchestrator.
+Use this for **search, analysis, and understanding** of existing code.
 
 ## Usage
 
-Just describe what you want in natural language - the AI figures out which tools to call!
-
-## Common Examples
-
-### 🔍 Code Search & Understanding
-```
-execute_task(request: "Find all authentication code")
-execute_task(request: "Explain how the API works")
-execute_task(request: "Show me error handling examples")
+```javascript
+execute_task({ request: "your natural language query" })
 ```
 
-### 🏗️ Code Generation
-```
-execute_task(request: "Create a REST API for user management in Python")
-execute_task(request: "Generate React components for user profiles")
-execute_task(request: "Write unit tests for Calculator class")
-```
+## Examples
 
-### ✅ Analysis & Validation
-```
-execute_task(request: "Analyze security vulnerabilities")
-execute_task(request: "Check code complexity and suggest refactoring")
-execute_task(request: "Validate all imports")
+### Code Search
+```javascript
+execute_task({ request: "Find all authentication code" })
+execute_task({ request: "Search for database query patterns" })
+execute_task({ request: "Find uses of deprecated API" })
 ```
 
-### 🎨 Design & Branding
-```
-execute_task(request: "Create a brand system for my healthcare app")
-execute_task(request: "Validate this UI code against brand guidelines")
-```
-
-### 📋 Planning & Management
-```
-execute_task(request: "Create implementation plan for user authentication")
-execute_task(request: "Check status of all coding tasks")
+### Code Understanding
+```javascript
+execute_task({ request: "Explain how the payment system works" })
+execute_task({ request: "What does this function do?" })
+execute_task({ request: "How are user permissions handled?" })
 ```
 
-## What Happens Internally
+### Analysis
+```javascript
+execute_task({ request: "Analyze security vulnerabilities" })
+execute_task({ request: "Check code complexity" })
+execute_task({ request: "Find potential bugs" })
+```
 
-1. **FunctionGemma** analyzes your natural language request
-2. Creates an **execution plan** with the right tools
-3. Executes tools from **MemoryAgent & CodingOrchestrator**
-4. Returns **complete results**
+### Knowledge
+```javascript
+execute_task({ request: "Store this solution for future reference" })
+execute_task({ request: "What patterns have we used before?" })
+execute_task({ request: "Get historical context on this feature" })
+```
 
-## You Don't Need To Know:
-- Which tools exist
-- Which service provides them
-- What order to call them in
-- How to pass parameters
+### Planning
+```javascript
+execute_task({ request: "Create a plan for implementing OAuth" })
+execute_task({ request: "Estimate complexity of this refactoring" })
+execute_task({ request: "Break down this feature into tasks" })
+```
 
-**Just describe what you want!** The AI handles the rest.
+## How It Works
 
+1. Your request goes to MemoryRouter (port 5010)
+2. FunctionGemma AI analyzes your intent
+3. AI selects the right tools from 33+ available
+4. Tools execute and return results
+5. Results are formatted and returned
 
+## When to Use
+
+✅ **Use memory-agent for:**
+- Finding existing code
+- Understanding how something works
+- Searching for patterns
+- Analyzing code quality
+- Getting project knowledge
+- Creating plans
+
+❌ **For code generation, use `code-generator` server instead**
+- See `GenerateCode.md` for code generation

@@ -18,7 +18,7 @@ public class RouterService : IRouterService
     private readonly IFunctionGemmaClient _gemmaClient;
     private readonly IToolRegistry _toolRegistry;
     private readonly IMemoryAgentClient _memoryAgent;
-    private readonly ICodingOrchestratorClient _codingOrchestrator;
+    // 🔥 REMOVED: ICodingOrchestratorClient - MemoryRouter now ONLY exposes MemoryAgent tools
     private readonly IHybridExecutionClassifier _executionClassifier;
     private readonly IBackgroundJobManager _jobManager;
     private readonly IPerformanceTracker _performanceTracker;
@@ -28,7 +28,6 @@ public class RouterService : IRouterService
         IFunctionGemmaClient gemmaClient,
         IToolRegistry toolRegistry,
         IMemoryAgentClient memoryAgent,
-        ICodingOrchestratorClient codingOrchestrator,
         IHybridExecutionClassifier executionClassifier,
         IBackgroundJobManager jobManager,
         IPerformanceTracker performanceTracker,
@@ -37,7 +36,6 @@ public class RouterService : IRouterService
         _gemmaClient = gemmaClient;
         _toolRegistry = toolRegistry;
         _memoryAgent = memoryAgent;
-        _codingOrchestrator = codingOrchestrator;
         _executionClassifier = executionClassifier;
         _jobManager = jobManager;
         _performanceTracker = performanceTracker;
@@ -174,8 +172,8 @@ public class RouterService : IRouterService
                                 object result = tool.Service switch
                                 {
                                     "memory-agent" => await _memoryAgent.CallToolAsync(functionCall.Name, processedArgs, ct),
-                                    "coding-orchestrator" => await _codingOrchestrator.CallToolAsync(functionCall.Name, processedArgs, ct),
-                                    _ => throw new InvalidOperationException($"Unknown service: {tool.Service}")
+                                    // 🔥 REMOVED: coding-orchestrator - handled by orchestrator-mcp-wrapper.js
+                                    _ => throw new InvalidOperationException($"Unknown service: {tool.Service} (MemoryRouter only routes to memory-agent)")
                                 };
                                 sw.Stop();
                                 
@@ -214,8 +212,8 @@ public class RouterService : IRouterService
                         object result = tool.Service switch
                         {
                             "memory-agent" => await _memoryAgent.CallToolAsync(functionCall.Name, processedArgs, cancellationToken),
-                            "coding-orchestrator" => await _codingOrchestrator.CallToolAsync(functionCall.Name, processedArgs, cancellationToken),
-                            _ => throw new InvalidOperationException($"Unknown service: {tool.Service}")
+                            // 🔥 REMOVED: coding-orchestrator - handled by orchestrator-mcp-wrapper.js
+                            _ => throw new InvalidOperationException($"Unknown service: {tool.Service} (MemoryRouter only routes to memory-agent)")
                         };
 
                         stepStopwatch.Stop();

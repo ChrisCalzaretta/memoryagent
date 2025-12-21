@@ -86,6 +86,30 @@ public class ValidationService : IValidationService
             Suggestions = new List<string>()
         };
 
+        // Phase 0: 🔨 COMPILATION CHECK (CRITICAL - must compile before anything else!)
+        _logger.LogInformation("🔨 Phase 0: Attempting to compile code...");
+        var buildErrors = await TryCompileCodeAsync(request, cancellationToken);
+        if (!string.IsNullOrEmpty(buildErrors))
+        {
+            _logger.LogError("❌ Code does not compile! Build errors:\n{BuildErrors}", buildErrors);
+            response.BuildErrors = buildErrors;
+            response.Score = 0; // CRITICAL: Code that doesn't compile gets score 0!
+            response.Passed = false;
+            response.Summary = "Code does not compile. Fix compilation errors first.";
+            response.Issues.Add(new ValidationIssue
+            {
+                Severity = "critical",
+                Message = "Code does not compile",
+                File = "Build",
+                Line = 0,
+                Suggestion = "Fix compilation errors before proceeding:\n" + buildErrors
+            });
+            
+            _logger.LogWarning("⚠️ Skipping rule-based and LLM validation due to compilation failure");
+            return response; // Return immediately - no point validating code that doesn't compile!
+        }
+        _logger.LogInformation("✅ Phase 0 complete: Code compiles successfully!");
+
         // Phase 1: Rule-based validation (fast, deterministic)
         // ValidationMode: "standard" (default) = relaxed, "enterprise" = strict
         _logger.LogInformation("Using validation mode: {Mode}", request.ValidationMode);
@@ -165,6 +189,245 @@ public class ValidationService : IValidationService
         }
     }
     
+    /// <summary>
+    /// 🔨 CRITICAL: Try to compile the code and return build errors if any
+    /// </summary>
+    private async Task<string?> TryCompileCodeAsync(ValidateCodeRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var language = DetectLanguage(request.Files);
+            
+            // Only compile for languages that support compilation
+            if (language != "csharp" && language != "java" && language != "go" && language != "rust")
+            {
+                _logger.LogDebug("Skipping compilation for {Language} (interpreted language or not supported)", language);
+                return null; // Interpreted languages (Python, JS, TS) don't need compilation
+            }
+            
+            _logger.LogInformation("🔨 Attempting to compile {FileCount} {Language} files...", request.Files.Count, language);
+            
+            // Create temporary directory for compilation
+            var tempDir = Path.Combine(Path.GetTempPath(), $"validation_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempDir);
+            
+            try
+            {
+                // Write all files to temp directory
+                foreach (var file in request.Files)
+                {
+                    var filePath = Path.Combine(tempDir, file.Path);
+                    var fileDir = Path.GetDirectoryName(filePath);
+                    if (!string.IsNullOrEmpty(fileDir))
+                    {
+                        Directory.CreateDirectory(fileDir);
+                    }
+                    await File.WriteAllTextAsync(filePath, file.Content, cancellationToken);
+                }
+                
+                // Compile based on language
+                string buildOutput;
+                switch (language)
+                {
+                    case "csharp":
+                        buildOutput = await CompileCSharpAsync(tempDir, request.Files, cancellationToken);
+                        break;
+                    case "java":
+                        buildOutput = await CompileJavaAsync(tempDir, cancellationToken);
+                        break;
+                    case "go":
+                        buildOutput = await CompileGoAsync(tempDir, cancellationToken);
+                        break;
+                    case "rust":
+                        buildOutput = await CompileRustAsync(tempDir, cancellationToken);
+                        break;
+                    default:
+                        return null; // Unsupported language
+                }
+                
+                // If build output contains errors, return them
+                if (!string.IsNullOrEmpty(buildOutput) && 
+                    (buildOutput.Contains("error CS") || buildOutput.Contains("error:") || buildOutput.Contains("Build FAILED")))
+                {
+                    _logger.LogWarning("❌ Compilation failed:\n{BuildOutput}", buildOutput);
+                    return buildOutput;
+                }
+                
+                _logger.LogInformation("✅ Compilation successful!");
+                return null; // No errors
+            }
+            finally
+            {
+                // Cleanup temp directory
+                try
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to cleanup temp directory: {TempDir}", tempDir);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during compilation check");
+            return $"Compilation check failed: {ex.Message}";
+        }
+    }
+    
+    /// <summary>
+    /// Compile C# code using dotnet build
+    /// </summary>
+    private async Task<string> CompileCSharpAsync(string tempDir, List<CodeFile> files, CancellationToken cancellationToken)
+    {
+        // Check if there's a .csproj file
+        var csprojFile = files.FirstOrDefault(f => f.Path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase));
+        
+        if (csprojFile == null)
+        {
+            _logger.LogWarning("No .csproj file found - creating a default one");
+            // Create a minimal .csproj file
+            var projectName = "ValidationProject";
+            var csprojContent = $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>";
+            var csprojPath = Path.Combine(tempDir, $"{projectName}.csproj");
+            await File.WriteAllTextAsync(csprojPath, csprojContent, cancellationToken);
+        }
+        
+        // Run dotnet build
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = "build --verbosity quiet --nologo",
+            WorkingDirectory = tempDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
+        {
+            return "Failed to start dotnet build process";
+        }
+        
+        var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+        
+        var combinedOutput = output + "\n" + error;
+        
+        if (process.ExitCode != 0)
+        {
+            _logger.LogWarning("dotnet build exited with code {ExitCode}", process.ExitCode);
+            return combinedOutput;
+        }
+        
+        return string.Empty; // Success
+    }
+    
+    /// <summary>
+    /// Compile Java code using javac
+    /// </summary>
+    private async Task<string> CompileJavaAsync(string tempDir, CancellationToken cancellationToken)
+    {
+        // Find all .java files
+        var javaFiles = Directory.GetFiles(tempDir, "*.java", SearchOption.AllDirectories);
+        
+        if (javaFiles.Length == 0)
+        {
+            return "No .java files found";
+        }
+        
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "javac",
+            Arguments = string.Join(" ", javaFiles.Select(f => $"\"{f}\"")),
+            WorkingDirectory = tempDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
+        {
+            return "Failed to start javac process";
+        }
+        
+        var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+        
+        return process.ExitCode != 0 ? (output + "\n" + error) : string.Empty;
+    }
+    
+    /// <summary>
+    /// Compile Go code using go build
+    /// </summary>
+    private async Task<string> CompileGoAsync(string tempDir, CancellationToken cancellationToken)
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "go",
+            Arguments = "build",
+            WorkingDirectory = tempDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
+        {
+            return "Failed to start go build process";
+        }
+        
+        var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+        
+        return process.ExitCode != 0 ? (output + "\n" + error) : string.Empty;
+    }
+    
+    /// <summary>
+    /// Compile Rust code using cargo build
+    /// </summary>
+    private async Task<string> CompileRustAsync(string tempDir, CancellationToken cancellationToken)
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "cargo",
+            Arguments = "build",
+            WorkingDirectory = tempDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
+        {
+            return "Failed to start cargo build process";
+        }
+        
+        var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+        
+        return process.ExitCode != 0 ? (output + "\n" + error) : string.Empty;
+    }
+
     private string DetectLanguage(List<CodeFile> files)
     {
         var extensions = files.Select(f => Path.GetExtension(f.Path).ToLowerInvariant()).ToList();

@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "memory-agent": {
+      "command": "node",
+      "args": [
+        "E:\\GitHub\\MemoryAgent\\memory-router-mcp-wrapper.js",
+        "${workspaceFolder}"
+      ],
+      "env": {
+        "MEMORY_ROUTER_URL": "http://localhost:5010"
+      },
+      "description": "🧠 Memory & Search - AI-powered semantic search, code analysis, knowledge storage, planning"
+    },
+    "code-generator": {
+      "command": "node",
+      "args": [
+        "E:\\GitHub\\MemoryAgent\\orchestrator-mcp-wrapper.js",
+        "${workspaceFolder}"
+      ],
+      "env": {
+        "ORCHESTRATOR_PORT": "5003"
+      },
+      "description": "🚀 Code Generation - Multi-agent code generation with validation, design systems, brand tools"
+    }
+  }
+}

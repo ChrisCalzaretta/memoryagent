@@ -1,0 +1,403 @@
+@page "/blackjack"
+@rendermode InteractiveServer
+@using GeneratedApp.Models
+@using GeneratedApp.Services
+@inject BlackjackService BlackjackService
+
+<PageTitle>Blackjack</PageTitle>
+
+<div class="blackjack-container">
+    <div class="game-header">
+        <h1>🎰 Blackjack</h1>
+        <div class="stats">
+            <div class="stat-item">
+                <span class="stat-label">Games:</span>
+                <span class="stat-value">@BlackjackService.Stats.GamesPlayed</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Wins:</span>
+                <span class="stat-value wins">@BlackjackService.Stats.Wins</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Losses:</span>
+                <span class="stat-value losses">@BlackjackService.Stats.Losses</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Pushes:</span>
+                <span class="stat-value pushes">@BlackjackService.Stats.Pushes</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Win %:</span>
+                <span class="stat-value">@BlackjackService.Stats.WinPercentage.ToString("F1")%</span>
+            </div>
+        </div>
+    </div>
+
+    @if (BlackjackService.CurrentPhase == GamePhase.NotStarted)
+    {
+        <div class="welcome-screen">
+            <h2>Welcome to Blackjack!</h2>
+            <p>Try to get as close to 21 as possible without going over. Beat the dealer to win!</p>
+            <button class="btn btn-primary btn-lg" @onclick="StartNewGame">Start New Game</button>
+        </div>
+    }
+    else
+    {
+        <div class="game-area">
+            <!-- Dealer's Hand -->
+            <div class="hand-section dealer-section">
+                <h3>Dealer's Hand 
+                    <span class="hand-value">
+                        (@BlackjackService.DealerHand.GetVisibleValue(BlackjackService.CurrentPhase == GamePhase.PlayerTurn))
+                    </span>
+                </h3>
+                <div class="cards-container">
+                    @{
+                        var dealerCards = BlackjackService.DealerHand.GetVisibleCards(BlackjackService.CurrentPhase == GamePhase.PlayerTurn);
+                    }
+                    @for (int i = 0; i < dealerCards.Count; i++)
+                    {
+                        <CardComponent Card="dealerCards[i]" />
+                    }
+                    @if (BlackjackService.DealerHand.Cards.Count > 1 && BlackjackService.CurrentPhase == GamePhase.PlayerTurn)
+                    {
+                        <div class="card face-down">
+                            <div class="card-back">🂠</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Player's Hand -->
+            <div class="hand-section player-section">
+                <h3>Your Hand 
+                    <span class="hand-value">(@BlackjackService.PlayerHand.GetValue())</span>
+                    @if (BlackjackService.PlayerHand.IsBust())
+                    {
+                        <span class="bust-indicator">BUST!</span>
+                    }
+                    @if (BlackjackService.PlayerHand.IsBlackjack())
+                    {
+                        <span class="blackjack-indicator">BLACKJACK!</span>
+                    }
+                </h3>
+                <div class="cards-container">
+                    @foreach (var card in BlackjackService.PlayerHand.Cards)
+                    {
+                        <CardComponent Card="card" />
+                    }
+                </div>
+            </div>
+
+            <!-- Game Controls -->
+            <div class="controls-section">
+                @if (BlackjackService.CurrentPhase == GamePhase.PlayerTurn)
+                {
+                    <button class="btn btn-success" @onclick="Hit">Hit</button>
+                    <button class="btn btn-warning" @onclick="Stand">Stand</button>
+                    
+                    @if (BlackjackService.CanDoubleDown)
+                    {
+                        <button class="btn btn-info" @onclick="DoubleDown">Double Down</button>
+                    }
+                    
+                    @if (BlackjackService.CanSplit)
+                    {
+                        <button class="btn btn-secondary" @onclick="Split" disabled>Split (Coming Soon)</button>
+                    }
+                }
+                else if (BlackjackService.CurrentPhase == GamePhase.DealerTurn)
+                {
+                    <div class="dealer-turn-message">
+                        <h4>Dealer's Turn...</h4>
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (BlackjackService.CurrentPhase == GamePhase.GameOver)
+                {
+                    <div class="game-result">
+                        <h3 class="result-message @GetResultClass()">
+                            @BlackjackService.GetGameResultMessage()
+                        </h3>
+                        <button class="btn btn-primary btn-lg" @onclick="StartNewGame">Play Again</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        BlackjackService.GameStateChanged += StateHasChanged;
+    }
+
+    private void StartNewGame()
+    {
+        BlackjackService.StartNewGame();
+    }
+
+    private void Hit()
+    {
+        BlackjackService.Hit();
+    }
+
+    private void Stand()
+    {
+        BlackjackService.Stand();
+    }
+
+    private void DoubleDown()
+    {
+        BlackjackService.DoubleDown();
+    }
+
+    private void Split()
+    {
+        // TODO: Implement split functionality
+    }
+
+    private string GetResultClass()
+    {
+        return BlackjackService.GameResult switch
+        {
+            GameResult.PlayerWin or GameResult.PlayerBlackjack => "win",
+            GameResult.DealerWin => "loss",
+            GameResult.Push => "push",
+            _ => ""
+        };
+    }
+
+    public void Dispose()
+    {
+        BlackjackService.GameStateChanged -= StateHasChanged;
+    }
+}
+
+<style>
+    .blackjack-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .game-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+
+    .game-header h1 {
+        margin: 0 0 20px 0;
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+
+    .stats {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        flex-wrap: wrap;
+    }
+
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .stat-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+        margin-bottom: 5px;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+
+    .stat-value.wins { color: #4CAF50; }
+    .stat-value.losses { color: #F44336; }
+    .stat-value.pushes { color: #FF9800; }
+
+    .welcome-screen {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+
+    .welcome-screen h2 {
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    .welcome-screen p {
+        color: #666;
+        font-size: 1.1rem;
+        margin-bottom: 30px;
+    }
+
+    .game-area {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        border-radius: 20px;
+        padding: 30px;
+        min-height: 600px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .hand-section {
+        margin-bottom: 40px;
+        padding: 20px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 15px;
+        backdrop-filter: blur(10px);
+    }
+
+    .hand-section h3 {
+        color: white;
+        margin-bottom: 20px;
+        font-size: 1.4rem;
+    }
+
+    .hand-value {
+        color: #FFD700;
+        font-weight: bold;
+    }
+
+    .bust-indicator {
+        color: #FF4444;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .blackjack-indicator {
+        color: #44FF44;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .cards-container {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+
+    .controls-section {
+        text-align: center;
+        padding: 30px 0;
+    }
+
+    .controls-section .btn {
+        margin: 0 10px 10px 0;
+        padding: 12px 24px;
+        font-size: 1.1rem;
+        font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .controls-section .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .dealer-turn-message {
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .game-result {
+        color: white;
+    }
+
+    .result-message {
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+
+    .result-message.win {
+        color: #4CAF50;
+    }
+
+    .result-message.loss {
+        color: #F44336;
+    }
+
+    .result-message.push {
+        color: #FF9800;
+    }
+
+    .card {
+        width: 80px;
+        height: 112px;
+        background: white;
+        border-radius: 8px;
+        border: 2px solid #333;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        transition: transform 0.2s ease;
+    }
+
+    .card:hover {
+        transform: translateY(-5px);
+    }
+
+    .card.face-down {
+        background: linear-gradient(135deg, #8B0000, #CD5C5C);
+        border-color: #8B0000;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .card-back {
+        font-size: 3rem;
+        color: white;
+        text-align: center;
+    }
+
+    @media (max-width: 768px) {
+        .stats {
+            gap: 15px;
+        }
+        
+        .stat-item {
+            min-width: 80px;
+        }
+        
+        .game-area {
+            padding: 15px;
+        }
+        
+        .cards-container {
+            justify-content: center;
+        }
+        
+        .controls-section .btn {
+            margin: 5px;
+            padding: 10px 20px;
+        }
+        
+        .game-header h1 {
+            font-size: 2rem;
+        }
+    }
+</style>

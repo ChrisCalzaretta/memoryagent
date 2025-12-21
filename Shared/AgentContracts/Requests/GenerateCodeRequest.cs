@@ -150,8 +150,19 @@ public class ExistingFile
 /// </summary>
 public class ValidationFeedback
 {
+    /// <summary>
+    /// Latest validation score (0-10)
+    /// </summary>
     public int Score { get; set; }
+    
+    /// <summary>
+    /// Latest validation issues
+    /// </summary>
     public List<ValidationIssue> Issues { get; set; } = new();
+    
+    /// <summary>
+    /// Latest validation summary
+    /// </summary>
     public string? Summary { get; set; }
     
     /// <summary>
@@ -166,8 +177,60 @@ public class ValidationFeedback
     public string? BuildErrors { get; set; }
     
     /// <summary>
+    /// 🔥 NEW: Complete history of all attempts with individual scores and issues
+    /// This allows Phi4 to see progression over time and analyze what's improving/regressing
+    /// </summary>
+    public List<AttemptHistory>? History { get; set; }
+    
+    /// <summary>
     /// Check if this feedback is specifically for build errors (not validation)
     /// </summary>
     public bool HasBuildErrors => !string.IsNullOrEmpty(BuildErrors);
+}
+
+/// <summary>
+/// 🔥 NEW: Historical record of a single generation attempt
+/// </summary>
+public class AttemptHistory
+{
+    /// <summary>
+    /// Attempt number (1, 2, 3, etc.)
+    /// </summary>
+    public int AttemptNumber { get; set; }
+    
+    /// <summary>
+    /// Model used for this attempt (e.g., "deepseek", "claude")
+    /// </summary>
+    public required string Model { get; set; }
+    
+    /// <summary>
+    /// Validation score for THIS attempt (0-10)
+    /// </summary>
+    public int Score { get; set; }
+    
+    /// <summary>
+    /// Validation issues found in THIS attempt
+    /// </summary>
+    public List<ValidationIssue> Issues { get; set; } = new();
+    
+    /// <summary>
+    /// Build errors from THIS attempt (if any)
+    /// </summary>
+    public string? BuildErrors { get; set; }
+    
+    /// <summary>
+    /// Validation summary for THIS attempt
+    /// </summary>
+    public string? Summary { get; set; }
+    
+    /// <summary>
+    /// When this attempt was made
+    /// </summary>
+    public DateTime Timestamp { get; set; }
+    
+    /// <summary>
+    /// Optional: Sample of generated code (for debugging/analysis)
+    /// </summary>
+    public string? CodeSnippet { get; set; }
 }
 

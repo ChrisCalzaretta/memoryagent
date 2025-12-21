@@ -5,7 +5,7 @@ using MemoryRouter.Server.Models;
 namespace MemoryRouter.Server.Clients;
 
 /// <summary>
-/// HTTP client for calling CodingOrchestrator MCP tools
+/// HTTP client for calling CodingAgent MCP tools (was CodingOrchestrator)
 /// </summary>
 public class CodingOrchestratorClient : ICodingOrchestratorClient
 {
@@ -25,11 +25,11 @@ public class CodingOrchestratorClient : ICodingOrchestratorClient
 
     public async Task<IEnumerable<McpToolDefinition>> GetToolsAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("🔍 Fetching tools from CodingOrchestrator...");
+        _logger.LogInformation("🔍 Fetching tools from CodingAgent...");
 
         try
         {
-            // CodingOrchestrator uses REST endpoints, not JSON-RPC for tools/list
+            // CodingAgent uses REST endpoints, not JSON-RPC for tools/list
             var response = await _httpClient.GetAsync("/api/mcp/tools", cancellationToken);
             response.EnsureSuccessStatusCode();
 
@@ -38,26 +38,26 @@ public class CodingOrchestratorClient : ICodingOrchestratorClient
 
             if (result?.Tools == null)
             {
-                throw new InvalidOperationException("CodingOrchestrator returned null tools list");
+                throw new InvalidOperationException("CodingAgent returned null tools list");
             }
 
-            _logger.LogInformation("✅ Fetched {Count} tools from CodingOrchestrator", result.Tools.Count);
+            _logger.LogInformation("✅ Fetched {Count} tools from CodingAgent", result.Tools.Count);
             return result.Tools;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Failed to fetch tools from CodingOrchestrator");
+            _logger.LogError(ex, "❌ Failed to fetch tools from CodingAgent");
             throw;
         }
     }
 
     public async Task<object> CallToolAsync(string toolName, Dictionary<string, object> arguments, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("📞 Calling CodingOrchestrator tool: {Tool}", toolName);
+        _logger.LogInformation("📞 Calling CodingAgent tool: {Tool}", toolName);
 
         try
         {
-            // CodingOrchestrator expects simple format: { "Name": "tool", "Arguments": {...} }
+            // CodingAgent expects simple format: { "Name": "tool", "Arguments": {...} }
             var request = new
             {
                 Name = toolName,
@@ -77,15 +77,15 @@ public class CodingOrchestratorClient : ICodingOrchestratorClient
 
             if (result?.Content == null || result.Content.Length == 0)
             {
-                throw new InvalidOperationException($"CodingOrchestrator returned null result for {toolName}");
+                throw new InvalidOperationException($"CodingAgent returned null result for {toolName}");
             }
 
-            _logger.LogInformation("✅ CodingOrchestrator {Tool} completed successfully", toolName);
+            _logger.LogInformation("✅ CodingAgent {Tool} completed successfully", toolName);
             return result.Content[0].Text;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Failed to call CodingOrchestrator tool: {Tool}", toolName);
+            _logger.LogError(ex, "❌ Failed to call CodingAgent tool: {Tool}", toolName);
             throw;
         }
     }

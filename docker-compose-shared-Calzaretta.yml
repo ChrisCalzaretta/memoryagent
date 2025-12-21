@@ -1,14 +1,14 @@
 services:
   # 🔧 Build-only service: Multi-SDK .NET execution image
-  # This builds the custom image used by coding-orchestrator for C# execution
-  # Run: docker-compose -f docker-compose-shared-Calzaretta.yml build dotnet-multi
-  dotnet-multi:
-    build:
-      context: .
-      dockerfile: CodingOrchestrator.Server/Dockerfile.dotnet-multi
-    image: memoryagent-dotnet-multi:latest
-    profiles:
-      - build-only  # Won't start with normal docker-compose up
+  # DEPRECATED: Old CodingOrchestrator architecture
+  # NEW: CodingAgent.Server has built-in retry loop + validation
+  # dotnet-multi:
+  #   build:
+  #     context: .
+  #     dockerfile: CodingOrchestrator.Server/Dockerfile.dotnet-multi
+  #   image: memoryagent-dotnet-multi:latest
+  #   profiles:
+  #     - build-only
 
   # 🧠 MemoryRouter - FunctionGemma-powered smart routing
   # Single entry point for all agent tools with AI-powered decision making
@@ -25,11 +25,11 @@ services:
       - ASPNETCORE_URLS=http://+:5010
       - Ollama__BaseUrl=http://10.0.2.20:11434
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - CodingOrchestrator__BaseUrl=http://memory-coding-orchestrator:5003
+      - CodingAgent__BaseUrl=http://memory-coding-agent:5001
     depends_on:
       mcp-server:
         condition: service_healthy
-      coding-orchestrator:
+      coding-agent:
         condition: service_healthy
     networks:
       - memory-net
@@ -66,7 +66,7 @@ services:
       - AutoReindex__Enabled=true
       - AutoReindex__WorkspacePath=
       - AutoReindex__Context=
-      - CodingOrchestrator__BaseUrl=http://memory-coding-orchestrator:5003
+      - CodingAgent__BaseUrl=http://memory-coding-agent:5001
       - AutoTestGeneration__Enabled=true
     depends_on:
       qdrant:
@@ -156,59 +156,11 @@ services:
   # - Port 11434 (3090): PINNED - deepseek-coder-v2:16b, phi3.5:3.8b, mxbai-embed-large (~14.2GB)
   # - Port 11435 (5070 Ti): SWAP - alternative models, auto-unload after 5 min
 
-  # CodingOrchestrator - Coordinates the multi-agent workflow
-  # 🐳 NOW WITH DOCKER EXECUTION - actually runs generated code!
-  # 💾 NOW WITH JOB PERSISTENCE - survives container restarts!
-  coding-orchestrator:
-    build:
-      context: .
-      dockerfile: CodingOrchestrator.Server/Dockerfile
-    container_name: memory-coding-orchestrator
-    ports:
-      - "5003:5003"
-    volumes:
-      # 🐳 Docker socket for code execution in containers
-      - /var/run/docker.sock:/var/run/docker.sock
-      # Temp directory for code execution
-      - /tmp:/tmp
-      # 💾 Job persistence - survives container restarts
-      - Z:\Memory\shared\memory:/data/memory
-      # 📁 Workspace access for reading/writing code files
-      - E:\GitHub:/workspace:rw
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:5003
-      - MemoryAgent__BaseUrl=http://memory-agent-server:5000
-      - CodingAgent__BaseUrl=http://memory-coding-agent:5001
-      - ValidationAgent__BaseUrl=http://memory-validation-agent:5002
-      - DesignAgent__BaseUrl=http://memory-design-agent:5004
-      - JobPersistence__Path=/data/memory/orchestrator/jobs
-      # 🗂️ Path translation: Windows paths → container paths
-      - PathMapping__HostRoot=E:\GitHub
-      - PathMapping__ContainerRoot=/workspace
-    depends_on:
-      mcp-server:
-        condition: service_healthy
-      coding-agent:
-        condition: service_healthy
-      validation-agent:
-        condition: service_healthy
-      design-agent:
-        condition: service_healthy
-    networks:
-      - memory-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    # Need elevated permissions for Docker socket access
-    privileged: false
-    user: root
-    restart: unless-stopped
-
-  # CodingAgent - Generates and fixes code using LLM
+  # ✅ CodingAgent v2 - Code generation with 10-ATTEMPT RETRY LOOP
+  # 🧠 Phi4 strategic thinking before every generation
+  # 🔄 Smart escalation: Deepseek → Claude Sonnet → Claude Opus
+  # 📊 ValidationAgent integration for quality scoring
+  # 💾 Job persistence - survives container restarts
   coding-agent:
     build:
       context: .
@@ -219,10 +171,15 @@ services:
     volumes:
       # 📁 Workspace access for reading source files
       - E:\GitHub:/workspace:rw
+      # 💾 Job persistence - survives container restarts
+      - Z:\Memory\shared\memory:/data
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5001
       - MemoryAgent__BaseUrl=http://memory-agent-server:5000
+      - ValidationAgent__Host=memory-validation-agent
+      - ValidationAgent__Port=5002
+      - JobPersistence__Path=/data/jobs
       - Ollama__Url=http://10.0.2.20:11434
       # Dual GPU: 3090 (pinned) + 5070 Ti (swap)
       - Gpu__DualGpu=true
@@ -248,6 +205,8 @@ services:
       - ANTHROPIC_MODEL_PREMIUM=${ANTHROPIC_MODEL_PREMIUM:-claude-opus-4-20250514}
     depends_on:
       mcp-server:
+        condition: service_healthy
+      validation-agent:
         condition: service_healthy
     networks:
       - memory-net

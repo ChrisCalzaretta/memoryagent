@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "tools/call",
+  "params": {
+    "name": "get_workflow_status",
+    "arguments": {
+      "workflowId": "364b0560-174d-42f2-b1ee-3f6906811164"
+    }
+  }
+}

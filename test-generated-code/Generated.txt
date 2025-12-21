@@ -1,0 +1,7 @@
+{
+  "language": "csharp",
+  "mainFile": "Program.cs",
+  "buildCommand": "dotnet build",
+  "runCommand": "dotnet run",
+  "expectedOutput": "UserService demonstration with logging output showing user creation, retrieval, update, and deletion operations"
+}

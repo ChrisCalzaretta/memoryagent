@@ -320,3 +320,4 @@ To add new tools:
 **Built with ❤️ using FunctionGemma, ASP.NET Core 9, and the Model Context Protocol**
 
 
+

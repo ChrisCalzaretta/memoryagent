@@ -371,13 +371,17 @@ CRITICAL RULES:
         
         // 🔍 SEARCH BEFORE WRITE: Find existing code to avoid duplication
         var context = "memoryagent"; // Default context
+        _logger.LogInformation("🔍 [QDRANT+NEO4J] Searching existing code via MemoryAgent smartsearch...");
+        
         var existingCode = await _memoryAgent.SearchExistingCodeAsync(
             request.Task, context, request.WorkspacePath, cancellationToken);
         
         if (existingCode.HasReusableCode)
         {
-            _logger.LogInformation("🔍 Found existing code to reuse: {Services} services, {Methods} methods",
-                existingCode.ExistingServices.Count, existingCode.ExistingMethods.Count);
+            _logger.LogInformation("✅ [QDRANT+NEO4J] Found existing code to reuse: {Services} services, {Methods} methods, {Similar} similar implementations",
+                existingCode.ExistingServices.Count, 
+                existingCode.ExistingMethods.Count,
+                existingCode.SimilarImplementations.Count);
             
             sb.AppendLine(existingCode.GetPromptSummary());
             sb.AppendLine("=== ⚠️ IMPORTANT: REUSE EXISTING CODE ===");
@@ -385,6 +389,10 @@ CRITICAL RULES:
             sb.AppendLine("EXTEND or INTEGRATE with existing code instead.");
             sb.AppendLine("Only create NEW code for functionality that doesn't exist.");
             sb.AppendLine();
+        }
+        else
+        {
+            _logger.LogInformation("ℹ️ [QDRANT+NEO4J] No existing code found - this is a new implementation");
         }
         
         // 📁 EXISTING FILES: Include files from previous generation steps
@@ -420,12 +428,16 @@ CRITICAL RULES:
         sb.AppendLine();
 
         // ✅ LEARNING: Add similar past solutions from Lightning Q&A memory
+        _logger.LogInformation("🧠 [LIGHTNING] Searching for similar past solutions via find_similar_questions...");
+        
         // Note: 'context' variable already defined above for SearchExistingCodeAsync
         var similarSolutions = await _memoryAgent.FindSimilarSolutionsAsync(
             request.Task, context, cancellationToken);
         
         if (similarSolutions.Any())
         {
+            _logger.LogInformation("✅ [LIGHTNING] Found {Count} similar past solutions (showing top 3)", similarSolutions.Count);
+            
             sb.AppendLine("=== SIMILAR PAST SOLUTIONS (learn from these) ===");
             foreach (var solution in similarSolutions.Take(3))
             {
@@ -434,15 +446,22 @@ CRITICAL RULES:
                 sb.AppendLine($"  Similarity: {solution.Similarity:P0}");
                 sb.AppendLine();
             }
-            _logger.LogDebug("Added {SolutionCount} similar solutions from Lightning", similarSolutions.Count);
+        }
+        else
+        {
+            _logger.LogInformation("ℹ️ [LIGHTNING] No similar past solutions found - this is a new type of task");
         }
 
         // ✅ LEARNING: Add patterns from Lightning
+        _logger.LogInformation("🎯 [LIGHTNING] Fetching relevant patterns via get_context + manage_patterns...");
+        
         var lightningPatterns = await _memoryAgent.GetPatternsAsync(
             request.Task, context, cancellationToken);
         
         if (lightningPatterns.Any())
         {
+            _logger.LogInformation("✅ [LIGHTNING] Found {Count} relevant patterns (showing top 3)", lightningPatterns.Count);
+            
             sb.AppendLine("=== PATTERNS TO APPLY (from Lightning) ===");
             foreach (var pattern in lightningPatterns.Take(3))
             {
@@ -457,7 +476,10 @@ CRITICAL RULES:
                 }
             }
             sb.AppendLine();
-            _logger.LogDebug("Added {PatternCount} patterns from Lightning", lightningPatterns.Count);
+        }
+        else
+        {
+            _logger.LogInformation("ℹ️ [LIGHTNING] No patterns found for this task");
         }
 
         // Add context from request if available
@@ -672,5 +694,29 @@ CRITICAL RULES:
         _logger.LogInformation("[PROMPT] Built focused build-error fix prompt: {Length} chars (vs 48K typical)", sb.Length);
         
         return sb.ToString();
+    }
+    
+    /// <summary>
+    /// Detect if this is UI code that needs design guidelines
+    /// </summary>
+    private bool IsUICode(GenerateCodeRequest request)
+    {
+        var language = request.Language?.ToLowerInvariant() ?? "";
+        var task = request.Task.ToLowerInvariant();
+        
+        // Language-based detection
+        if (language is "flutter" or "dart" or "blazor" or "react" or "vue" or "angular" or "svelte")
+            return true;
+        
+        // Task keyword detection
+        var uiKeywords = new[]
+        {
+            "ui", "screen", "page", "view", "component", "widget",
+            "form", "button", "card", "dialog", "modal", "menu",
+            "navbar", "header", "footer", "sidebar", "layout",
+            "dashboard", "login", "signup", "profile", "settings"
+        };
+        
+        return uiKeywords.Any(keyword => task.Contains(keyword));
     }
 }

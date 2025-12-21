@@ -10,33 +10,43 @@ namespace ValidationAgent.Server.Controllers;
 public class AgentController : ControllerBase
 {
     private readonly IValidationService _validationService;
+    private readonly IValidationEnsembleService _ensembleService;
     private readonly ILogger<AgentController> _logger;
 
     public AgentController(
         IValidationService validationService,
+        IValidationEnsembleService ensembleService,
         ILogger<AgentController> logger)
     {
         _validationService = validationService;
+        _ensembleService = ensembleService;
         _logger = logger;
     }
 
     /// <summary>
-    /// Validate code quality
+    /// Validate code quality (with optional ensemble support)
     /// </summary>
     [HttpPost("validate")]
     public async Task<ActionResult<ValidateCodeResponse>> Validate(
         [FromBody] ValidateCodeRequest request,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Received validation request for {FileCount} files", 
-            request.Files.Count);
+        _logger.LogInformation("Received validation request for {FileCount} files (ensemble={Strategy})", 
+            request.Files.Count, request.EnsembleStrategy ?? "single");
 
         try
         {
-            var response = await _validationService.ValidateAsync(request, cancellationToken);
+            // Use ensemble if strategy is specified and not "single"
+            var useEnsemble = !string.IsNullOrEmpty(request.EnsembleStrategy) && 
+                             request.EnsembleStrategy.ToLowerInvariant() != "single";
             
-            _logger.LogInformation("Validation complete. Score: {Score}/10, Passed: {Passed}", 
-                response.Score, response.Passed);
+            var response = useEnsemble
+                ? await _ensembleService.ValidateWithEnsembleAsync(request, cancellationToken)
+                : await _validationService.ValidateAsync(request, cancellationToken);
+            
+            _logger.LogInformation(
+                "Validation complete. Score: {Score}/10, Passed: {Passed}, Confidence: {Confidence:P0}, Models: {ModelCount}", 
+                response.Score, response.Passed, response.Confidence, response.ModelsUsed.Count);
             
             return Ok(response);
         }
@@ -53,7 +63,7 @@ public class AgentController : ControllerBase
     }
 
     /// <summary>
-    /// Deep code review
+    /// Deep code review (always uses ensemble for maximum quality)
     /// </summary>
     [HttpPost("review")]
     public async Task<ActionResult<ValidateCodeResponse>> Review(
@@ -65,9 +75,11 @@ public class AgentController : ControllerBase
 
         try
         {
-            // Review is a more thorough validation
+            // Review is a more thorough validation with specialized ensemble
             request.Rules = new List<string> { "best_practices", "security", "patterns", "performance" };
-            var response = await _validationService.ValidateAsync(request, cancellationToken);
+            request.EnsembleStrategy = "specialized"; // Always use specialized ensemble for reviews
+            
+            var response = await _ensembleService.ValidateWithEnsembleAsync(request, cancellationToken);
             
             return Ok(response);
         }
@@ -83,6 +95,7 @@ public class AgentController : ControllerBase
         }
     }
 }
+
 
 
 

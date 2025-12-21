@@ -44,10 +44,14 @@ builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client =>
 
 // Register services (Scoped to ensure fresh instances per request)
 builder.Services.AddScoped<IValidationService, ValidationService>();
+builder.Services.AddScoped<ValidationService>(); // For direct injection in ensemble
 builder.Services.AddScoped<IValidationPromptBuilder, ValidationPromptBuilder>();
 
 // 🧠 Smart model selection - uses LLM + historical data to pick best model
 builder.Services.AddScoped<IValidationModelSelector, ValidationModelSelector>();
+
+// 🎯 Ensemble validation - model collaboration for higher quality
+builder.Services.AddScoped<IValidationEnsembleService, ValidationEnsembleService>();
 
 // Add health checks
 builder.Services.AddHealthChecks();

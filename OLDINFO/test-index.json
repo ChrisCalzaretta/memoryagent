@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "execute_task",
+    "arguments": {
+      "request": "Index this workspace for search",
+      "context": "memoryagent",
+      "workspacePath": "E:\\GitHub\\MemoryAgent",
+      "background": true
+    }
+  }
+}

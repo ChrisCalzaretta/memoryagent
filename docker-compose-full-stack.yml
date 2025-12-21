@@ -137,3 +137,4 @@ volumes:
 networks:
   memoryagent-network:
     driver: bridge
+

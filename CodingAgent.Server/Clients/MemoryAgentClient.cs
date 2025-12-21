@@ -872,6 +872,220 @@ public class MemoryAgentClient : IMemoryAgentClient
     // NO FALLBACK PROMPTS - All prompts MUST come from Lightning
     // If a prompt is missing, the system will throw an error
     // Run PromptSeedService to seed required prompts into Neo4j
+    
+    /// <summary>
+    /// 🎨 DESIGN AGENT: Get brand guidelines for UI code generation
+    /// </summary>
+    public async Task<BrandInfo?> GetBrandAsync(string context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new
+            {
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
+                {
+                    name = "design_get_brand",
+                    arguments = new { context = context }
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                
+                try
+                {
+                    using var doc = JsonDocument.Parse(content);
+                    var root = doc.RootElement;
+                    
+                    // Check for result in MCP response format
+                    if (root.TryGetProperty("result", out var result) &&
+                        result.TryGetProperty("content", out var contentArray))
+                    {
+                        foreach (var item in contentArray.EnumerateArray())
+                        {
+                            if (item.TryGetProperty("text", out var textElement))
+                            {
+                                var text = textElement.GetString();
+                                if (!string.IsNullOrEmpty(text))
+                                {
+                                    // Try to parse brand info from text
+                                    return ParseBrandInfo(text, context);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogDebug(ex, "Could not parse brand info JSON response");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting brand info for context {Context}", context);
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// 🎨 DESIGN AGENT: Validate UI code against brand guidelines
+    /// </summary>
+    public async Task<DesignValidationResult?> ValidateDesignAsync(string context, string code, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new
+            {
+                jsonrpc = "2.0",
+                id = Random.Shared.Next(),
+                method = "tools/call",
+                @params = new
+                {
+                    name = "design_validate",
+                    arguments = new
+                    {
+                        context = context,
+                        code = code
+                    }
+                }
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                
+                try
+                {
+                    using var doc = JsonDocument.Parse(content);
+                    var root = doc.RootElement;
+                    
+                    // Check for result in MCP response format
+                    if (root.TryGetProperty("result", out var result) &&
+                        result.TryGetProperty("content", out var contentArray))
+                    {
+                        foreach (var item in contentArray.EnumerateArray())
+                        {
+                            if (item.TryGetProperty("text", out var textElement))
+                            {
+                                var text = textElement.GetString();
+                                if (!string.IsNullOrEmpty(text))
+                                {
+                                    // Try to parse validation result from text
+                                    return ParseDesignValidation(text);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogDebug(ex, "Could not parse design validation JSON response");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error validating design for context {Context}", context);
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Parse brand info from Design Agent response (JSON or markdown)
+    /// </summary>
+    private BrandInfo? ParseBrandInfo(string content, string context)
+    {
+        try
+        {
+            // Try parsing as JSON first
+            using var doc = JsonDocument.Parse(content);
+            var root = doc.RootElement;
+            
+            var brandInfo = new BrandInfo
+            {
+                BrandName = root.TryGetProperty("brandName", out var bn) ? bn.GetString() ?? context : context,
+                PrimaryColor = root.TryGetProperty("primaryColor", out var pc) ? pc.GetString() : null,
+                SecondaryColor = root.TryGetProperty("secondaryColor", out var sc) ? sc.GetString() : null,
+                FontFamily = root.TryGetProperty("fontFamily", out var ff) ? ff.GetString() : null,
+                ThemePreference = root.TryGetProperty("themePreference", out var tp) ? tp.GetString() : null,
+                VisualStyle = root.TryGetProperty("visualStyle", out var vs) ? vs.GetString() : null,
+                FullBrandJson = content
+            };
+            
+            // Extract component guidelines if present
+            if (root.TryGetProperty("components", out var components))
+            {
+                foreach (var comp in components.EnumerateObject())
+                {
+                    brandInfo.ComponentGuidelines.Add($"{comp.Name}: {comp.Value}");
+                }
+            }
+            
+            _logger.LogInformation("🎨 [DESIGN] Loaded brand '{BrandName}' for context {Context}", brandInfo.BrandName, context);
+            return brandInfo;
+        }
+        catch
+        {
+            _logger.LogDebug("Could not parse brand info as JSON, might be markdown or brand not found");
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Parse design validation result from Design Agent response
+    /// </summary>
+    private DesignValidationResult? ParseDesignValidation(string content)
+    {
+        try
+        {
+            // Try parsing as JSON first
+            using var doc = JsonDocument.Parse(content);
+            var root = doc.RootElement;
+            
+            var result = new DesignValidationResult
+            {
+                Score = root.TryGetProperty("score", out var s) ? s.GetInt32() : 0,
+                Grade = root.TryGetProperty("grade", out var g) ? g.GetString() : null,
+                Summary = root.TryGetProperty("summary", out var sum) ? sum.GetString() : null
+            };
+            
+            // Parse issues
+            if (root.TryGetProperty("issues", out var issues) && issues.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var issue in issues.EnumerateArray())
+                {
+                    result.Issues.Add(new DesignIssue
+                    {
+                        Type = issue.TryGetProperty("type", out var t) ? t.GetString() ?? "unknown" : "unknown",
+                        Message = issue.TryGetProperty("message", out var m) ? m.GetString() ?? "" : "",
+                        Suggestion = issue.TryGetProperty("suggestion", out var sug) ? sug.GetString() : null,
+                        Severity = issue.TryGetProperty("severity", out var sev) ? sev.GetString() : "warning"
+                    });
+                }
+            }
+            
+            _logger.LogInformation("🎨 [DESIGN] Validation score: {Score}/10 ({Grade}) with {IssueCount} issues", 
+                result.Score, result.Grade, result.Issues.Count);
+            
+            return result;
+        }
+        catch
+        {
+            _logger.LogDebug("Could not parse design validation as JSON");
+            return null;
+        }
+    }
 }
 
 /// <summary>
