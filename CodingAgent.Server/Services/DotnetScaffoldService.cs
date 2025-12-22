@@ -45,8 +45,8 @@ public class DotnetScaffoldService : IDotnetScaffoldService
         [DotnetProjectType.Console] = new("console", "Console App"),
         [DotnetProjectType.WebApi] = new("webapi", "ASP.NET Core Web API", new[] { "--use-controllers" }),
         [DotnetProjectType.WebApiMinimal] = new("webapi", "ASP.NET Core Web API (Minimal)"),
-        [DotnetProjectType.BlazorServer] = new("blazorserver", "Blazor Server App"),
-        [DotnetProjectType.BlazorWasm] = new("blazorwasm", "Blazor WebAssembly"),
+        [DotnetProjectType.BlazorServer] = new("blazor", "Blazor Server App"),  // .NET 9 uses 'blazor' not 'blazorserver'
+        [DotnetProjectType.BlazorWasm] = new("blazor", "Blazor WebAssembly", new[] { "--interactivity", "WebAssembly", "--empty" }),
     };
 
     public DotnetScaffoldService(ILogger<DotnetScaffoldService> logger)
@@ -87,7 +87,10 @@ public class DotnetScaffoldService : IDotnetScaffoldService
         }
         
         // Create temp directory for scaffolding
-        var tempDir = Path.Combine(Path.GetTempPath(), $"dotnet_scaffold_{Guid.NewGuid():N}");
+        // Use /data/scaffolds which is mounted from host (Z:\Memory\shared\memory)
+        var scaffoldBase = "/data/scaffolds";
+        Directory.CreateDirectory(scaffoldBase);
+        var tempDir = Path.Combine(scaffoldBase, $"dotnet_scaffold_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         
         try
@@ -96,7 +99,7 @@ public class DotnetScaffoldService : IDotnetScaffoldService
                 template.ShortName, projectName, tempDir);
             
             // Build dotnet new command - runs INSIDE Docker container with SDK
-            var templateArgs = $"new {template.ShortName} -n {projectName} -o /scaffold";
+            var templateArgs = $"new {template.ShortName} -n {projectName} -o /scaffold --force";  // --force to overwrite existing files
             if (template.AdditionalArgs?.Any() == true)
             {
                 templateArgs += " " + string.Join(" ", template.AdditionalArgs);
@@ -125,9 +128,19 @@ public class DotnetScaffoldService : IDotnetScaffoldService
             
             await process.WaitForExitAsync(cancellationToken);
             
+            // Log output even on success for debugging
+            if (!string.IsNullOrWhiteSpace(output))
+            {
+                _logger.LogInformation("📄 Docker stdout: {Output}", output);
+            }
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                _logger.LogWarning("⚠️ Docker stderr: {Error}", error);
+            }
+            
             if (process.ExitCode != 0)
             {
-                _logger.LogError("❌ dotnet new failed: {Error}", error);
+                _logger.LogError("❌ dotnet new failed with exit code {ExitCode}", process.ExitCode);
                 return new DotnetScaffoldResult
                 {
                     Success = false,
@@ -138,13 +151,36 @@ public class DotnetScaffoldService : IDotnetScaffoldService
             // Collect generated files
             var files = new List<ScaffoldedFile>();
             
+            // DEBUG: List what was actually created
+            _logger.LogInformation("🔍 Checking for scaffolded files in: {TempDir}", tempDir);
+            if (Directory.Exists(tempDir))
+            {
+                var allItems = Directory.GetFileSystemEntries(tempDir, "*", SearchOption.AllDirectories);
+                _logger.LogInformation("🔍 Found {Count} items total:", allItems.Length);
+                foreach (var item in allItems)
+                {
+                    var relativePath = Path.GetRelativePath(tempDir, item);
+                    var type = Directory.Exists(item) ? "DIR " : "FILE";
+                    _logger.LogInformation("  {Type}: {Path}", type, relativePath);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ Temp directory doesn't exist: {TempDir}", tempDir);
+            }
+            
             // dotnet new creates files in /scaffold which maps to tempDir
             // Some templates put files in a subdirectory named after the project
             var projectDir = tempDir;
             var subDir = Path.Combine(tempDir, projectName);
             if (Directory.Exists(subDir) && Directory.GetFiles(subDir).Length > 0)
             {
+                _logger.LogInformation("✅ Using subdirectory: {SubDir}", subDir);
                 projectDir = subDir;
+            }
+            else
+            {
+                _logger.LogInformation("ℹ️ No subdirectory, using root: {ProjectDir}", projectDir);
             }
             
             foreach (var file in Directory.GetFiles(projectDir, "*", SearchOption.AllDirectories))

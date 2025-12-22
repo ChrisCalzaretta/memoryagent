@@ -199,12 +199,10 @@ public class OllamaClient : IOllamaClient
         var actualPort = port ?? _defaultPort;
         var url = $"{_baseHost}:{actualPort}/api/generate";
         
-        // 📐 Smart context sizing: Get FULL max context (not reduced for prompt ratio)
-        var maxContext = await QueryModelContextSizeAsync(model, actualPort, cancellationToken);
-        if (maxContext <= 0)
-        {
-            maxContext = GetKnownContextSize(model);
-        }
+        // 📐 Smart context sizing: Use OUR configured values (don't trust Ollama's cached context!)
+        var maxContext = GetKnownContextSize(model);
+        
+        _logger.LogInformation("🎯 Using configured context for {Model}: {Context}", model, maxContext);
         
         // 🔒 Cap context for models known to crash with huge contexts (VRAM safety)
         if (model.Contains("deepseek-coder-v2") && maxContext > 32768)

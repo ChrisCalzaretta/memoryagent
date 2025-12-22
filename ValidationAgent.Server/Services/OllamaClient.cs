@@ -88,14 +88,10 @@ public class OllamaClient : IOllamaClient
             if (_modelContextCache.TryGetValue(cacheKey, out cached))
                 return cached;
             
-            // Try to query Ollama for model info
-            var maxContextSize = await QueryModelContextSizeAsync(model, port, ct);
+            // Use OUR configured values (don't trust Ollama's cached context!)
+            var maxContextSize = GetKnownContextSize(model);
             
-            // If query failed, use known defaults
-            if (maxContextSize <= 0)
-            {
-                maxContextSize = GetKnownContextSize(model);
-            }
+            _logger.LogInformation("🎯 Using configured context for {Model}: {Context}", model, maxContextSize);
             
             // Task-aware context ratio:
             // - validation: 80% (needs full code in prompt, small JSON response)
