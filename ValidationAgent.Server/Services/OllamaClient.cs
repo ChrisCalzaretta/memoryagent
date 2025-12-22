@@ -23,11 +23,11 @@ public class OllamaClient : IOllamaClient
     // Default context sizes by model family (fallback if API query fails)
     private static readonly Dictionary<string, int> _knownModelContexts = new()
     {
-        ["deepseek-coder-v2"] = 65536,  // 64k (can go to 128k but uses lots of memory)
+        ["deepseek-coder-v2"] = 32768,  // 32k (64k crashes - tested)
         ["deepseek-coder"] = 16384,
-        ["qwen2.5-coder"] = 32768,
-        ["qwen2.5"] = 32768,
-        ["phi4"] = 16384,
+        ["qwen2.5-coder"] = 131072,     // 128k tested and works!
+        ["qwen2.5"] = 131072,
+        ["phi4"] = 131072,               // 128k tested and works!
         ["phi3.5"] = 32768,
         ["phi3"] = 4096,
         ["llama3.1"] = 32768,
@@ -35,7 +35,9 @@ public class OllamaClient : IOllamaClient
         ["codellama"] = 16384,
         ["mistral"] = 32768,
         ["mixtral"] = 32768,
-        ["gemma2"] = 8192,
+        ["gemma2"] = 32768,              // Bumped from 8k to 32k
+        ["gemma3"] = 131072,             // 131k works (already running this)
+        ["llava"] = 32768,               // Vision model - 32k context
         ["starcoder2"] = 16384,
     };
     

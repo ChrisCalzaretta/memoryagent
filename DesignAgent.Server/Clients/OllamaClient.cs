@@ -15,6 +15,27 @@ public class OllamaClient : IOllamaClient
     private readonly int _defaultPort;
     private readonly string _baseHost;
     
+    // Default context sizes by model family (fallback if API query fails)
+    private static readonly Dictionary<string, int> _knownModelContexts = new()
+    {
+        ["deepseek-coder-v2"] = 32768,  // 32k (64k crashes - tested)
+        ["deepseek-coder"] = 16384,
+        ["qwen2.5-coder"] = 131072,     // 128k tested and works!
+        ["qwen2.5"] = 131072,
+        ["phi4"] = 131072,               // 128k tested and works!
+        ["phi3.5"] = 32768,
+        ["phi3"] = 4096,
+        ["llama3.1"] = 32768,
+        ["llama3.2"] = 32768,
+        ["codellama"] = 16384,
+        ["mistral"] = 32768,
+        ["mixtral"] = 32768,
+        ["gemma2"] = 32768,
+        ["gemma3"] = 131072,             // 131k works
+        ["llava"] = 32768,               // Vision model - 32k context
+        ["starcoder2"] = 16384,
+    };
+    
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -40,6 +61,23 @@ public class OllamaClient : IOllamaClient
         }
         
         _logger.LogInformation("DesignAgent OllamaClient configured: {BaseHost}:{Port}", _baseHost, _defaultPort);
+    }
+    
+    /// <summary>
+    /// Get known context size for model family
+    /// </summary>
+    private int GetKnownContextSize(string model)
+    {
+        var lowerModel = model.ToLowerInvariant();
+        
+        foreach (var (prefix, contextSize) in _knownModelContexts)
+        {
+            if (lowerModel.Contains(prefix))
+                return contextSize;
+        }
+        
+        // Default fallback
+        return 8192;
     }
 
     public async Task<OllamaResponse> GenerateAsync(
@@ -74,13 +112,23 @@ public class OllamaClient : IOllamaClient
         var actualPort = port ?? _defaultPort;
         var url = $"{_baseHost}:{actualPort}/api/generate";
         
+        // Get max context for this model
+        var maxContext = GetKnownContextSize(model);
+        
+        // Cap ALL models at 128k max (VRAM safety)
+        if (maxContext > 131072)
+        {
+            _logger.LogWarning("⚠️ Capping {Model} context from {Original} to 131072 (VRAM safety)", model, maxContext);
+            maxContext = 131072;
+        }
+        
         if (images?.Any() == true)
         {
-            _logger.LogInformation("🎨 DesignAgent calling {Model} with {ImageCount} image(s)", model, images.Count);
+            _logger.LogInformation("🎨 DesignAgent calling {Model} with {ImageCount} image(s) (context={Context})", model, images.Count, maxContext);
         }
         else
         {
-            _logger.LogInformation("🎨 DesignAgent calling {Model} for design generation", model);
+            _logger.LogInformation("🎨 DesignAgent calling {Model} for design generation (context={Context})", model, maxContext);
         }
         
         var request = new OllamaGenerateRequest
@@ -90,7 +138,11 @@ public class OllamaClient : IOllamaClient
             System = systemPrompt,
             Images = images,
             Stream = false,
-            KeepAlive = -1
+            KeepAlive = -1,
+            Options = new OllamaOptions
+            {
+                NumCtx = maxContext
+            }
         };
 
         try
@@ -251,6 +303,19 @@ internal class OllamaGenerateRequest
     
     [JsonPropertyName("keep_alive")]
     public int KeepAlive { get; set; }
+    
+    public OllamaOptions? Options { get; set; }
+}
+
+internal class OllamaOptions
+{
+    /// <summary>
+    /// Context window size in tokens. Default is 4096. 
+    /// Set higher (8192, 16384, 32768, 131072) for longer prompts.
+    /// Trade-off: More memory, slower responses.
+    /// </summary>
+    [JsonPropertyName("num_ctx")]
+    public int NumCtx { get; set; } = 8192;
 }
 
 internal class OllamaGenerateResponse
