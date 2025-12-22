@@ -37,7 +37,8 @@ public class OllamaClient : IOllamaClient
         ["codellama"] = 16384,
         ["mistral"] = 32768,
         ["mixtral"] = 32768,
-        ["gemma2"] = 8192,
+        ["gemma2"] = 32768,              // Bumped from 8k to 32k (you have the VRAM!)
+        ["gemma3"] = 32768,              // Gemma3 if you have it
         ["starcoder2"] = 16384,
     };
     
