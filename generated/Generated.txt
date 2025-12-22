@@ -1,1 +1,0 @@
-{"language": "csharp", "mainFile": "Program.cs", "runCommand": "dotnet run"}

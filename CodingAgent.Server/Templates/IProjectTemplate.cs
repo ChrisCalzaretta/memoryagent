@@ -192,3 +192,5 @@ public abstract class ProjectTemplateBase : IProjectTemplate
     }
 }
 
+
+

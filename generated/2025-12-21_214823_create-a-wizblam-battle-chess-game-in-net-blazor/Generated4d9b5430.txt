@@ -1,0 +1,7 @@
+{
+  "language": "csharp",
+  "mainFile": "Program.cs",
+  "buildCommand": "dotnet build",
+  "runCommand": "dotnet run --project BlazorChessGame.csproj",
+  "expectedOutput": "Open your browser and navigate to http://localhost:5000/game"
+}

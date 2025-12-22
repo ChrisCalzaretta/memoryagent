@@ -56,3 +56,5 @@ Write-Host "   Invoke-RestMethod http://localhost:5010/health" -ForegroundColor 
 Write-Host ""
 Write-Host "⚠️  Note: Watch each service window for startup logs!" -ForegroundColor Yellow
 
+
+

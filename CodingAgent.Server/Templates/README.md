@@ -132,3 +132,5 @@ public class MyCustomTemplate : ProjectTemplateBase
 
 - `GenerateReport(context)` - Create markdown failure report
 
+
+

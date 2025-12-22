@@ -259,3 +259,5 @@ POST /api/mcp/call       → Execute a tool
 3. Verify tool discovery in logs
 4. Test MCP tool calls through MemoryRouter
 
+
+

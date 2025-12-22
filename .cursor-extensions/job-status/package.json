@@ -1,0 +1,61 @@
+{
+  "name": "cursor-job-status",
+  "displayName": "Cursor Job Status",
+  "description": "Real-time status bar for code generation jobs",
+  "version": "1.0.0",
+  "publisher": "memoryagent",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jobStatus.showDetails",
+        "title": "Show Job Details"
+      },
+      {
+        "command": "jobStatus.refresh",
+        "title": "Refresh Job Status"
+      },
+      {
+        "command": "jobStatus.cancelJob",
+        "title": "Cancel Job"
+      }
+    ],
+    "configuration": {
+      "title": "Job Status",
+      "properties": {
+        "jobStatus.pollingInterval": {
+          "type": "number",
+          "default": 3000,
+          "description": "Polling interval in milliseconds (default: 3000ms)"
+        },
+        "jobStatus.orchestratorUrl": {
+          "type": "string",
+          "default": "http://localhost:5001",
+          "description": "CodingOrchestrator server URL"
+        },
+        "jobStatus.memoryRouterUrl": {
+          "type": "string",
+          "default": "http://localhost:5010",
+          "description": "MemoryRouter server URL"
+        },
+        "jobStatus.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show desktop notifications when jobs complete"
+        }
+      }
+    }
+  }
+}
+
+
+

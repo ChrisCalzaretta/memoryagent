@@ -1,0 +1,7 @@
+{
+  "language": "csharp",
+  "mainFile": "Calculator.cs",
+  "buildCommand": "dotnet build",
+  "runCommand": "dotnet run",
+  "expectedOutput": "Sum: 8\nDifference: 2"
+}

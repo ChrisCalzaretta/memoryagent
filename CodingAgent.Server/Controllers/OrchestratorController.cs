@@ -32,6 +32,7 @@ public class OrchestratorController : ControllerBase
                 request.Task,
                 request.Language,
                 request.MaxIterations,
+                request.WorkspacePath,
                 HttpContext.RequestAborted);
 
             return Ok(new OrchestrateResponse
@@ -106,6 +107,7 @@ public class OrchestrateRequest
     public string Task { get; set; } = "";
     public string? Language { get; set; }
     public int MaxIterations { get; set; } = 50;
+    public string? WorkspacePath { get; set; } // e.g., "E:\GitHub\testagent" → mounted as "/workspace/testagent"
 }
 
 public class OrchestrateResponse
@@ -113,4 +115,5 @@ public class OrchestrateResponse
     public string JobId { get; set; } = "";
     public string Message { get; set; } = "";
 }
+
 

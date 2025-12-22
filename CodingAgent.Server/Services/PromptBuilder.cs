@@ -373,27 +373,9 @@ CRITICAL RULES:
         var context = "memoryagent"; // Default context
         _logger.LogInformation("🔍 [QDRANT+NEO4J] Searching existing code via MemoryAgent smartsearch...");
         
-        var existingCode = await _memoryAgent.SearchExistingCodeAsync(
-            request.Task, context, request.WorkspacePath, cancellationToken);
-        
-        if (existingCode.HasReusableCode)
-        {
-            _logger.LogInformation("✅ [QDRANT+NEO4J] Found existing code to reuse: {Services} services, {Methods} methods, {Similar} similar implementations",
-                existingCode.ExistingServices.Count, 
-                existingCode.ExistingMethods.Count,
-                existingCode.SimilarImplementations.Count);
-            
-            sb.AppendLine(existingCode.GetPromptSummary());
-            sb.AppendLine("=== ⚠️ IMPORTANT: REUSE EXISTING CODE ===");
-            sb.AppendLine("DO NOT recreate any of the above services or methods.");
-            sb.AppendLine("EXTEND or INTEGRATE with existing code instead.");
-            sb.AppendLine("Only create NEW code for functionality that doesn't exist.");
-            sb.AppendLine();
-        }
-        else
-        {
-            _logger.LogInformation("ℹ️ [QDRANT+NEO4J] No existing code found - this is a new implementation");
-        }
+        // TODO: SearchExistingCodeAsync method needs to be implemented in MemoryAgent
+        // For now, skip this section
+        _logger.LogInformation("ℹ️ [QDRANT+NEO4J] Existing code search temporarily disabled");
         
         // 📁 EXISTING FILES: Include files from previous generation steps
         if (request.ExistingFiles?.Any() == true)
@@ -430,57 +412,13 @@ CRITICAL RULES:
         // ✅ LEARNING: Add similar past solutions from Lightning Q&A memory
         _logger.LogInformation("🧠 [LIGHTNING] Searching for similar past solutions via find_similar_questions...");
         
-        // Note: 'context' variable already defined above for SearchExistingCodeAsync
-        var similarSolutions = await _memoryAgent.FindSimilarSolutionsAsync(
-            request.Task, context, cancellationToken);
-        
-        if (similarSolutions.Any())
-        {
-            _logger.LogInformation("✅ [LIGHTNING] Found {Count} similar past solutions (showing top 3)", similarSolutions.Count);
-            
-            sb.AppendLine("=== SIMILAR PAST SOLUTIONS (learn from these) ===");
-            foreach (var solution in similarSolutions.Take(3))
-            {
-                sb.AppendLine($"Q: {solution.Question}");
-                sb.AppendLine($"A: {solution.Answer}");
-                sb.AppendLine($"  Similarity: {solution.Similarity:P0}");
-                sb.AppendLine();
-            }
-        }
-        else
-        {
-            _logger.LogInformation("ℹ️ [LIGHTNING] No similar past solutions found - this is a new type of task");
-        }
+        // TODO: FindSimilarSolutionsAsync method needs to be implemented in MemoryAgent
+        // For now, skip this section
+        _logger.LogInformation("ℹ️ [LIGHTNING] Similar solutions search temporarily disabled");
 
         // ✅ LEARNING: Add patterns from Lightning
-        _logger.LogInformation("🎯 [LIGHTNING] Fetching relevant patterns via get_context + manage_patterns...");
-        
-        var lightningPatterns = await _memoryAgent.GetPatternsAsync(
-            request.Task, context, cancellationToken);
-        
-        if (lightningPatterns.Any())
-        {
-            _logger.LogInformation("✅ [LIGHTNING] Found {Count} relevant patterns (showing top 3)", lightningPatterns.Count);
-            
-            sb.AppendLine("=== PATTERNS TO APPLY (from Lightning) ===");
-            foreach (var pattern in lightningPatterns.Take(3))
-            {
-                sb.AppendLine($"- {pattern.Name}: {pattern.Description}");
-                if (!string.IsNullOrEmpty(pattern.BestPractice))
-                {
-                    sb.AppendLine($"  Best practice: {pattern.BestPractice}");
-                }
-                if (!string.IsNullOrEmpty(pattern.CodeExample))
-                {
-                    sb.AppendLine($"  Example: {pattern.CodeExample}");
-                }
-            }
-            sb.AppendLine();
-        }
-        else
-        {
-            _logger.LogInformation("ℹ️ [LIGHTNING] No patterns found for this task");
-        }
+        // TODO: GetPatternsAsync needs to be implemented in MemoryAgent
+        _logger.LogInformation("ℹ️ [LIGHTNING] Pattern retrieval temporarily disabled");
 
         // Add context from request if available
         if (request.Context != null)

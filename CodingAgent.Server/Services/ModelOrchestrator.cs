@@ -461,7 +461,9 @@ public partial class ModelOrchestrator
                     Context = context ?? "default"
                 };
                 
-                await _memoryAgent.RecordModelPerformanceAsync(record, cancellationToken);
+                // TODO: RecordModelPerformanceAsync needs to be implemented in MemoryAgent
+                // await _memoryAgent.RecordModelPerformanceAsync(record, cancellationToken);
+                _logger.LogInformation("Model performance recording temporarily disabled");
             }
             catch (Exception ex)
             {
@@ -514,7 +516,9 @@ public partial class ModelOrchestrator
         {
             try
             {
-                historicalStats = await _memoryAgent.GetModelStatsAsync(language, taskType, cancellationToken);
+                // TODO: GetModelStatsAsync needs to be implemented in MemoryAgent
+                // historicalStats = await _memoryAgent.GetModelStatsAsync(language, taskType, cancellationToken);
+                historicalStats = new List<AgentContracts.Models.ModelStats>(); // Temporary empty list
                 _logger.LogDebug("Got {Count} historical stats for {TaskType}/{Language}", 
                     historicalStats.Count, taskType, language);
             }

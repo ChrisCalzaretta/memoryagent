@@ -4,6 +4,7 @@ using AgentContracts.Services;
 using AgentContracts.Models;
 using AgentContracts.Requests;
 using CodingAgent.Server.Templates;
+using CodingAgent.Server.Clients; // For BrandSystem
 
 namespace CodingAgent.Server.Services;
 
@@ -84,6 +85,18 @@ public record ThinkingContext
     public Dictionary<string, string> ExistingFiles { get; init; } = new();
     public List<AttemptSummary> PreviousAttempts { get; init; } = new();
     public string[] AvailablePatterns { get; init; } = Array.Empty<string>();
+    
+    // 🔥 NEW: Multi-model support fields
+    public string? LatestBuildErrors { get; init; }
+    public int? LatestValidationScore { get; init; }
+    public string[]? LatestValidationIssues { get; init; }
+    public string? LatestValidationSummary { get; init; }
+    
+    // 🌐 NEW: Web research augmentation
+    public List<WebSearchResult>? WebResearch { get; init; }
+    
+    // 🎨 NEW: Design/brand guidelines
+    public BrandSystem? BrandGuidelines { get; init; }
 }
 
 /// <summary>
@@ -102,6 +115,7 @@ public record AttemptSummary
 /// </summary>
 public record ThinkingResult
 {
+    // Original Phi4 fields
     public required string Approach { get; init; }
     public string[] Dependencies { get; init; } = Array.Empty<string>();
     public string[] PatternsToUse { get; init; } = Array.Empty<string>();
@@ -109,6 +123,13 @@ public record ThinkingResult
     public string? Suggestions { get; init; }
     public int EstimatedComplexity { get; init; } = 5;
     public string? RecommendedModel { get; init; }
+    
+    // 🔥 NEW: Multi-Model Support (backward compatible - defaults provided)
+    public List<string> ParticipatingModels { get; init; } = new();
+    public string Strategy { get; init; } = "solo";
+    public double Confidence { get; init; } = 1.0;
+    public string Patterns { get; init; } = ""; // Comma-separated patterns
+    public string Complexity { get; init; } = "moderate"; // low, moderate, high, critical
 }
 
 /// <summary>

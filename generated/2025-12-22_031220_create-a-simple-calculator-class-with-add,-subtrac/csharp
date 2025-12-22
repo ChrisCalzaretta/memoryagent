@@ -1,0 +1,59 @@
+using System;
+
+namespace Services
+{
+    public class Calculator
+    {
+        public int Add(int a, int b)
+        {
+            try
+            {
+                return checked(a + b);
+            }
+            catch (OverflowException e)
+            {
+                throw new ArgumentException("Integer overflow occurred during addition.", e);
+            }
+        }
+
+        public int Subtract(int a, int b)
+        {
+            try
+            {
+                return checked(a - b);
+            }
+            catch (OverflowException e)
+            {
+                throw new ArgumentException("Integer underflow occurred during subtraction.", e);
+            }
+        }
+
+        public int Multiply(int a, int b)
+        {
+            try
+            {
+                return checked(a * b);
+            }
+            catch (OverflowException e)
+            {
+                throw new ArgumentException("Integer overflow occurred during multiplication.", e);
+            }
+        }
+
+        public double Divide(int a, int b)
+        {
+            if (b == 0)
+            {
+                throw new ArgumentException("Cannot divide by zero.");
+            }
+            try
+            {
+                return checked((double)a / b);
+            }
+            catch (OverflowException e)
+            {
+                throw new ArgumentException("Unexpected overflow occurred during division.", e);
+            }
+        }
+    }
+}

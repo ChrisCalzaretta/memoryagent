@@ -1,0 +1,62 @@
+# Multi-SDK .NET Docker Image for Code Execution
+# Supports: .NET 8, .NET 9, .NET 10 (preview)
+# Includes: Full SDKs, NuGet cache warming, ASP.NET Core support
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS base
+
+# Install .NET 8 SDK (LTS)
+RUN dotnet_version=8.0.404 \
+    && curl -fSL --output dotnet8.tar.gz https://dotnetcli.azureedge.net/dotnet/Sdk/$dotnet_version/dotnet-sdk-$dotnet_version-linux-x64.tar.gz \
+    && tar -ozxf dotnet8.tar.gz -C /usr/share/dotnet \
+    && rm dotnet8.tar.gz \
+    && echo "Installed .NET 8 SDK: $dotnet_version"
+
+# Verify all SDKs are installed
+RUN dotnet --list-sdks
+
+# Set environment for better NuGet performance
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DOTNET_NOLOGO=1
+ENV NUGET_XMLDOC_MODE=skip
+
+# Pre-warm NuGet cache with commonly used packages
+# This speeds up first restore significantly
+WORKDIR /tmp/warmup
+
+# Console app packages
+RUN dotnet new console -n ConsoleWarmup -f net9.0 && cd ConsoleWarmup \
+    && dotnet add package Newtonsoft.Json --version 13.0.3 \
+    && dotnet add package System.Text.Json --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.DependencyInjection --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.Logging --version 9.0.0 \
+    && dotnet add package Microsoft.Extensions.Configuration --version 9.0.0 \
+    && dotnet restore \
+    && cd .. && rm -rf ConsoleWarmup
+
+# Web/API packages
+RUN dotnet new web -n WebWarmup -f net9.0 && cd WebWarmup \
+    && dotnet add package Swashbuckle.AspNetCore --version 6.6.2 \
+    && dotnet add package Microsoft.EntityFrameworkCore --version 9.0.0 \
+    && dotnet add package FluentValidation.AspNetCore --version 11.3.0 \
+    && dotnet restore \
+    && cd .. && rm -rf WebWarmup
+
+# Note: Blazor warmup removed - templates will scaffold fresh when needed
+
+# Clean up warmup files
+WORKDIR /app
+RUN rm -rf /tmp/warmup
+
+# Copy the smart build script
+COPY CodingAgent.Server/dotnet-smart-build.sh /usr/local/bin/dotnet-smart-build.sh
+RUN chmod +x /usr/local/bin/dotnet-smart-build.sh
+
+# Default working directory
+WORKDIR /app
+
+# Labels
+LABEL maintainer="CodingAgent"
+LABEL description="Multi-SDK .NET execution environment (8/9)"
+LABEL dotnet.versions="8.0,9.0"
+LABEL image.name="codingagent-dotnet-multi"
+

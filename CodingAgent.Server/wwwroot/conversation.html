@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodingAgent - Interactive Conversation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+        }
+        .header h1 { margin-bottom: 8px; font-size: 28px; }
+        .header p { opacity: 0.9; font-size: 14px; }
+        .connection-status {
+            padding: 16px 24px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #dc3545;
+            animation: pulse 2s infinite;
+        }
+        .status-dot.connected { background: #28a745; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            min-height: 600px;
+        }
+        .events-panel {
+            padding: 24px;
+            overflow-y: auto;
+            max-height: 600px;
+        }
+        .event {
+            background: #f8f9fa;
+            border-left: 4px solid #6c757d;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            border-radius: 4px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .event.thinking { border-left-color: #17a2b8; background: #d1ecf1; }
+        .event.tool { border-left-color: #ffc107; background: #fff3cd; }
+        .event.question { border-left-color: #dc3545; background: #f8d7da; }
+        .event.file { border-left-color: #28a745; background: #d4edda; }
+        .event.compilation { border-left-color: #6f42c1; background: #e2d9f3; }
+        .event.validation { border-left-color: #fd7e14; background: #fee6d5; }
+        .event.success { border-left-color: #28a745; background: #d4edda; }
+        .event.error { border-left-color: #dc3545; background: #f8d7da; }
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .event-type {
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .event-time {
+            font-size: 11px;
+            opacity: 0.7;
+        }
+        .event-message {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .sidebar {
+            background: #f8f9fa;
+            border-left: 1px solid #dee2e6;
+            padding: 24px;
+        }
+        .question-card {
+            background: white;
+            border: 2px solid #dc3545;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .question-text {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #212529;
+        }
+        .question-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .option-btn {
+            background: white;
+            border: 2px solid #667eea;
+            padding: 12px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            text-align: left;
+        }
+        .option-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+        }
+        .progress-bar {
+            height: 4px;
+            background: #e9ecef;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .stat-card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 CodingAgent - Interactive Conversation</h1>
+            <p>Real-time bidirectional communication via WebSocket (SignalR)</p>
+        </div>
+        
+        <div class="connection-status">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
+            <div>
+                <span id="connectionId" style="font-family: monospace; font-size: 12px; opacity: 0.7;"></span>
+            </div>
+        </div>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+        
+        <div class="main-content">
+            <div class="events-panel" id="eventsPanel">
+                <div class="event thinking">
+                    <div class="event-header">
+                        <span class="event-type">💡 Welcome</span>
+                        <span class="event-time">Now</span>
+                    </div>
+                    <div class="event-message">
+                        Connect to start an interactive coding session. The agent will ask questions, 
+                        show progress, and let you review files in real-time.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <h3 style="margin-bottom: 16px;">📊 Session Stats</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="statEvents">0</div>
+                        <div class="stat-label">Events</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statTools">0</div>
+                        <div class="stat-label">Tool Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statFiles">0</div>
+                        <div class="stat-label">Files</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statScore">-</div>
+                        <div class="stat-label">Score</div>
+                    </div>
+                </div>
+                
+                <div id="questionsContainer" style="margin-top: 24px;">
+                    <!-- Questions will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let connection = null;
+        let stats = { events: 0, tools: 0, files: 0, score: '-' };
+
+        // Initialize SignalR connection
+        async function connect() {
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("/hubs/codingagent")
+                .withAutomaticReconnect()
+                .build();
+
+            // ══════════════════════════════════════════════════════════
+            // CONNECTION EVENTS
+            // ══════════════════════════════════════════════════════════
+            connection.on("Connected", (data) => {
+                updateStatus(true, data.connectionId);
+                addEvent('success', 'Connected', `Connection ID: ${data.connectionId}`);
+            });
+
+            // ══════════════════════════════════════════════════════════
+            // JOB EVENTS
+            // ══════════════════════════════════════════════════════════
+            connection.on("JobStarted", (data) => {
+                addEvent('thinking', 'Job Started', `Job ID: ${data.jobId}`);
+            });
+
+            connection.on("ThinkingUpdate", (data) => {
+                addEvent('thinking', 'Thinking', data.message, data.data);
+            });
+
+            connection.on("ToolCallExecuted", (data) => {
+                stats.tools++;
+                updateStats();
+                addEvent('tool', `Tool: ${data.toolName}`, `Arguments: ${JSON.stringify(data.arguments)}`);
+            });
+
+            connection.on("QuestionAsked", (data) => {
+                addEvent('question', 'Question', data.question);
+                showQuestion(data.questionId, data.question, data.options);
+            });
+
+            connection.on("FileGenerated", (data) => {
+                stats.files++;
+                updateStats();
+                addEvent('file', 'File Generated', data.fileName);
+            });
+
+            connection.on("CompilationResult", (data) => {
+                const type = data.success ? 'success' : 'error';
+                const message = data.success ? '✅ Compilation succeeded' : '❌ Compilation failed';
+                addEvent(type, 'Compilation', message, data.errors);
+            });
+
+            connection.on("ValidationResult", (data) => {
+                stats.score = `${data.score}/10`;
+                updateStats();
+                addEvent('validation', 'Validation', `Score: ${data.score}/10`, data.issues);
+            });
+
+            connection.on("ProgressUpdate", (data) => {
+                updateProgress(data.percentage);
+                addEvent('thinking', 'Progress', `${data.currentStep} (${data.percentage}%)`);
+            });
+
+            connection.on("JobCompleted", (data) => {
+                const message = data.success ? `✅ Success! ${data.files.length} files generated, Score: ${data.score}/10` : '❌ Job failed';
+                addEvent(data.success ? 'success' : 'error', 'Job Completed', message);
+                updateProgress(100);
+            });
+
+            connection.on("ErrorOccurred", (data) => {
+                addEvent('error', 'Error', data.error, { suggestion: data.suggestion });
+            });
+
+            // Start connection
+            try {
+                await connection.start();
+                console.log("✅ SignalR connected");
+            } catch (err) {
+                console.error("❌ SignalR connection failed:", err);
+                updateStatus(false);
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════
+        // UI FUNCTIONS
+        // ══════════════════════════════════════════════════════════
+        function updateStatus(connected, connectionId = null) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            const idSpan = document.getElementById('connectionId');
+            
+            if (connected) {
+                dot.classList.add('connected');
+                text.textContent = 'Connected';
+                if (connectionId) idSpan.textContent = connectionId;
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'Disconnected';
+                idSpan.textContent = '';
+            }
+        }
+
+        function addEvent(type, title, message, data = null) {
+            stats.events++;
+            updateStats();
+
+            const panel = document.getElementById('eventsPanel');
+            const event = document.createElement('div');
+            event.className = `event ${type}`;
+            
+            const time = new Date().toLocaleTimeString();
+            event.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type">${title}</span>
+                    <span class="event-time">${time}</span>
+                </div>
+                <div class="event-message">
+                    ${message}
+                    ${data ? `<pre style="margin-top: 8px; font-size: 11px; opacity: 0.8;">${JSON.stringify(data, null, 2)}</pre>` : ''}
+                </div>
+            `;
+            
+            panel.insertBefore(event, panel.firstChild);
+            
+            // Limit to 50 events
+            while (panel.children.length > 50) {
+                panel.removeChild(panel.lastChild);
+            }
+        }
+
+        function showQuestion(questionId, question, options) {
+            const container = document.getElementById('questionsContainer');
+            
+            const card = document.createElement('div');
+            card.className = 'question-card';
+            card.id = `question-${questionId}`;
+            
+            card.innerHTML = `
+                <div class="question-text">${question}</div>
+                <div class="question-options">
+                    ${options.map(opt => `
+                        <button class="option-btn" onclick="answerQuestion('${questionId}', '${opt}')">
+                            ${opt}
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+            
+            container.appendChild(card);
+        }
+
+        async function answerQuestion(questionId, answer) {
+            try {
+                await connection.invoke("AnswerQuestion", questionId, answer);
+                addEvent('success', 'Answer Sent', `Selected: ${answer}`);
+                
+                // Remove question card
+                const card = document.getElementById(`question-${questionId}`);
+                if (card) card.remove();
+            } catch (err) {
+                console.error("❌ Failed to send answer:", err);
+            }
+        }
+
+        function updateProgress(percentage) {
+            document.getElementById('progressFill').style.width = `${percentage}%`;
+        }
+
+        function updateStats() {
+            document.getElementById('statEvents').textContent = stats.events;
+            document.getElementById('statTools').textContent = stats.tools;
+            document.getElementById('statFiles').textContent = stats.files;
+            document.getElementById('statScore').textContent = stats.score;
+        }
+
+        // Auto-connect on page load
+        connect();
+    </script>
+</body>
+</html>
+
+

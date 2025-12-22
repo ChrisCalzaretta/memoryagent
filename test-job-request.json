@@ -1,0 +1,8 @@
+{
+  "task": "Create a simple Calculator class with add, subtract, multiply, divide methods. Include error handling for division by zero.",
+  "context": "memoryagent",
+  "language": "csharp",
+  "minValidationScore": 8,
+  "maxIterations": 10
+}
+

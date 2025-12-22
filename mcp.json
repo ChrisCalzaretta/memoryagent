@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "memory-agent": {
+      "command": "node",
+      "args": ["E:\\GitHub\\MemoryAgent\\memory-router-mcp-wrapper.js", "${workspaceFolder}"],
+      "description": "🧠 MemoryAgent: Search, analyze, validate code via MemoryRouter (port 5010)"
+    },
+    "code-generator": {
+      "command": "node",
+      "args": ["E:\\GitHub\\MemoryAgent\\orchestrator-mcp-wrapper.js", "${workspaceFolder}"],
+      "description": "🤖 CodingAgent: Generate code with multi-model AI (port 5001)"
+    }
+  }
+}
+

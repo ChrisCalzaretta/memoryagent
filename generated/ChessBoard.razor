@@ -1,0 +1,27 @@
+@using ChessGame.Models
+
+<div class="board">
+    @for (int row = 7; row >= 0; row--)
+    {
+        <div class="row">
+            @for (int col = 0; col < 8; col++)
+            {
+                var square = gameState.Board[row, col];
+                <Square Piece="@square" Row="@row" Col="@col" OnMovePiece="HandleMovePiece" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public GameState GameState { get; set; }
+
+    private void HandleMovePiece(Move move)
+    {
+        // Move piece logic
+    }
+}
+
+
+

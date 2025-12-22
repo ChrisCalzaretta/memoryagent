@@ -1,1107 +1,777 @@
-using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
-using AgentContracts.Models;
 
 namespace CodingAgent.Server.Clients;
 
 /// <summary>
-/// HTTP client for MemoryAgent.Server (Lightning)
+/// Implementation of MemoryAgent client
+/// Calls MemoryAgent MCP server to access Qdrant and Neo4j
 /// </summary>
 public class MemoryAgentClient : IMemoryAgentClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<MemoryAgentClient> _logger;
+    private readonly string _memoryAgentUrl;
     
-    // Prompt cache to reduce Lightning calls
-    private readonly Dictionary<string, (PromptInfo Prompt, DateTime FetchedAt)> _promptCache = new();
-    private readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(5);
-    
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
-
-    public MemoryAgentClient(HttpClient httpClient, ILogger<MemoryAgentClient> logger)
+    public MemoryAgentClient(
+        HttpClient httpClient,
+        IConfiguration configuration,
+        ILogger<MemoryAgentClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _memoryAgentUrl = configuration["MemoryAgent:BaseUrl"] ?? configuration["MemoryAgent:Url"] ?? "http://memory-agent-server:5000";
+        
+        _logger.LogInformation("MemoryAgentClient configured with URL: {Url}", _memoryAgentUrl);
     }
-
-    public async Task<PromptInfo?> GetPromptAsync(string promptName, CancellationToken cancellationToken)
+    
+    public async Task<List<SearchResult>> SmartSearchAsync(string query, int limit = 5, CancellationToken cancellationToken = default)
     {
-        // Check cache first
-        if (_promptCache.TryGetValue(promptName, out var cached) &&
-            DateTime.UtcNow - cached.FetchedAt < _cacheDuration)
-        {
-            _logger.LogDebug("Using cached prompt for {PromptName}", promptName);
-            return cached.Prompt;
-        }
-
         try
         {
-            // Use proper JSONRPC format
+            _logger.LogInformation("🔍 Calling MemoryAgent smart search: {Query}", query);
+            
+            var request = new
+            {
+                tool = "smartsearch",
+                query = query,
+                limit = limit
+            };
+            
+            var json = JsonSerializer.Serialize(request);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", content, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var results = JsonSerializer.Deserialize<SmartSearchResponse>(resultJson);
+            
+            return results?.Results?.Select(r => new SearchResult
+            {
+                Path = r.Path ?? "",
+                Snippet = r.Content ?? "",
+                Score = r.Score
+            }).ToList() ?? new List<SearchResult>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Smart search failed for query: {Query}", query);
+            return new List<SearchResult>();
+        }
+    }
+    
+    public async Task<List<RelatedFile>> GetCoEditedFilesAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("🔗 Getting co-edited files for: {Path}", filePath);
+            
+            var request = new
+            {
+                tool = "get_coedited_files",
+                file_path = filePath,
+                limit = 5
+            };
+            
+            var json = JsonSerializer.Serialize(request);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", content, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var results = JsonSerializer.Deserialize<CoEditedFilesResponse>(resultJson);
+            
+            return results?.Files?.Select(f => new RelatedFile
+            {
+                Path = f.Path ?? "",
+                Score = f.Score,
+                Relationship = "co-edited"
+            }).ToList() ?? new List<RelatedFile>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Get co-edited files failed for: {Path}", filePath);
+            return new List<RelatedFile>();
+        }
+    }
+    
+    public async Task<List<string>> GetFileDependenciesAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("📦 Getting dependencies for: {Path}", filePath);
+            
+            var request = new
+            {
+                tool = "dependency_chain",
+                file_path = filePath
+            };
+            
+            var json = JsonSerializer.Serialize(request);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", content, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var results = JsonSerializer.Deserialize<DependencyChainResponse>(resultJson);
+            
+            return results?.Dependencies ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Get dependencies failed for: {Path}", filePath);
+            return new List<string>();
+        }
+    }
+    
+    // Response DTOs for deserialization
+    
+    private class SmartSearchResponse
+    {
+        public List<SmartSearchResult>? Results { get; set; }
+    }
+    
+    private class SmartSearchResult
+    {
+        public string? Path { get; set; }
+        public string? Content { get; set; }
+        public double Score { get; set; }
+    }
+    
+    private class CoEditedFilesResponse
+    {
+        public List<CoEditedFile>? Files { get; set; }
+    }
+    
+    private class CoEditedFile
+    {
+        public string? Path { get; set; }
+        public double Score { get; set; }
+    }
+    
+    private class DependencyChainResponse
+    {
+        public List<string>? Dependencies { get; set; }
+    }
+    
+    public async Task IndexFileAsync(string filePath, string content, string? context = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("📇 Indexing file in MemoryAgent: {Path}", filePath);
+            
+            var request = new
+            {
+                tool = "index",
+                scope = "file",
+                path = filePath,
+                content = content,
+                context = context ?? "codegen"
+            };
+            
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning("⚠️ MemoryAgent indexing failed (HTTP {Status}): {Error}", response.StatusCode, error);
+            }
+            else
+            {
+                _logger.LogDebug("✅ File indexed successfully: {Path}", filePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Index file failed for: {Path}", filePath);
+            // Don't throw - indexing is optional, code generation should continue
+        }
+    }
+    
+    public async Task IndexFilesAsync(List<(string Path, string Content)> files, string? context = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("📇 Bulk indexing {Count} files in MemoryAgent", files.Count);
+            
+            var request = new
+            {
+                tool = "index",
+                scope = "directory",
+                files = files.Select(f => new { path = f.Path, content = f.Content }).ToList(),
+                context = context ?? "codegen"
+            };
+            
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning("⚠️ MemoryAgent bulk indexing failed (HTTP {Status}): {Error}", response.StatusCode, error);
+            }
+            else
+            {
+                _logger.LogDebug("✅ {Count} files indexed successfully", files.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Bulk index failed for {Count} files", files.Count);
+            // Don't throw - indexing is optional
+        }
+    }
+    
+    public async Task StorePromptAsync(Services.PromptMetadata prompt, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("💾 Storing prompt in MemoryAgent: {Id}", prompt.Id);
+            
+            // JSON-RPC 2.0 format for MCP
             var request = new
             {
                 jsonrpc = "2.0",
-                id = Random.Shared.Next(),
                 method = "tools/call",
                 @params = new
                 {
                     name = "manage_prompts",
                     arguments = new
                     {
-                        action = "list",
-                        name = promptName,
-                        activeOnly = true
+                        action = "create",
+                        prompt_id = prompt.Id,
+                        name = prompt.Name,
+                        category = prompt.Category,
+                        content = prompt.Content,
+                        version = prompt.Version,
+                        tags = prompt.Tags,
+                        context = prompt.Context
                     }
-                }
+                },
+                id = 1
             };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
-
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                
-                // Try to parse prompt from Lightning response
-                var extractedPrompt = ExtractPromptFromResponse(content, promptName);
-                
-                if (extractedPrompt != null)
-                {
-                    _logger.LogInformation("✅ Got prompt {PromptName} v{Version} from Lightning", 
-                        promptName, extractedPrompt.Version);
-                    _promptCache[promptName] = (extractedPrompt, DateTime.UtcNow);
-                    return extractedPrompt;
-                }
-            }
-
-            _logger.LogError("❌ CRITICAL: Prompt '{PromptName}' not found in Lightning. Ensure prompts are seeded.", promptName);
-            throw new InvalidOperationException($"Required prompt '{promptName}' not found in Lightning. Run PromptSeedService or check Neo4j connection.");
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "❌ CRITICAL: Cannot connect to Lightning to get prompt '{PromptName}'", promptName);
-            throw new InvalidOperationException($"Cannot connect to Lightning to get required prompt '{promptName}'. Ensure MemoryAgent is running.", ex);
-        }
-        catch (Exception ex) when (ex is not InvalidOperationException)
-        {
-            _logger.LogError(ex, "❌ CRITICAL: Error getting prompt '{PromptName}' from Lightning", promptName);
-            throw new InvalidOperationException($"Failed to get required prompt '{promptName}' from Lightning: {ex.Message}", ex);
-        }
-    }
-    
-    /// <summary>
-    /// Extract prompt content from JSONRPC response
-    /// </summary>
-    private PromptInfo? ExtractPromptFromResponse(string jsonResponse, string promptName)
-    {
-        try
-        {
-            var doc = JsonDocument.Parse(jsonResponse);
             
-            if (doc.RootElement.TryGetProperty("result", out var result) &&
-                result.TryGetProperty("content", out var contentArray))
+            var json = JsonSerializer.Serialize(request);
+            _logger.LogDebug("📤 Storing prompt '{Id}': {Json}", prompt.Id, json.Length > 300 ? json.Substring(0, 300) + "..." : json);
+            
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
             {
-                foreach (var item in contentArray.EnumerateArray())
-                {
-                    if (item.TryGetProperty("text", out var textElement))
-                    {
-                        var text = textElement.GetString();
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            // Try to parse as JSON containing prompts
-                            try
-                            {
-                                var promptDoc = JsonDocument.Parse(text);
-                                
-                                // Look for prompts array or direct prompt object
-                                if (promptDoc.RootElement.TryGetProperty("prompts", out var prompts))
-                                {
-                                    foreach (var p in prompts.EnumerateArray())
-                                    {
-                                        var name = p.TryGetProperty("name", out var n) ? n.GetString() : "";
-                                        if (name == promptName)
-                                        {
-                                            return new PromptInfo
-                                            {
-                                                Name = promptName,
-                                                Content = p.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "",
-                                                Version = p.TryGetProperty("version", out var v) ? v.GetInt32() : 1,
-                                                IsActive = true
-                                            };
-                                        }
-                                    }
-                                }
-                                
-                                // Maybe it's a direct content string
-                                if (promptDoc.RootElement.TryGetProperty("content", out var directContent))
-                                {
-                                    return new PromptInfo
-                                    {
-                                        Name = promptName,
-                                        Content = directContent.GetString() ?? "",
-                                        Version = 1,
-                                        IsActive = true
-                                    };
-                                }
-                            }
-                            catch
-                            {
-                                // Text might not be JSON, could be the prompt itself
-                                if (text.Length > 50 && !text.StartsWith("{"))
-                                {
-                                    return new PromptInfo
-                                    {
-                                        Name = promptName,
-                                        Content = text,
-                                        Version = 1,
-                                        IsActive = true
-                                    };
-                                }
-                            }
-                        }
-                    }
-                }
+                _logger.LogError("❌ Failed to store prompt '{Id}': HTTP {Status}, Body: {Body}", 
+                    prompt.Id, response.StatusCode, responseBody);
+                throw new HttpRequestException($"MemoryAgent returned {response.StatusCode}: {responseBody}");
             }
+            
+            _logger.LogInformation("✅ Prompt stored: {Id}, Response: {Response}", prompt.Id, 
+                responseBody.Length > 200 ? responseBody.Substring(0, 200) + "..." : responseBody);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Could not parse prompt response");
+            _logger.LogError(ex, "Failed to store prompt: {Id}", prompt.Id);
+            throw;
         }
-        
-        return null;
     }
-
-    public async Task<List<SimilarSolution>> FindSimilarSolutionsAsync(
-        string task, string context, CancellationToken cancellationToken)
+    
+    public async Task<Services.PromptMetadata?> GetPromptAsync(string promptId, CancellationToken cancellationToken = default)
     {
-        var solutions = new List<SimilarSolution>();
-        
         try
         {
-            // Use proper JSONRPC format
+            _logger.LogInformation("🔍 Getting prompt from MemoryAgent: {Id}", promptId);
+            
+            // JSON-RPC 2.0 format for MCP
             var request = new
             {
                 jsonrpc = "2.0",
-                id = Random.Shared.Next(),
                 method = "tools/call",
                 @params = new
                 {
-                    name = "find_similar_questions",
+                    name = "manage_prompts",
                     arguments = new
                     {
-                        question = task,
-                        context = context,
-                        limit = 5
+                        action = "get",
+                        prompt_id = promptId
                     }
-                }
+                },
+                id = 1
             };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
-
-            if (response.IsSuccessStatusCode)
+            
+            var json = JsonSerializer.Serialize(request);
+            _logger.LogDebug("📤 Sending to MemoryAgent: {Json}", json);
+            
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogInformation("📥 MemoryAgent response for '{Id}': Status={Status}, Body={Body}", 
+                promptId, response.StatusCode, resultJson.Length > 500 ? resultJson.Substring(0, 500) + "..." : resultJson);
+            
+            if (!response.IsSuccessStatusCode)
             {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                solutions.AddRange(ExtractSolutionsFromResponse(content));
-                
-                if (solutions.Any())
-                {
-                    _logger.LogInformation("🔍 Found {Count} similar solutions from Lightning", solutions.Count);
-                }
+                _logger.LogWarning("⚠️ Failed to get prompt '{Id}': HTTP {Status}", promptId, response.StatusCode);
+                return null;
             }
+            
+            // Parse JSON-RPC response
+            var jsonRpcResponse = JsonSerializer.Deserialize<JsonRpcResponse>(resultJson, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+            
+            if (jsonRpcResponse?.Result == null || !jsonRpcResponse.Result.HasValue)
+            {
+                _logger.LogWarning("⚠️ Prompt '{Id}' returned null result from MemoryAgent", promptId);
+                return null;
+            }
+            
+            // Extract the prompt from the result
+            var resultValue = jsonRpcResponse.Result.Value;
+            if (!resultValue.TryGetProperty("prompt", out var promptData))
+            {
+                _logger.LogWarning("⚠️ Prompt '{Id}' result missing 'prompt' property", promptId);
+                return null;
+            }
+            
+            var result = JsonSerializer.Deserialize<PromptDto>(promptData.GetRawText(), new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+            
+            if (result == null)
+            {
+                _logger.LogWarning("⚠️ Prompt '{Id}' returned null from MemoryAgent (result structure issue?)", promptId);
+                return null;
+            }
+            
+            return new Services.PromptMetadata
+            {
+                Id = result.Id ?? promptId,
+                Name = result.Name ?? "",
+                Category = result.Category ?? "",
+                Content = result.Content ?? "",
+                Version = result.Version,
+                Tags = result.Tags ?? new List<string>(),
+                Context = result.Context ?? "",
+                SuccessRate = result.SuccessRate,
+                UsageCount = result.UsageCount,
+                AvgScore = result.AvgScore,
+                AvgIterations = result.AvgIterations
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error finding similar solutions from Lightning");
+            _logger.LogWarning(ex, "Failed to get prompt: {Id}", promptId);
+            return null;
         }
-
-        return solutions;
     }
     
-    /// <summary>
-    /// Extract solutions from JSONRPC response
-    /// </summary>
-    private List<SimilarSolution> ExtractSolutionsFromResponse(string jsonResponse)
+    public async Task RecordPromptFeedbackAsync(string promptId, Services.PromptUsageResult result, CancellationToken cancellationToken = default)
     {
-        var solutions = new List<SimilarSolution>();
-        
         try
         {
-            var doc = JsonDocument.Parse(jsonResponse);
+            _logger.LogInformation("📊 Recording prompt feedback: {Id}, Score: {Score}", promptId, result.Score);
             
-            if (doc.RootElement.TryGetProperty("result", out var result) &&
-                result.TryGetProperty("content", out var contentArray))
-            {
-                foreach (var item in contentArray.EnumerateArray())
-                {
-                    if (item.TryGetProperty("text", out var textElement))
-                    {
-                        var text = textElement.GetString();
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            try
-                            {
-                                var qaDoc = JsonDocument.Parse(text);
-                                
-                                // Look for matches array
-                                if (qaDoc.RootElement.TryGetProperty("matches", out var matches))
-                                {
-                                    foreach (var match in matches.EnumerateArray())
-                                    {
-                                        var solution = new SimilarSolution
-                                        {
-                                            Question = match.TryGetProperty("question", out var q) ? q.GetString() ?? "" : "",
-                                            Answer = match.TryGetProperty("answer", out var a) ? a.GetString() ?? "" : "",
-                                            Similarity = match.TryGetProperty("similarity", out var s) ? s.GetDouble() : 0.5
-                                        };
-                                        
-                                        if (!string.IsNullOrEmpty(solution.Question))
-                                            solutions.Add(solution);
-                                    }
-                                }
-                            }
-                            catch
-                            {
-                                // Not valid JSON
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Could not parse solutions response");
-        }
-        
-        return solutions;
-    }
-
-    public async Task<List<PatternInfo>> GetPatternsAsync(
-        string task, string context, CancellationToken cancellationToken)
-    {
-        var patterns = new List<PatternInfo>();
-        
-        try
-        {
-            // Use proper JSONRPC format to call get_context
             var request = new
             {
-                jsonrpc = "2.0",
-                id = Random.Shared.Next(),
-                method = "tools/call",
-                @params = new
-                {
-                    name = "get_context",
-                    arguments = new
-                    {
-                        task = task,
-                        context = context,
-                        includePatterns = true,
-                        includeQA = false,
-                        limit = 5
-                    }
-                }
+                tool = "feedback",
+                type = "prompt",
+                prompt_id = promptId,
+                success = result.Success,
+                score = result.Score,
+                iterations = result.Iterations,
+                issues = result.Issues,
+                metadata = result.Metadata
             };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
-
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                
-                // Parse JSONRPC response
-                var jsonDoc = JsonDocument.Parse(content);
-                
-                if (jsonDoc.RootElement.TryGetProperty("result", out var result) &&
-                    result.TryGetProperty("content", out var contentArray))
-                {
-                    foreach (var item in contentArray.EnumerateArray())
-                    {
-                        if (item.TryGetProperty("text", out var textElement))
-                        {
-                            var text = textElement.GetString();
-                            if (!string.IsNullOrEmpty(text))
-                            {
-                                // Try to parse patterns from the response text
-                                patterns.AddRange(ExtractPatternsFromResponse(text));
-                            }
-                        }
-                    }
-                }
-                
-                _logger.LogInformation("🎯 Got {Count} patterns from Lightning for task", patterns.Count);
-            }
             
-            // If no patterns from get_context, try manage_patterns
-            if (!patterns.Any())
-            {
-                patterns.AddRange(await GetManagedPatternsAsync(task, context, cancellationToken));
-            }
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            
+            _logger.LogDebug("✅ Feedback recorded for prompt: {Id}", promptId);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error getting patterns from Lightning");
+            _logger.LogWarning(ex, "Failed to record prompt feedback: {Id}", promptId);
+            // Don't throw - feedback is optional
         }
-
-        return patterns;
     }
     
-    /// <summary>
-    /// Extract patterns from the MCP response text
-    /// </summary>
-    private List<PatternInfo> ExtractPatternsFromResponse(string responseText)
+    public async Task StoreQAAsync(string question, string answer, int score, string language, Dictionary<string, object>? metadata = null, CancellationToken cancellationToken = default)
     {
-        var patterns = new List<PatternInfo>();
-        
         try
         {
-            // Try to parse as JSON
-            var doc = JsonDocument.Parse(responseText);
+            _logger.LogInformation("💾 Storing Q&A in MemoryAgent: {Question}", question.Substring(0, Math.Min(50, question.Length)));
             
-            // Look for patterns array
-            if (doc.RootElement.TryGetProperty("patterns", out var patternsArray))
-            {
-                foreach (var p in patternsArray.EnumerateArray())
-                {
-                    var pattern = new PatternInfo
-                    {
-                        Name = p.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
-                        Description = p.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
-                        BestPractice = p.TryGetProperty("recommendation", out var rec) ? rec.GetString() ?? "" : "",
-                        CodeExample = p.TryGetProperty("codeExample", out var code) ? code.GetString() ?? "" : ""
-                    };
-                    
-                    if (!string.IsNullOrEmpty(pattern.Name))
-                        patterns.Add(pattern);
-                }
-            }
-        }
-        catch
-        {
-            // Not JSON or doesn't have patterns structure
-        }
-        
-        return patterns;
-    }
-    
-    /// <summary>
-    /// Get patterns from manage_patterns tool
-    /// </summary>
-    private async Task<List<PatternInfo>> GetManagedPatternsAsync(string task, string context, CancellationToken cancellationToken)
-    {
-        var patterns = new List<PatternInfo>();
-        
-        try
-        {
             var request = new
             {
-                jsonrpc = "2.0",
-                id = Random.Shared.Next(),
-                method = "tools/call",
-                @params = new
-                {
-                    name = "manage_patterns",
-                    arguments = new
-                    {
-                        action = "get_useful",
-                        context = context,
-                        limit = 5
-                    }
-                }
+                tool = "store_qa",
+                question = question,
+                answer = answer,
+                score = score,
+                language = language,
+                metadata = metadata ?? new Dictionary<string, object>()
             };
             
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
             
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                var jsonDoc = JsonDocument.Parse(content);
-                
-                if (jsonDoc.RootElement.TryGetProperty("result", out var result) &&
-                    result.TryGetProperty("content", out var contentArray))
-                {
-                    foreach (var item in contentArray.EnumerateArray())
-                    {
-                        if (item.TryGetProperty("text", out var textElement))
-                        {
-                            var text = textElement.GetString();
-                            if (!string.IsNullOrEmpty(text))
-                            {
-                                patterns.AddRange(ExtractPatternsFromResponse(text));
-                            }
-                        }
-                    }
-                }
-                
-                if (patterns.Any())
-                {
-                    _logger.LogInformation("🎯 Got {Count} useful patterns from manage_patterns", patterns.Count);
-                }
-            }
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            
+            _logger.LogDebug("✅ Q&A stored");
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Could not get managed patterns");
+            _logger.LogWarning(ex, "Failed to store Q&A");
+            // Don't throw - storage is optional
         }
-        
-        return patterns;
     }
-
-    public async Task RecordPromptFeedbackAsync(
-        string promptName, bool wasSuccessful, int? rating, CancellationToken cancellationToken)
+    
+    public async Task<List<QAPair>> FindSimilarQuestionsAsync(string question, int limit = 5, CancellationToken cancellationToken = default)
     {
         try
         {
+            _logger.LogDebug("🔍 Finding similar questions: {Question}", question.Substring(0, Math.Min(50, question.Length)));
+            
             var request = new
             {
-                name = "feedback",
-                arguments = new
-                {
-                    type = "prompt",
-                    name = promptName,
-                    wasSuccessful = wasSuccessful,
-                    rating = rating
-                }
+                tool = "find_similar_questions",
+                question = question,
+                limit = limit
             };
-
-            await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
-            _logger.LogDebug("Recorded prompt feedback for {PromptName}: success={Success}, rating={Rating}",
-                promptName, wasSuccessful, rating);
+            
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                return new List<QAPair>();
+            }
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize<SimilarQuestionsResponse>(resultJson);
+            
+            return result?.Questions ?? new List<QAPair>();
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error recording prompt feedback for {PromptName}", promptName);
+            _logger.LogWarning(ex, "Failed to find similar questions");
+            return new List<QAPair>();
         }
-    }
-
-    public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var response = await _httpClient.GetAsync("/health", cancellationToken);
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// 🔍 SEARCH BEFORE WRITE: Find existing code that might already solve the task
-    /// </summary>
-    public async Task<ExistingCodeContext> SearchExistingCodeAsync(
-        string task, string context, string? workspacePath, CancellationToken cancellationToken)
-    {
-        var result = new ExistingCodeContext();
-        
-        _logger.LogInformation("🔍 Searching existing code for task: {Task}", task);
-        
-        try
-        {
-            // 1. Use smartsearch to find relevant code
-            var searchResults = await SmartSearchAsync(task, context, cancellationToken);
-            
-            // 2. Extract services/interfaces from search results
-            foreach (var searchResult in searchResults.Where(r => r.Type == "class" || r.Type == "interface"))
-            {
-                var service = new ExistingService
-                {
-                    Name = searchResult.Name,
-                    FilePath = searchResult.FilePath,
-                    Description = searchResult.Description,
-                    IsInterface = searchResult.Type == "interface",
-                    Methods = searchResult.Methods ?? new List<string>()
-                };
-                result.ExistingServices.Add(service);
-            }
-            
-            // 3. Extract relevant methods
-            foreach (var searchResult in searchResults.Where(r => r.Type == "method"))
-            {
-                var method = new ExistingMethod
-                {
-                    Name = searchResult.Name,
-                    ClassName = searchResult.ClassName ?? "Unknown",
-                    FilePath = searchResult.FilePath,
-                    FullSignature = searchResult.Signature ?? searchResult.Name,
-                    Description = searchResult.Description,
-                    Relevance = searchResult.Score
-                };
-                result.ExistingMethods.Add(method);
-            }
-            
-            // 4. Find similar implementations via Q&A
-            var similarSolutions = await FindSimilarSolutionsAsync(task, context, cancellationToken);
-            foreach (var solution in similarSolutions.Take(3))
-            {
-                result.SimilarImplementations.Add(new SimilarImplementation
-                {
-                    FilePath = solution.RelevantFiles.FirstOrDefault() ?? "Unknown",
-                    Description = solution.Question,
-                    Similarity = solution.Similarity,
-                    CodeSnippet = solution.Answer.Length > 500 ? solution.Answer[..500] + "..." : solution.Answer
-                });
-            }
-            
-            // 5. Find implemented patterns
-            var patterns = await GetPatternsAsync(task, context, cancellationToken);
-            result.ImplementedPatterns = patterns
-                .Where(p => !string.IsNullOrEmpty(p.CodeExample))
-                .Select(p => $"{p.Name}: {p.Description}")
-                .ToList();
-            
-            // 6. Identify files that should be modified (not created new)
-            result.FilesToModify = searchResults
-                .Where(r => r.Score > 0.7) // High relevance
-                .Select(r => r.FilePath)
-                .Distinct()
-                .Take(5)
-                .ToList();
-            
-            _logger.LogInformation(
-                "🔍 Search complete: {Services} services, {Methods} methods, {Similar} similar implementations found",
-                result.ExistingServices.Count,
-                result.ExistingMethods.Count,
-                result.SimilarImplementations.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error searching existing code, continuing without context");
-        }
-        
-        return result;
     }
     
-    /// <summary>
-    /// Call Lightning's smartsearch to find relevant code
-    /// </summary>
-    private async Task<List<CodeSearchResult>> SmartSearchAsync(
-        string query, string context, CancellationToken cancellationToken)
+    // Response DTOs
+    
+    private class JsonRpcResponse
     {
-        var results = new List<CodeSearchResult>();
-        
+        public string? Jsonrpc { get; set; }
+        public JsonElement? Result { get; set; }
+        public JsonRpcError? Error { get; set; }
+        public int Id { get; set; }
+    }
+    
+    private class JsonRpcError
+    {
+        public int Code { get; set; }
+        public string? Message { get; set; }
+    }
+    
+    private class PromptDto
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Category { get; set; }
+        public string? Content { get; set; }
+        public int Version { get; set; }
+        public List<string>? Tags { get; set; }
+        public string? Context { get; set; }
+        public double SuccessRate { get; set; }
+        public int UsageCount { get; set; }
+        public double AvgScore { get; set; }
+        public double AvgIterations { get; set; }
+    }
+    
+    private class SimilarQuestionsResponse
+    {
+        public List<QAPair>? Questions { get; set; }
+    }
+    
+    public async Task<LightningContext> GetContextAsync(string workspacePath, CancellationToken cancellationToken = default)
+    {
         try
         {
+            _logger.LogInformation("🧠 Initializing Lightning context for: {Path}", workspacePath);
+            
+            // Extract context name from workspace path (e.g., "/workspace/testagent" → "testagent")
+            var contextName = Path.GetFileName(workspacePath.TrimEnd('/', '\\'));
+            
             var request = new
             {
-                name = "smartsearch",
-                arguments = new
-                {
-                    query = query,
-                    context = context,
-                    includeRelationships = true,
-                    limit = 20,
-                    minimumScore = 0.3
-                }
+                tool = "get_context",
+                context = contextName
             };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
-
-            if (response.IsSuccessStatusCode)
+            
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize<ContextResponse>(resultJson);
+            
+            var context = new LightningContext
             {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogDebug("SmartSearch response: {Content}", content);
-                
-                // Parse the response - it returns markdown formatted results
-                // Extract structured data from the response
-                results = ParseSmartSearchResults(content);
-            }
+                ContextName = contextName,
+                WorkspacePath = workspacePath,
+                SessionStarted = DateTime.UtcNow,
+                DiscussedFiles = result?.DiscussedFiles ?? new List<string>(),
+                Metadata = result?.Metadata ?? new Dictionary<string, object>()
+            };
+            
+            _logger.LogInformation("✅ Lightning context initialized: {Context}, {FileCount} discussed files",
+                contextName, context.DiscussedFiles.Count);
+            
+            return context;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error calling smartsearch");
+            _logger.LogError(ex, "Failed to get Lightning context for: {Path}", workspacePath);
+            
+            // Return empty context as fallback
+            return new LightningContext
+            {
+                ContextName = Path.GetFileName(workspacePath.TrimEnd('/', '\\')),
+                WorkspacePath = workspacePath,
+                SessionStarted = DateTime.UtcNow
+            };
         }
-        
-        return results;
     }
     
-    /// <summary>
-    /// Parse smartsearch results from Lightning's markdown response
-    /// </summary>
-    private List<CodeSearchResult> ParseSmartSearchResults(string content)
-    {
-        var results = new List<CodeSearchResult>();
-        
-        try
-        {
-            // Try to parse as JSON first (if MCP returns structured data)
-            using var doc = JsonDocument.Parse(content);
-            var root = doc.RootElement;
-            
-            // Check if it's a tool result with content
-            if (root.TryGetProperty("content", out var contentArray) && contentArray.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in contentArray.EnumerateArray())
-                {
-                    if (item.TryGetProperty("text", out var textElement))
-                    {
-                        var text = textElement.GetString() ?? "";
-                        // Parse the text content for code references
-                        results.AddRange(ExtractCodeReferencesFromText(text));
-                    }
-                }
-            }
-            // Try direct result parsing
-            else if (root.TryGetProperty("result", out var resultElement))
-            {
-                var text = resultElement.GetString() ?? "";
-                results.AddRange(ExtractCodeReferencesFromText(text));
-            }
-        }
-        catch (JsonException)
-        {
-            // Not JSON, try to parse as plain text/markdown
-            results.AddRange(ExtractCodeReferencesFromText(content));
-        }
-        
-        return results;
-    }
-    
-    /// <summary>
-    /// Extract code references from text (file paths, class names, method names)
-    /// </summary>
-    private static List<CodeSearchResult> ExtractCodeReferencesFromText(string text)
-    {
-        var results = new List<CodeSearchResult>();
-        var lines = text.Split('\n');
-        
-        foreach (var line in lines)
-        {
-            // Look for file paths (e.g., Services/UserService.cs)
-            var filePathMatch = System.Text.RegularExpressions.Regex.Match(
-                line, @"[\w/\\]+\.(?:cs|ts|py|js|java|go)\b");
-            
-            if (filePathMatch.Success)
-            {
-                var filePath = filePathMatch.Value;
-                var name = System.IO.Path.GetFileNameWithoutExtension(filePath);
-                
-                // Determine type from name
-                var type = name.StartsWith("I") && char.IsUpper(name[1]) ? "interface" :
-                           name.EndsWith("Service") || name.EndsWith("Repository") ? "class" :
-                           "file";
-                
-                results.Add(new CodeSearchResult
-                {
-                    Name = name,
-                    FilePath = filePath,
-                    Type = type,
-                    Score = 0.5,
-                    Description = line.Trim()
-                });
-            }
-            
-            // Look for method signatures
-            var methodMatch = System.Text.RegularExpressions.Regex.Match(
-                line, @"(?:public|private|protected|internal)\s+(?:async\s+)?[\w<>]+\s+(\w+)\s*\(");
-            
-            if (methodMatch.Success)
-            {
-                results.Add(new CodeSearchResult
-                {
-                    Name = methodMatch.Groups[1].Value,
-                    FilePath = "Unknown",
-                    Type = "method",
-                    Signature = line.Trim(),
-                    Score = 0.6
-                });
-            }
-        }
-        
-        return results.DistinctBy(r => r.Name + r.FilePath).ToList();
-    }
-
-    /// <summary>
-    /// 🧠 MODEL LEARNING: Record model performance for future selection
-    /// </summary>
-    public async Task RecordModelPerformanceAsync(ModelPerformanceRecord record, CancellationToken cancellationToken)
+    public async Task<WorkspaceStatus> GetWorkspaceStatusAsync(string? context = null, CancellationToken cancellationToken = default)
     {
         try
         {
+            _logger.LogInformation("📊 Getting workspace status from Lightning");
+            
             var request = new
             {
-                name = "store_model_performance",
-                arguments = new
-                {
-                    model = record.Model,
-                    taskType = record.TaskType,
-                    language = record.Language,
-                    complexity = record.Complexity,
-                    outcome = record.Outcome,
-                    score = record.Score,
-                    durationMs = record.DurationMs,
-                    iterations = record.Iterations,
-                    taskKeywords = record.TaskKeywords,
-                    errorType = record.ErrorType,
-                    context = record.Context
-                }
+                tool = "workspace_status",
+                context = context
             };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
             
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                return new WorkspaceStatus();
+            }
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize<WorkspaceStatusResponse>(resultJson);
+            
+            return new WorkspaceStatus
+            {
+                WorkspacePath = result?.WorkspacePath ?? "",
+                RecentFiles = result?.RecentFiles ?? new List<string>(),
+                ImportantFiles = result?.ImportantFiles ?? new List<string>(),
+                Recommendations = result?.Recommendations ?? new List<string>(),
+                TotalFilesIndexed = result?.TotalFilesIndexed ?? 0,
+                LastActivity = result?.LastActivity ?? DateTime.UtcNow,
+                LanguageBreakdown = result?.LanguageBreakdown ?? new Dictionary<string, int>()
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get workspace status");
+            return new WorkspaceStatus();
+        }
+    }
+    
+    public async Task RecordFileEditedAsync(string filePath, string context, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("📝 Recording file edit in Lightning: {Path}", filePath);
+            
+            var request = new
+            {
+                tool = "record_file_edited",
+                file_path = filePath,
+                context = context
+            };
+            
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            
+            // Don't throw - this is optional tracking
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation(
-                    "📊 Recorded model performance: {Model} on {TaskType}/{Language} = {Outcome} ({Score}/10)",
-                    record.Model, record.TaskType, record.Language, record.Outcome, record.Score);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to record model performance: {Status}", response.StatusCode);
+                _logger.LogDebug("✅ File edit recorded: {Path}", filePath);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error recording model performance for {Model}", record.Model);
+            _logger.LogWarning(ex, "Failed to record file edit: {Path}", filePath);
         }
     }
     
-    /// <summary>
-    /// 🧠 MODEL LEARNING: Query the best model for a task based on historical performance
-    /// </summary>
-    public async Task<BestModelResponse> QueryBestModelAsync(BestModelRequest request, CancellationToken cancellationToken)
+    public async Task<List<string>> GetRecommendationsAsync(string? context = null, CancellationToken cancellationToken = default)
     {
         try
         {
+            _logger.LogDebug("💡 Getting recommendations from Lightning");
+            
+            var request = new
+            {
+                tool = "get_recommendations",
+                context = context
+            };
+            
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                return new List<string>();
+            }
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize<RecommendationsResponse>(resultJson);
+            
+            return result?.Recommendations ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get recommendations");
+            return new List<string>();
+        }
+    }
+    
+    public async Task<List<string>> GetImportantFilesAsync(string workspacePath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("📁 Getting important files from Lightning");
+            
+            var request = new
+            {
+                tool = "get_important_files",
+                workspace_path = workspacePath
+            };
+            
+            var json = JsonSerializer.Serialize(request);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", httpContent, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                return new List<string>();
+            }
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize<ImportantFilesResponse>(resultJson);
+            
+            return result?.Files ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get important files");
+            return new List<string>();
+        }
+    }
+    
+    // Additional response DTOs
+    
+    private class ContextResponse
+    {
+        public List<string>? DiscussedFiles { get; set; }
+        public Dictionary<string, object>? Metadata { get; set; }
+    }
+    
+    private class WorkspaceStatusResponse
+    {
+        public string? WorkspacePath { get; set; }
+        public List<string>? RecentFiles { get; set; }
+        public List<string>? ImportantFiles { get; set; }
+        public List<string>? Recommendations { get; set; }
+        public int TotalFilesIndexed { get; set; }
+        public DateTime LastActivity { get; set; }
+        public Dictionary<string, int>? LanguageBreakdown { get; set; }
+    }
+    
+    private class RecommendationsResponse
+    {
+        public List<string>? Recommendations { get; set; }
+    }
+    
+    private class ImportantFilesResponse
+    {
+        public List<string>? Files { get; set; }
+    }
+    
+    public async Task<string?> CallMcpToolAsync(string toolName, Dictionary<string, object> arguments, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("🔧 Calling MCP tool: {Tool}", toolName);
+            
             var mcpRequest = new
             {
-                name = "query_best_model",
-                arguments = new
-                {
-                    taskType = request.TaskType,
-                    language = request.Language,
-                    complexity = request.Complexity,
-                    taskKeywords = request.TaskKeywords,
-                    context = request.Context,
-                    excludeModels = request.ExcludeModels,
-                    maxVramGb = request.MaxVramGb
-                }
-            };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", mcpRequest, JsonOptions, cancellationToken);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogDebug("QueryBestModel response: {Content}", content);
-                
-                // Try to parse the response
-                try
-                {
-                    using var doc = JsonDocument.Parse(content);
-                    var root = doc.RootElement;
-                    
-                    // Check for result in MCP response format
-                    if (root.TryGetProperty("result", out var resultElement))
-                    {
-                        var result = JsonSerializer.Deserialize<BestModelResponse>(resultElement.GetRawText(), JsonOptions);
-                        if (result != null) return result;
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    _logger.LogDebug(ex, "Could not parse QueryBestModel JSON response, using default");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error querying best model from Lightning");
-        }
-        
-        // Return empty response (no historical data)
-        return new BestModelResponse
-        {
-            RecommendedModel = "",
-            Reasoning = "No historical data available",
-            IsHistorical = false
-        };
-    }
-    
-    /// <summary>
-    /// 🧠 MODEL LEARNING: Get aggregated stats for all models
-    /// </summary>
-    public async Task<List<ModelStats>> GetModelStatsAsync(string? language, string? taskType, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var request = new
-            {
-                name = "get_model_stats",
-                arguments = new
-                {
-                    language = language,
-                    taskType = taskType
-                }
-            };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                
-                try
-                {
-                    using var doc = JsonDocument.Parse(content);
-                    var root = doc.RootElement;
-                    
-                    if (root.TryGetProperty("result", out var resultElement))
-                    {
-                        var stats = JsonSerializer.Deserialize<List<ModelStats>>(resultElement.GetRawText(), JsonOptions);
-                        if (stats != null) return stats;
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    _logger.LogDebug(ex, "Could not parse model stats JSON response");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error getting model stats from Lightning");
-        }
-        
-        return new List<ModelStats>();
-    }
-
-    // NO FALLBACK PROMPTS - All prompts MUST come from Lightning
-    // If a prompt is missing, the system will throw an error
-    // Run PromptSeedService to seed required prompts into Neo4j
-    
-    /// <summary>
-    /// 🎨 DESIGN AGENT: Get brand guidelines for UI code generation
-    /// </summary>
-    public async Task<BrandInfo?> GetBrandAsync(string context, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var request = new
-            {
                 jsonrpc = "2.0",
-                id = Random.Shared.Next(),
+                id = 1,
                 method = "tools/call",
                 @params = new
                 {
-                    name = "design_get_brand",
-                    arguments = new { context = context }
+                    name = toolName,
+                    arguments = arguments
                 }
             };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
-
-            if (response.IsSuccessStatusCode)
+            
+            var json = JsonSerializer.Serialize(mcpRequest);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"{_memoryAgentUrl}/mcp", content, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
             {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                
-                try
-                {
-                    using var doc = JsonDocument.Parse(content);
-                    var root = doc.RootElement;
-                    
-                    // Check for result in MCP response format
-                    if (root.TryGetProperty("result", out var result) &&
-                        result.TryGetProperty("content", out var contentArray))
-                    {
-                        foreach (var item in contentArray.EnumerateArray())
-                        {
-                            if (item.TryGetProperty("text", out var textElement))
-                            {
-                                var text = textElement.GetString();
-                                if (!string.IsNullOrEmpty(text))
-                                {
-                                    // Try to parse brand info from text
-                                    return ParseBrandInfo(text, context);
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    _logger.LogDebug(ex, "Could not parse brand info JSON response");
-                }
+                _logger.LogWarning("⚠️ MCP tool call failed: {Tool}, Status: {Status}", toolName, response.StatusCode);
+                return null;
             }
+            
+            var resultJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogDebug("📥 MCP response for '{Tool}': {Response}", toolName, resultJson);
+            
+            return resultJson;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error getting brand info for context {Context}", context);
-        }
-        
-        return null;
-    }
-    
-    /// <summary>
-    /// 🎨 DESIGN AGENT: Validate UI code against brand guidelines
-    /// </summary>
-    public async Task<DesignValidationResult?> ValidateDesignAsync(string context, string code, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var request = new
-            {
-                jsonrpc = "2.0",
-                id = Random.Shared.Next(),
-                method = "tools/call",
-                @params = new
-                {
-                    name = "design_validate",
-                    arguments = new
-                    {
-                        context = context,
-                        code = code
-                    }
-                }
-            };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/mcp/call", request, JsonOptions, cancellationToken);
-
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                
-                try
-                {
-                    using var doc = JsonDocument.Parse(content);
-                    var root = doc.RootElement;
-                    
-                    // Check for result in MCP response format
-                    if (root.TryGetProperty("result", out var result) &&
-                        result.TryGetProperty("content", out var contentArray))
-                    {
-                        foreach (var item in contentArray.EnumerateArray())
-                        {
-                            if (item.TryGetProperty("text", out var textElement))
-                            {
-                                var text = textElement.GetString();
-                                if (!string.IsNullOrEmpty(text))
-                                {
-                                    // Try to parse validation result from text
-                                    return ParseDesignValidation(text);
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    _logger.LogDebug(ex, "Could not parse design validation JSON response");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error validating design for context {Context}", context);
-        }
-        
-        return null;
-    }
-    
-    /// <summary>
-    /// Parse brand info from Design Agent response (JSON or markdown)
-    /// </summary>
-    private BrandInfo? ParseBrandInfo(string content, string context)
-    {
-        try
-        {
-            // Try parsing as JSON first
-            using var doc = JsonDocument.Parse(content);
-            var root = doc.RootElement;
-            
-            var brandInfo = new BrandInfo
-            {
-                BrandName = root.TryGetProperty("brandName", out var bn) ? bn.GetString() ?? context : context,
-                PrimaryColor = root.TryGetProperty("primaryColor", out var pc) ? pc.GetString() : null,
-                SecondaryColor = root.TryGetProperty("secondaryColor", out var sc) ? sc.GetString() : null,
-                FontFamily = root.TryGetProperty("fontFamily", out var ff) ? ff.GetString() : null,
-                ThemePreference = root.TryGetProperty("themePreference", out var tp) ? tp.GetString() : null,
-                VisualStyle = root.TryGetProperty("visualStyle", out var vs) ? vs.GetString() : null,
-                FullBrandJson = content
-            };
-            
-            // Extract component guidelines if present
-            if (root.TryGetProperty("components", out var components))
-            {
-                foreach (var comp in components.EnumerateObject())
-                {
-                    brandInfo.ComponentGuidelines.Add($"{comp.Name}: {comp.Value}");
-                }
-            }
-            
-            _logger.LogInformation("🎨 [DESIGN] Loaded brand '{BrandName}' for context {Context}", brandInfo.BrandName, context);
-            return brandInfo;
-        }
-        catch
-        {
-            _logger.LogDebug("Could not parse brand info as JSON, might be markdown or brand not found");
-            return null;
-        }
-    }
-    
-    /// <summary>
-    /// Parse design validation result from Design Agent response
-    /// </summary>
-    private DesignValidationResult? ParseDesignValidation(string content)
-    {
-        try
-        {
-            // Try parsing as JSON first
-            using var doc = JsonDocument.Parse(content);
-            var root = doc.RootElement;
-            
-            var result = new DesignValidationResult
-            {
-                Score = root.TryGetProperty("score", out var s) ? s.GetInt32() : 0,
-                Grade = root.TryGetProperty("grade", out var g) ? g.GetString() : null,
-                Summary = root.TryGetProperty("summary", out var sum) ? sum.GetString() : null
-            };
-            
-            // Parse issues
-            if (root.TryGetProperty("issues", out var issues) && issues.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var issue in issues.EnumerateArray())
-                {
-                    result.Issues.Add(new DesignIssue
-                    {
-                        Type = issue.TryGetProperty("type", out var t) ? t.GetString() ?? "unknown" : "unknown",
-                        Message = issue.TryGetProperty("message", out var m) ? m.GetString() ?? "" : "",
-                        Suggestion = issue.TryGetProperty("suggestion", out var sug) ? sug.GetString() : null,
-                        Severity = issue.TryGetProperty("severity", out var sev) ? sev.GetString() : "warning"
-                    });
-                }
-            }
-            
-            _logger.LogInformation("🎨 [DESIGN] Validation score: {Score}/10 ({Grade}) with {IssueCount} issues", 
-                result.Score, result.Grade, result.Issues.Count);
-            
-            return result;
-        }
-        catch
-        {
-            _logger.LogDebug("Could not parse design validation as JSON");
+            _logger.LogError(ex, "❌ MCP tool call failed: {Tool}", toolName);
             return null;
         }
     }
 }
-
-/// <summary>
-/// Internal class for parsing smartsearch results
-/// </summary>
-internal class CodeSearchResult
-{
-    public required string Name { get; set; }
-    public required string FilePath { get; set; }
-    public required string Type { get; set; } // class, interface, method, file
-    public string? Description { get; set; }
-    public string? Signature { get; set; }
-    public string? ClassName { get; set; }
-    public List<string>? Methods { get; set; }
-    public double Score { get; set; }
-}
-
-
-

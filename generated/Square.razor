@@ -1,0 +1,30 @@
+@using ChessGame.Models
+
+<div class="square" @onclick="HandleClick">
+    @if (Piece != null)
+    {
+        <PieceSymbol Piece="@Piece" />
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Square Piece { get; set; }
+
+    [Parameter]
+    public int Row { get; set; }
+
+    [Parameter]
+    public int Col { get; set; }
+
+    [Parameter]
+    public EventCallback<Move> OnMovePiece { get; set; }
+
+    private void HandleClick()
+    {
+        // Click logic
+    }
+}
+
+
+

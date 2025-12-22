@@ -195,3 +195,5 @@ Code requests   → CodingOrchestrator directly → No overhead!
 
 - Index the workspace first: `execute_task({ request: "Index this workspace" })`
 - Check Qdrant is healthy: `curl http://localhost:6333/health`
+
+

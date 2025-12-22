@@ -1,0 +1,16 @@
+@using ChessGame.Models
+
+<div class="move-history">
+    @foreach (var move in Moves)
+    {
+        <div>@move</div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public List<string> Moves { get; set; }
+}
+
+
+

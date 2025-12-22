@@ -110,6 +110,24 @@ public class ValidationService : IValidationService
         }
         _logger.LogInformation("✅ Phase 0 complete: Code compiles successfully!");
 
+        // Phase 0.5: 🎯 TASK ALIGNMENT CHECK (CRITICAL - does code match the task?)
+        _logger.LogInformation("🎯 Phase 0.5: Checking task alignment...");
+        var alignmentIssues = await ValidateTaskAlignmentAsync(request, cancellationToken);
+        if (alignmentIssues.Any())
+        {
+            _logger.LogError("❌ Code does not match task requirements! Alignment issues:\n{Issues}", 
+                string.Join("\n", alignmentIssues.Select(i => $"- {i.Message}")));
+            
+            response.Issues.AddRange(alignmentIssues);
+            response.Score = 0; // CRITICAL: Wrong code gets score 0!
+            response.Passed = false;
+            response.Summary = "Generated code does not match task requirements. Critical alignment failure.";
+            
+            _logger.LogWarning("⚠️ Skipping rule-based and LLM validation due to task alignment failure");
+            return response; // Return immediately - no point validating wrong code!
+        }
+        _logger.LogInformation("✅ Phase 0.5 complete: Code aligns with task!");
+
         // Phase 1: Rule-based validation (fast, deterministic)
         // ValidationMode: "standard" (default) = relaxed, "enterprise" = strict
         _logger.LogInformation("Using validation mode: {Mode}", request.ValidationMode);
@@ -187,6 +205,380 @@ public class ValidationService : IValidationService
             // Non-critical - don't fail validation if recording fails
             _logger.LogWarning(ex, "Failed to record validation model performance (non-critical)");
         }
+    }
+    
+    /// <summary>
+    /// 🎯 CRITICAL: Validate that generated code matches the original task requirements
+    /// Prevents model hallucination from producing 10/10 code for the WRONG task
+    /// </summary>
+    private async Task<List<ValidationIssue>> ValidateTaskAlignmentAsync(
+        ValidateCodeRequest request, 
+        CancellationToken cancellationToken)
+    {
+        var issues = new List<ValidationIssue>();
+        
+        // Skip if no task provided
+        if (string.IsNullOrEmpty(request.OriginalTask))
+        {
+            _logger.LogDebug("No OriginalTask provided, skipping task alignment check");
+            return issues;
+        }
+        
+        await Task.CompletedTask; // For async pattern
+        
+        var task = request.OriginalTask.ToLowerInvariant();
+        var detectedLanguage = DetectLanguage(request.Files);
+        var requestedLanguage = request.Language?.ToLowerInvariant() ?? "unknown";
+        
+        _logger.LogInformation("🔍 Checking task alignment: Task mentions '{TaskSnippet}...', detected language: {DetectedLang}, requested: {RequestedLang}",
+            request.OriginalTask.Length > 100 ? request.OriginalTask.Substring(0, 100) : request.OriginalTask,
+            detectedLanguage, requestedLanguage);
+        
+        // ════════════════════════════════════════════════════════════════════
+        // CHECK 1: LANGUAGE MISMATCH (CRITICAL)
+        // If task asks for C# but we got Python, that's a 100% failure
+        // ════════════════════════════════════════════════════════════════════
+        var languageMismatch = false;
+        
+        if ((task.Contains("c#") || task.Contains("csharp") || task.Contains(".net") || task.Contains("blazor")) 
+            && detectedLanguage != "csharp")
+        {
+            languageMismatch = true;
+            issues.Add(new ValidationIssue
+            {
+                Severity = "critical",
+                File = "TASK_ALIGNMENT",
+                Message = $"CRITICAL: Task requested C#/Blazor code, but generated {detectedLanguage} code instead!",
+                Suggestion = "Regenerate code using the correct language (C#)",
+                Rule = "task_alignment"
+            });
+        }
+        else if (task.Contains("python") && detectedLanguage != "python")
+        {
+            languageMismatch = true;
+            issues.Add(new ValidationIssue
+            {
+                Severity = "critical",
+                File = "TASK_ALIGNMENT",
+                Message = $"CRITICAL: Task requested Python code, but generated {detectedLanguage} code instead!",
+                Suggestion = "Regenerate code using the correct language (Python)",
+                Rule = "task_alignment"
+            });
+        }
+        else if (task.Contains("typescript") && detectedLanguage != "typescript")
+        {
+            languageMismatch = true;
+            issues.Add(new ValidationIssue
+            {
+                Severity = "critical",
+                File = "TASK_ALIGNMENT",
+                Message = $"CRITICAL: Task requested TypeScript code, but generated {detectedLanguage} code instead!",
+                Suggestion = "Regenerate code using the correct language (TypeScript)",
+                Rule = "task_alignment"
+            });
+        }
+        else if (task.Contains("java") && !task.Contains("javascript") && detectedLanguage != "java")
+        {
+            languageMismatch = true;
+            issues.Add(new ValidationIssue
+            {
+                Severity = "critical",
+                File = "TASK_ALIGNMENT",
+                Message = $"CRITICAL: Task requested Java code, but generated {detectedLanguage} code instead!",
+                Suggestion = "Regenerate code using the correct language (Java)",
+                Rule = "task_alignment"
+            });
+        }
+        
+        if (languageMismatch)
+        {
+            _logger.LogError("❌ LANGUAGE MISMATCH: Task requested one language but got another!");
+            return issues; // Don't bother with other checks if language is wrong
+        }
+        
+        // ════════════════════════════════════════════════════════════════════
+        // CHECK 2: KEY REQUIREMENTS MISSING (HIGH SEVERITY)
+        // Extract expected types/classes from task and verify they exist
+        // Now checks FILE EXTENSIONS and STRUCTURE, not just keywords!
+        // ════════════════════════════════════════════════════════════════════
+        var allContent = string.Join("\n", request.Files.Select(f => f.Content)).ToLowerInvariant();
+        var allFilePaths = string.Join("\n", request.Files.Select(f => f.Path)).ToLowerInvariant();
+        
+        // Extract key entities that should exist (case-insensitive search)
+        var keyRequirements = new List<(string keyword, string description)>();
+        
+        // Detect project type and expected components
+        if (task.Contains("chess") || task.Contains("game"))
+        {
+            // For chess games, check for domain concepts (less strict)
+            var hasGameLogic = allContent.Contains("board") || allContent.Contains("piece") || 
+                              allContent.Contains("move") || allContent.Contains("square");
+            
+            if (!hasGameLogic)
+            {
+                keyRequirements.Add(("board/piece/move", "chess game logic"));
+            }
+        }
+        
+        // ════════════════════════════════════════════════════════════════════
+        // CHECK 3: COMPLETE PROJECT STRUCTURE (CRITICAL!)
+        // If task asks for "complete", "full", or "project", validate ALL necessary files exist
+        // This applies to ALL technologies: .NET, Flutter, React, Python, Java, etc.
+        // ════════════════════════════════════════════════════════════════════
+        var requiresCompleteProject = task.Contains("complete") || task.Contains("full") || 
+                                     task.Contains("fully functional") || task.Contains("project");
+        
+        if (requiresCompleteProject)
+        {
+            // .NET / C# Projects
+            if (task.Contains("c#") || task.Contains("csharp") || task.Contains(".net") || 
+                task.Contains("blazor") || task.Contains("asp.net"))
+            {
+                var hasCsproj = request.Files.Any(f => f.Path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase));
+                var hasProgramCs = request.Files.Any(f => f.Path.EndsWith("Program.cs", StringComparison.OrdinalIgnoreCase));
+                
+                if (!hasCsproj)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "critical",
+                        File = "TASK_ALIGNMENT",
+                        Message = "Task requires complete .NET project but .csproj file is missing",
+                        Suggestion = "Generate a complete .csproj file with necessary NuGet packages and project configuration",
+                        Rule = "task_alignment"
+                    });
+                }
+                
+                if (!hasProgramCs)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "critical",
+                        File = "TASK_ALIGNMENT",
+                        Message = "Task requires complete .NET project but Program.cs is missing",
+                        Suggestion = "Generate Program.cs with necessary service registration and application startup code",
+                        Rule = "task_alignment"
+                    });
+                }
+                
+                // Blazor-specific checks
+                if (task.Contains("blazor"))
+                {
+                    var hasRazorFiles = request.Files.Any(f => f.Path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase));
+                    var hasAppRazor = request.Files.Any(f => f.Path.EndsWith("App.razor", StringComparison.OrdinalIgnoreCase));
+                    
+                    if (!hasRazorFiles)
+                    {
+                        issues.Add(new ValidationIssue
+                        {
+                            Severity = "critical",
+                            File = "TASK_ALIGNMENT",
+                            Message = "Task requires Blazor project but no .razor files found",
+                            Suggestion = "Create Blazor Razor components (.razor files) for the UI",
+                            Rule = "task_alignment"
+                        });
+                    }
+                    
+                    if (!hasAppRazor)
+                    {
+                        issues.Add(new ValidationIssue
+                        {
+                            Severity = "high",
+                            File = "TASK_ALIGNMENT",
+                            Message = "Task requires complete Blazor project but App.razor is missing",
+                            Suggestion = "Generate App.razor with Router configuration",
+                            Rule = "task_alignment"
+                        });
+                    }
+                }
+            }
+            
+            // Flutter Projects
+            if (task.Contains("flutter") || task.Contains("dart"))
+            {
+                var hasPubspec = request.Files.Any(f => f.Path.EndsWith("pubspec.yaml", StringComparison.OrdinalIgnoreCase));
+                var hasMainDart = request.Files.Any(f => f.Path.EndsWith("main.dart", StringComparison.OrdinalIgnoreCase));
+                
+                if (!hasPubspec)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "critical",
+                        File = "TASK_ALIGNMENT",
+                        Message = "Task requires complete Flutter project but pubspec.yaml is missing",
+                        Suggestion = "Generate pubspec.yaml with dependencies and project metadata",
+                        Rule = "task_alignment"
+                    });
+                }
+                
+                if (!hasMainDart)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "critical",
+                        File = "TASK_ALIGNMENT",
+                        Message = "Task requires complete Flutter project but main.dart is missing",
+                        Suggestion = "Generate main.dart with MaterialApp and runApp() entry point",
+                        Rule = "task_alignment"
+                    });
+                }
+            }
+            
+            // React/Node Projects
+            if (task.Contains("react") || task.Contains("node") || task.Contains("typescript") || task.Contains("javascript"))
+            {
+                var hasPackageJson = request.Files.Any(f => f.Path.EndsWith("package.json", StringComparison.OrdinalIgnoreCase));
+                
+                if (!hasPackageJson)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "critical",
+                        File = "TASK_ALIGNMENT",
+                        Message = "Task requires complete React/Node project but package.json is missing",
+                        Suggestion = "Generate package.json with dependencies, scripts, and project metadata",
+                        Rule = "task_alignment"
+                    });
+                }
+            }
+            
+            // Python Projects
+            if (task.Contains("python"))
+            {
+                var hasRequirements = request.Files.Any(f => 
+                    f.Path.EndsWith("requirements.txt", StringComparison.OrdinalIgnoreCase) ||
+                    f.Path.EndsWith("pyproject.toml", StringComparison.OrdinalIgnoreCase));
+                
+                if (!hasRequirements)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "high",
+                        File = "TASK_ALIGNMENT",
+                        Message = "Task requires complete Python project but requirements.txt/pyproject.toml is missing",
+                        Suggestion = "Generate requirements.txt or pyproject.toml with project dependencies",
+                        Rule = "task_alignment"
+                    });
+                }
+            }
+            
+            // Java Projects
+            if (task.Contains("java") && !task.Contains("javascript"))
+            {
+                var hasBuildFile = request.Files.Any(f => 
+                    f.Path.EndsWith("pom.xml", StringComparison.OrdinalIgnoreCase) ||
+                    f.Path.EndsWith("build.gradle", StringComparison.OrdinalIgnoreCase));
+                
+                if (!hasBuildFile)
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "critical",
+                        File = "TASK_ALIGNMENT",
+                        Message = "Task requires complete Java project but pom.xml/build.gradle is missing",
+                        Suggestion = "Generate pom.xml (Maven) or build.gradle (Gradle) with dependencies",
+                        Rule = "task_alignment"
+                    });
+                }
+            }
+        }
+        
+        // Technology-specific checks (even if not "complete" project)
+        if (task.Contains("blazor"))
+        {
+            var hasRazorFiles = request.Files.Any(f => f.Path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase));
+            
+            if (!hasRazorFiles)
+            {
+                issues.Add(new ValidationIssue
+                {
+                    Severity = "critical",
+                    File = "TASK_ALIGNMENT",
+                    Message = "Task requires Blazor components but no .razor files found",
+                    Suggestion = "Create Blazor Razor components (.razor files) for the UI",
+                    Rule = "task_alignment"
+                });
+            }
+        }
+        
+        if (task.Contains("api") || task.Contains("rest") || task.Contains("endpoint"))
+        {
+            keyRequirements.Add(("controller", "API controllers or endpoints"));
+        }
+        
+        if (task.Contains("database") || task.Contains("crud"))
+        {
+            keyRequirements.Add(("repository", "database repository or data access"));
+        }
+        
+        // Check for missing key requirements (keyword-based, only for non-Blazor)
+        var missingRequirements = keyRequirements
+            .Where(req => !allContent.Contains(req.keyword.Split('/')[0])) // Check first keyword in compound
+            .ToList();
+        
+        if (missingRequirements.Any())
+        {
+            foreach (var (keyword, description) in missingRequirements)
+            {
+                issues.Add(new ValidationIssue
+                {
+                    Severity = "high",
+                    File = "TASK_ALIGNMENT",
+                    Message = $"Missing expected component: {description}",
+                    Suggestion = $"Add {description} to fulfill task requirements",
+                    Rule = "task_alignment"
+                });
+            }
+        }
+        
+        // ════════════════════════════════════════════════════════════════════
+        // CHECK 3: UNRELATED CODE DETECTED (CRITICAL)
+        // If task is about chess but code mentions "image editor", that's wrong!
+        // ════════════════════════════════════════════════════════════════════
+        var unrelatedKeywords = new List<(string keyword, string category)>();
+        
+        // Define unrelated keywords based on task context
+        if (task.Contains("chess") || task.Contains("game"))
+        {
+            // If task is about chess/game, these are suspicious
+            if (allContent.Contains("image") && allContent.Contains("resize"))
+                unrelatedKeywords.Add(("image processing", "image manipulation"));
+            if (allContent.Contains("opencv") || allContent.Contains("cv2"))
+                unrelatedKeywords.Add(("OpenCV/computer vision", "image processing library"));
+        }
+        
+        if (task.Contains("api") || task.Contains("service"))
+        {
+            // If task is about API/service, GUI stuff is suspicious
+            if (allContent.Contains("tkinter") || allContent.Contains("pygame") || allContent.Contains("pygame"))
+                unrelatedKeywords.Add(("GUI framework", "graphical user interface"));
+        }
+        
+        if (unrelatedKeywords.Any())
+        {
+            foreach (var (keyword, category) in unrelatedKeywords)
+            {
+                issues.Add(new ValidationIssue
+                {
+                    Severity = "critical",
+                    File = "TASK_ALIGNMENT",
+                    Message = $"CRITICAL: Code contains unrelated functionality: {category}",
+                    Suggestion = "Regenerate code to match the actual task requirements, not unrelated functionality",
+                    Rule = "task_alignment"
+                });
+            }
+        }
+        
+        if (issues.Any())
+        {
+            _logger.LogWarning("⚠️ Task alignment issues found: {Count} issues", issues.Count);
+        }
+        else
+        {
+            _logger.LogInformation("✅ Task alignment check passed!");
+        }
+        
+        return issues;
     }
     
     /// <summary>

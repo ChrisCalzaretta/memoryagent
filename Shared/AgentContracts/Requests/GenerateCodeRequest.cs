@@ -232,5 +232,16 @@ public class AttemptHistory
     /// Optional: Sample of generated code (for debugging/analysis)
     /// </summary>
     public string? CodeSnippet { get; set; }
+    
+    /// <summary>
+    /// FULL generated files from THIS attempt (for complete history context)
+    /// Allows LLMs to see exactly what was generated before and learn from it
+    /// </summary>
+    public List<CodeFile>? GeneratedFiles { get; set; }
+    
+    /// <summary>
+    /// Full compilation output (errors + warnings)
+    /// </summary>
+    public string? CompilationOutput { get; set; }
 }
 

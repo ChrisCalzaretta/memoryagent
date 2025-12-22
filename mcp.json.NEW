@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "memory-code-agent": {
+      "command": "node",
+      "args": ["E:\\GitHub\\MemoryAgent\\mcp-wrapper-expanded.js"],
+      "env": {
+        "PROJECT_PATH": "E:\\GitHub\\MemoryAgent"
+      },
+      "description": "🚀 Unified: MemoryAgent (search/analysis) + CodingAgent (real-time generation) + AI Lightning (all prompts)"
+    }
+  }
+}
+
+

@@ -173,6 +173,8 @@ services:
       - E:\GitHub:/workspace:rw
       # 💾 Job persistence - survives container restarts
       - Z:\Memory\shared\memory:/data
+      # 🐳 Docker socket - for dynamic code execution in containers
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5001

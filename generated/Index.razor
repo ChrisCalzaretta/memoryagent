@@ -1,0 +1,25 @@
+@page "/"
+@using ChessGame.Models
+@inject ChessGameService GameService
+
+<ChessBoard />
+<MoveHistory Moves="@gameState.MoveHistory" />
+<GameControls OnNewGame="HandleNewGame" DifficultyLevel="2" />
+<CapturedPieces WhiteCaptured="gameState.WhiteCaptured" BlackCaptured="gameState.BlackCaptured" />
+
+@code {
+    private GameState gameState;
+
+    protected override void OnInitialized()
+    {
+        gameState = GameService.InitializeGame();
+    }
+
+    private void HandleNewGame(int difficulty)
+    {
+        gameState = GameService.NewGame(difficulty);
+    }
+}
+
+
+

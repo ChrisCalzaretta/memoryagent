@@ -1,20 +1,31 @@
 {
   "name": "memory-code-agent-mcp-wrapper",
-  "version": "1.0.0",
-  "description": "MCP wrapper for Memory Code Agent that auto-starts Docker containers",
-  "main": "mcp-wrapper.js",
+  "version": "2.0.0",
+  "description": "Expanded MCP wrapper for Memory Code Agent + CodingAgent with AI Lightning integration",
+  "main": "mcp-wrapper-expanded.js",
   "bin": {
-    "memory-code-agent": "./mcp-wrapper.js"
+    "memory-code-agent": "./mcp-wrapper-expanded.js"
   },
   "scripts": {
-    "start": "node mcp-wrapper.js"
+    "start": "node mcp-wrapper-expanded.js",
+    "start:basic": "node mcp-wrapper.js",
+    "test": "node test-mcp-wrapper.js"
   },
   "dependencies": {
-    "eventsource": "^2.0.2"
+    "eventsource": "^2.0.2",
+    "@microsoft/signalr": "^8.0.7"
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "keywords": [
+    "mcp",
+    "cursor",
+    "ai",
+    "code-generation",
+    "lightning",
+    "memory-agent"
+  ]
 }
 
 

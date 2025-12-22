@@ -1,0 +1,56 @@
+@page "/game"
+@inject ChessGame Game
+
+<div class="game-board">
+    @for (int y = 0; y < 8; y++)
+    {
+        <div>
+            @foreach (var x in Enumerable.Range(0, 8))
+            {
+                <div class="square" @onmousedown="(() => OnPieceClick(x, y))">
+                    @if (Game.Board[x, y] != null)
+                    {
+                        <span>@(Game.Board[x, y].Type)</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private int selectedX = -1;
+    private int selectedY = -1;
+
+    private void OnPieceClick(int x, int y)
+    {
+        if (selectedX == -1 && selectedY == -1)
+        {
+            selectedX = x;
+            selectedY = y;
+        }
+        else
+        {
+            Game.Board.MovePiece(selectedX, selectedY, x, y);
+            selectedX = -1;
+            selectedY = -1;
+        }
+
+        StateHasChanged();
+    }
+}
+
+<style>
+.game-board {
+    display: grid;
+    grid-template-columns: repeat(8, 50px);
+}
+
+.square {
+    width: 50px;
+    height: 50px;
+    border: 1px solid #000;
+    text-align: center;
+    vertical-align: middle;
+}
+</style>

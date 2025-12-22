@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Monitor - Real-Time Status</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);
+            color: #e0e0e0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            text-align: center;
+            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #fff, #e0e0e0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .job-id {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin: 10px 0;
+            text-transform: uppercase;
+            animation: pulse 2s infinite;
+        }
+
+        .status-running {
+            background: linear-gradient(135deg, #ffa500, #ff6b00);
+        }
+
+        .status-completed {
+            background: linear-gradient(135deg, #00c853, #00e676);
+            animation: none;
+        }
+
+        .status-failed {
+            background: linear-gradient(135deg, #d32f2f, #f44336);
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .progress-container {
+            margin: 20px 0;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            height: 40px;
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #0066cc, #0099ff);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.3),
+                transparent
+            );
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 40px;
+            font-weight: bold;
+            z-index: 1;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 12px 20px;
+            margin: 20px 0;
+        }
+
+        .info-label {
+            font-weight: bold;
+            color: #0099ff;
+        }
+
+        .info-value {
+            color: #fff;
+            font-family: 'Courier New', monospace;
+        }
+
+        .events-container {
+            max-height: 500px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .event {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px 16px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border-left: 4px solid;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .event-progress { border-color: #0099ff; }
+        .event-thinking { border-color: #9c27b0; }
+        .event-coding { border-color: #00c853; }
+        .event-validation { border-color: #ffa500; }
+        .event-error { border-color: #f44336; }
+        .event-completed { border-color: #00e676; }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .event-icon {
+            font-size: 1.5em;
+            margin-right: 8px;
+        }
+
+        .event-time {
+            color: #888;
+            font-size: 0.85em;
+        }
+
+        .event-message {
+            color: #e0e0e0;
+            line-height: 1.5;
+        }
+
+        .connection-status {
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        .connected {
+            background: rgba(0, 200, 83, 0.2);
+            color: #00e676;
+        }
+
+        .disconnected {
+            background: rgba(211, 47, 47, 0.2);
+            color: #f44336;
+        }
+
+        .connecting {
+            background: rgba(255, 165, 0, 0.2);
+            color: #ffa500;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #0099ff;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 153, 255, 0.5);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 153, 255, 0.7);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Job Monitor</h1>
+            <div class="job-id" id="jobIdDisplay">Loading...</div>
+            <div class="status-badge status-running" id="statusBadge">INITIALIZING</div>
+        </div>
+
+        <div class="panel">
+            <h2>📊 Job Information</h2>
+            <div class="connection-status connecting" id="connectionStatus">
+                🔄 Connecting to WebSocket...
+            </div>
+            
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar" style="width: 0%">
+                    <div class="progress-text" id="progressText">0%</div>
+                </div>
+            </div>
+
+            <div class="info-grid">
+                <div class="info-label">Status:</div>
+                <div class="info-value" id="status">Initializing...</div>
+
+                <div class="info-label">Current Phase:</div>
+                <div class="info-value" id="phase">-</div>
+
+                <div class="info-label">Duration:</div>
+                <div class="info-value" id="duration">-</div>
+
+                <div class="info-label">Started:</div>
+                <div class="info-value" id="startTime">-</div>
+
+                <div class="info-label">Task:</div>
+                <div class="info-value" id="task" style="grid-column: 2; word-break: break-word;">-</div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <span class="stat-value" id="eventsCount">0</span>
+                    <span class="stat-label">Events</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value" id="currentAttempt">-</span>
+                    <span class="stat-label">Attempt</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value" id="validationScore">-</span>
+                    <span class="stat-label">Score</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>📡 Live Events</h2>
+            <div class="events-container" id="eventsContainer">
+                <div class="event event-progress">
+                    <div class="event-header">
+                        <span><span class="event-icon">🔄</span><strong>System</strong></span>
+                        <span class="event-time" id="currentTime">--:--:--</span>
+                    </div>
+                    <div class="event-message">Connecting to job monitoring system...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get job ID from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const jobId = urlParams.get('jobId');
+
+        if (!jobId) {
+            document.getElementById('jobIdDisplay').textContent = 'Error: No job ID provided';
+            document.getElementById('connectionStatus').className = 'connection-status disconnected';
+            document.getElementById('connectionStatus').textContent = '❌ No job ID in URL';
+        } else {
+            document.getElementById('jobIdDisplay').textContent = jobId;
+            initializeMonitoring();
+        }
+
+        let connection = null;
+        let eventsCount = 0;
+        let startTime = null;
+
+        function initializeMonitoring() {
+            // Connect to SignalR hub
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("http://localhost:5001/conversationHub")
+                .withAutomaticReconnect()
+                .configureLogging(signalR.LogLevel.Information)
+                .build();
+
+            // Connection events
+            connection.onreconnecting(() => {
+                updateConnectionStatus('connecting', '🔄 Reconnecting...');
+            });
+
+            connection.onreconnected(() => {
+                updateConnectionStatus('connected', '✅ Reconnected to WebSocket');
+                addEvent('progress', 'Reconnected to server', null);
+            });
+
+            connection.onclose(() => {
+                updateConnectionStatus('disconnected', '❌ Disconnected from WebSocket');
+            });
+
+            // Listen for job progress events
+            connection.on('JobProgress', (receivedJobId, message, progress) => {
+                if (receivedJobId === jobId) {
+                    addEvent('progress', message, { progress });
+                    updateProgress(progress);
+                }
+            });
+
+            // Listen for thinking events
+            connection.on('ThinkingUpdate', (receivedJobId, message) => {
+                if (receivedJobId === jobId) {
+                    addEvent('thinking', message, null);
+                    document.getElementById('phase').textContent = 'Multi-model thinking';
+                }
+            });
+
+            // Listen for code generation events
+            connection.on('CodeGeneration', (receivedJobId, message) => {
+                if (receivedJobId === jobId) {
+                    addEvent('coding', message, null);
+                    document.getElementById('phase').textContent = 'Code generation';
+                }
+            });
+
+            // Listen for validation events
+            connection.on('ValidationUpdate', (receivedJobId, message, score) => {
+                if (receivedJobId === jobId) {
+                    addEvent('validation', message, { score });
+                    document.getElementById('validationScore').textContent = score ? `${score}/10` : '-';
+                }
+            });
+
+            // Listen for error events
+            connection.on('ErrorOccurred', (receivedJobId, message) => {
+                if (receivedJobId === jobId) {
+                    addEvent('error', message, null);
+                }
+            });
+
+            // Listen for completion events
+            connection.on('JobCompleted', (receivedJobId, message) => {
+                if (receivedJobId === jobId) {
+                    addEvent('completed', message, null);
+                    updateStatus('completed');
+                }
+            });
+
+            // Start connection
+            connection.start()
+                .then(() => {
+                    updateConnectionStatus('connected', '✅ Connected to WebSocket');
+                    addEvent('progress', 'Connected to job monitoring system', null);
+                    startPolling();
+                })
+                .catch(err => {
+                    console.error('SignalR connection error:', err);
+                    updateConnectionStatus('disconnected', '❌ Failed to connect to WebSocket');
+                    addEvent('error', `Connection failed: ${err.message}`, null);
+                    // Still start polling for basic status updates
+                    startPolling();
+                });
+        }
+
+        function updateConnectionStatus(type, message) {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.className = `connection-status ${type}`;
+            statusEl.textContent = message;
+        }
+
+        function updateProgress(progress) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${progress}%`;
+        }
+
+        function updateStatus(status) {
+            const statusBadge = document.getElementById('statusBadge');
+            const statusEl = document.getElementById('status');
+            
+            statusEl.textContent = status;
+            statusBadge.textContent = status.toUpperCase();
+            
+            statusBadge.className = 'status-badge';
+            if (status.includes('running')) {
+                statusBadge.classList.add('status-running');
+            } else if (status === 'completed') {
+                statusBadge.classList.add('status-completed');
+            } else if (status === 'failed') {
+                statusBadge.classList.add('status-failed');
+            }
+        }
+
+        function addEvent(type, message, data) {
+            eventsCount++;
+            document.getElementById('eventsCount').textContent = eventsCount;
+
+            const container = document.getElementById('eventsContainer');
+            const event = document.createElement('div');
+            event.className = `event event-${type}`;
+
+            const icons = {
+                progress: '📊',
+                thinking: '🧠',
+                coding: '💻',
+                validation: '✅',
+                error: '❌',
+                completed: '🎉'
+            };
+
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString();
+
+            let extraInfo = '';
+            if (data?.progress !== undefined) {
+                extraInfo = ` <span style="color: #0099ff;">(${data.progress}%)</span>`;
+            }
+            if (data?.score !== undefined) {
+                extraInfo = ` <span style="color: #ffa500;">(score: ${data.score}/10)</span>`;
+            }
+
+            event.innerHTML = `
+                <div class="event-header">
+                    <span><span class="event-icon">${icons[type] || '📝'}</span><strong>${type.charAt(0).toUpperCase() + type.slice(1)}</strong></span>
+                    <span class="event-time">${timeStr}</span>
+                </div>
+                <div class="event-message">${message}${extraInfo}</div>
+            `;
+
+            container.insertBefore(event, container.firstChild);
+
+            // Keep only last 50 events
+            while (container.children.length > 50) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function startPolling() {
+            // Poll the API for status updates
+            function pollStatus() {
+                fetch(`http://localhost:5001/api/orchestrator/status/${jobId}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        updateStatus(data.status);
+                        updateProgress(data.progress || 0);
+                        document.getElementById('task').textContent = data.task || '-';
+                        document.getElementById('phase').textContent = data.status || '-';
+                        
+                        if (data.startedAt) {
+                            const started = new Date(data.startedAt);
+                            document.getElementById('startTime').textContent = started.toLocaleString();
+                            
+                            if (!startTime) {
+                                startTime = started;
+                            }
+                        }
+
+                        // Extract attempt number from status
+                        const attemptMatch = data.status.match(/attempt (\d+)/i);
+                        if (attemptMatch) {
+                            document.getElementById('currentAttempt').textContent = attemptMatch[1];
+                        }
+
+                        // Continue polling if not complete
+                        if (data.status !== 'completed' && data.status !== 'failed') {
+                            setTimeout(pollStatus, 3000);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Polling error:', err);
+                        setTimeout(pollStatus, 5000);
+                    });
+            }
+
+            pollStatus();
+        }
+
+        // Update duration every second
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString();
+            
+            if (startTime) {
+                const diff = Math.floor((now - startTime) / 1000);
+                const minutes = Math.floor(diff / 60);
+                const seconds = diff % 60;
+                document.getElementById('duration').textContent = `${minutes}m ${seconds}s`;
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
+
+

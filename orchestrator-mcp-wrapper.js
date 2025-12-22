@@ -31,6 +31,7 @@
  */
 
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,6 +39,19 @@ const path = require('path');
 const ORCHESTRATOR_HOST = process.env.ORCHESTRATOR_HOST || 'localhost';
 const ORCHESTRATOR_PORT = process.env.ORCHESTRATOR_PORT || 5001; // NEW CodingAgent.Server!
 const LOG_FILE = process.env.LOG_FILE || path.join(__dirname, 'orchestrator-wrapper.log');
+
+// WebSocket status cache (stores recent events per job)
+const jobEvents = new Map(); // jobId -> array of events
+const MAX_EVENTS_PER_JOB = 50;
+
+// Try to use @microsoft/signalr if available, otherwise track via polling
+let signalR = null;
+try {
+  signalR = require('@microsoft/signalr');
+  log('✅ SignalR available for real-time updates');
+} catch (err) {
+  log('⚠️ SignalR not available, will use polling for updates');
+}
 
 // Detect workspace path from multiple sources
 let WORKSPACE_PATH = null;
@@ -76,6 +90,133 @@ log('🚀 Code Generator MCP Server started');
 log(`   Workspace: ${WORKSPACE_PATH}`);
 log(`   Context: ${CONTEXT_NAME}`);
 log(`   Orchestrator: http://${ORCHESTRATOR_HOST}:${ORCHESTRATOR_PORT}`);
+
+// ═══════════════════════════════════════════════════════════
+// WebSocket/SignalR Connection for Real-Time Updates
+// ═══════════════════════════════════════════════════════════
+
+let hubConnection = null;
+
+function addJobEvent(jobId, event) {
+  if (!jobEvents.has(jobId)) {
+    jobEvents.set(jobId, []);
+  }
+  const events = jobEvents.get(jobId);
+  events.push({
+    timestamp: new Date().toISOString(),
+    ...event
+  });
+  // Keep only last N events
+  if (events.length > MAX_EVENTS_PER_JOB) {
+    events.shift();
+  }
+}
+
+function connectToSignalR() {
+  if (!signalR) {
+    log('⚠️ SignalR not available, skipping WebSocket connection');
+    return;
+  }
+  
+  try {
+    const hubUrl = `http://${ORCHESTRATOR_HOST}:${ORCHESTRATOR_PORT}/conversationHub`;
+    log(`🔌 Connecting to SignalR hub: ${hubUrl}`);
+    
+    hubConnection = new signalR.HubConnectionBuilder()
+      .withUrl(hubUrl)
+      .withAutomaticReconnect()
+      .configureLogging(signalR.LogLevel.Warning)
+      .build();
+    
+    // Listen for job progress events
+    hubConnection.on('JobProgress', (jobId, message, progress) => {
+      log(`📊 Job ${jobId}: ${message} (${progress}%)`);
+      addJobEvent(jobId, {
+        type: 'progress',
+        message,
+        progress
+      });
+    });
+    
+    // Listen for thinking events
+    hubConnection.on('ThinkingUpdate', (jobId, message) => {
+      log(`🧠 Job ${jobId}: ${message}`);
+      addJobEvent(jobId, {
+        type: 'thinking',
+        message
+      });
+    });
+    
+    // Listen for code generation events
+    hubConnection.on('CodeGeneration', (jobId, message) => {
+      log(`💻 Job ${jobId}: ${message}`);
+      addJobEvent(jobId, {
+        type: 'coding',
+        message
+      });
+    });
+    
+    // Listen for validation events
+    hubConnection.on('ValidationUpdate', (jobId, message, score) => {
+      log(`✅ Job ${jobId}: ${message} (score: ${score})`);
+      addJobEvent(jobId, {
+        type: 'validation',
+        message,
+        score
+      });
+    });
+    
+    // Listen for error events
+    hubConnection.on('ErrorOccurred', (jobId, message) => {
+      log(`❌ Job ${jobId}: ${message}`);
+      addJobEvent(jobId, {
+        type: 'error',
+        message
+      });
+    });
+    
+    // Listen for completion events
+    hubConnection.on('JobCompleted', (jobId, message) => {
+      log(`🎉 Job ${jobId}: ${message}`);
+      addJobEvent(jobId, {
+        type: 'completed',
+        message
+      });
+    });
+    
+    // Start connection
+    hubConnection.start()
+      .then(() => {
+        log('✅ SignalR connected successfully');
+      })
+      .catch((err) => {
+        log(`⚠️ SignalR connection failed: ${err.message}`);
+        hubConnection = null;
+      });
+      
+    // Handle disconnection
+    hubConnection.onclose(() => {
+      log('⚠️ SignalR disconnected');
+    });
+    
+    hubConnection.onreconnecting(() => {
+      log('🔄 SignalR reconnecting...');
+    });
+    
+    hubConnection.onreconnected(() => {
+      log('✅ SignalR reconnected');
+    });
+    
+  } catch (err) {
+    log(`❌ Failed to set up SignalR: ${err.message}`);
+    hubConnection = null;
+  }
+}
+
+// Connect to SignalR on startup
+setTimeout(() => {
+  connectToSignalR();
+}, 2000); // Give the server time to start
 
 // Tool definitions
 const TOOLS = [
@@ -204,15 +345,26 @@ function sendToOrchestrator(endpoint, method = 'GET', body = null) {
       });
       
       res.on('end', () => {
+        log(`HTTP ${method} ${endpoint} -> ${res.statusCode} (${data.length} bytes)`);
+        
+        if (res.statusCode >= 400) {
+          log(`ERROR: HTTP ${res.statusCode}: ${data}`);
+          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+          return;
+        }
+        
         if (res.statusCode === 204 || data.trim() === '') {
+          log(`WARN: Empty response from ${endpoint}`);
           resolve(null);
           return;
         }
         
         try {
           const response = JSON.parse(data);
+          log(`Response parsed successfully: ${JSON.stringify(response).substring(0, 200)}...`);
           resolve(response);
         } catch (err) {
+          log(`WARN: Could not parse JSON: ${err.message}`);
           resolve({ raw: data });
         }
       });
@@ -246,22 +398,36 @@ async function handleToolCall(toolName, args) {
       const body = {
         task: args.task,
         language: args.language || 'auto',
-        maxIterations: Math.max(args.maxIterations || 50, 50) // Minimum 50 iterations
+        maxIterations: Math.max(args.maxIterations || 50, 50), // Minimum 50 iterations
+        workspacePath: args.workspacePath // Pass workspace path to CodingAgent
       };
       
+      log(`Sending to /api/orchestrator/orchestrate: ${JSON.stringify(body)}`);
       const result = await sendToOrchestrator('/api/orchestrator/orchestrate', 'POST', body);
+      
+      if (!result || !result.jobId) {
+        log(`ERROR: Orchestrator returned null or missing jobId. Result: ${JSON.stringify(result)}`);
+        throw new Error(`CodingAgent did not return a valid jobId. Check if the service is running on port ${ORCHESTRATOR_PORT}. Response: ${JSON.stringify(result)}`);
+      }
+      
+      log(`✅ Got jobId: ${result.jobId}`);
+      
+      const monitorUrl = `http://localhost:5001/job-status.html?jobId=${result.jobId}`;
       
       return `🚀 **Multi-Agent Coding Task Started**
 
 **Job ID:** \`${result.jobId}\`
 **Task:** ${args.task}
 **Language:** ${body.language}
-**Message:** ${result.message}
+**Message:** ${result.message || 'Job started successfully'}
 
 The CodingAgent is now working on your task.
 
 **Progress:**
 - Max iterations: ${body.maxIterations}
+
+**📊 Live Monitor:** Open this URL in your browser for real-time WebSocket updates:
+${monitorUrl}
 
 **To check status:** Call \`get_task_status\` with jobId: \`${result.jobId}\``;
     }
@@ -282,16 +448,55 @@ The CodingAgent is now working on your task.
         'cancelled': '🚫'
       }[statusName.toLowerCase()] || '❓';
       
+      const monitorUrl = `http://localhost:5001/job-status.html?jobId=${args.jobId}`;
+      
       let output = `📊 **Task Status: ${statusIcon} ${statusName.toUpperCase()}**
 
 **Job ID:** \`${result.jobId}\`
 **Task:** ${result.task}
 **Progress:** ${result.progress}%
 **Started:** ${result.startedAt}
+
+**📊 Live Monitor:** ${monitorUrl}
 `;
 
       if (result.completedAt) {
         output += `**Completed:** ${result.completedAt}\n`;
+      }
+      
+      // Add real-time events from WebSocket
+      const events = jobEvents.get(args.jobId);
+      if (events && events.length > 0) {
+        output += `\n## 📡 **Real-Time Updates** (Last ${events.length} events)\n\n`;
+        
+        // Show last 10 events
+        const recentEvents = events.slice(-10);
+        for (const event of recentEvents) {
+          const eventIcon = {
+            'progress': '📊',
+            'thinking': '🧠',
+            'coding': '💻',
+            'validation': '✅',
+            'error': '❌',
+            'completed': '🎉'
+          }[event.type] || '📝';
+          
+          const time = new Date(event.timestamp).toLocaleTimeString();
+          output += `${eventIcon} **[${time}]** ${event.message}`;
+          
+          if (event.progress !== undefined) {
+            output += ` (${event.progress}%)`;
+          }
+          if (event.score !== undefined) {
+            output += ` (score: ${event.score}/10)`;
+          }
+          output += '\n';
+        }
+        output += '\n';
+      } else if (signalR && !hubConnection) {
+        output += `\n⚠️ **WebSocket disconnected** - Real-time updates unavailable\n\n`;
+      } else if (!signalR) {
+        output += `\n💡 **Tip:** Install @microsoft/signalr for real-time updates: \`npm install @microsoft/signalr\`\n\n`;
       }
       
       const isComplete = result.status === 'completed';

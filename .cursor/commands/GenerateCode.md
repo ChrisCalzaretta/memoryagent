@@ -1,67 +1,94 @@
-# Generate Code - Code Generator
+# Generate Code - Code Agent
 
-**Server:** `code-generator` (direct to CodingOrchestrator)
+**Server:** `@code-agent` (via orchestrator-mcp-wrapper.js)
 
-Use this for **creating new code** with multi-agent validation.
+Use this for **creating new code** with multi-agent AI.
 
 ## Main Tool: orchestrate_task
 
 ```javascript
 orchestrate_task({
-  task: "Create a user authentication service with JWT",
-  language: "typescript",  // auto, python, csharp, typescript, etc.
-  maxIterations: 50,       // default: 50
-  minValidationScore: 8    // default: 8 (must score >= 8/10)
+  task: "Create a Calculator class with Add, Subtract, Multiply, Divide methods",
+  language: "csharp",      // csharp, python, typescript, javascript, flutter, go, rust, etc.
+  maxIterations: 20,       // default: 50, minimum: 50
+  workspacePath: "E:\\GitHub\\MyProject"  // optional, auto-detected
 })
 ```
 
 ## Examples
 
+### Simple Class
+```javascript
+orchestrate_task({
+  task: "Create a Calculator class with Add and Subtract methods",
+  language: "csharp",
+  maxIterations: 10
+})
+```
+
 ### REST API
 ```javascript
 orchestrate_task({
   task: "Create a REST API for user management with CRUD operations",
-  language: "python"
-})
-```
-
-### Full Application
-```javascript
-orchestrate_task({
-  task: "Create a Blazor chess game with standard rules, piece movement, check/checkmate detection",
-  language: "csharp",
-  maxIterations: 100
+  language: "python",
+  maxIterations: 20
 })
 ```
 
 ### React Component
 ```javascript
 orchestrate_task({
-  task: "Create a data table component with sorting, filtering, and pagination",
-  language: "typescript"
+  task: "Create a data table component with sorting and filtering",
+  language: "typescript",
+  maxIterations: 15
 })
 ```
 
-### Backend Service
+### Full Application
 ```javascript
 orchestrate_task({
-  task: "Create a payment processing service with Stripe integration",
-  language: "typescript"
+  task: "Create a Blazor chess game with standard rules, drag-and-drop, move validation, and AI opponent",
+  language: "csharp",
+  maxIterations: 30
 })
 ```
 
-## Job Management
+## How It Works
 
-### Check Status
+1. **`orchestrate_task`** starts a background job
+   - Returns jobId immediately
+   - Multi-model thinking (Phi4, Gemma3, Qwen debate strategy)
+   - Adaptive code generation (Solo → Duo → Trio → Collaborative)
+   - Ensemble validation (5 models score quality)
+
+2. **`get_task_status`** checks progress
+   ```javascript
+   get_task_status({ jobId: "job_20251222_abc123" })
+   ```
+
+3. **`apply_task_files`** writes generated files to workspace
+   ```javascript
+   apply_task_files({
+     jobId: "job_20251222_abc123",
+     basePath: "E:\\GitHub\\MyProject"
+   })
+   ```
+
+4. **Auto-write** - Files automatically saved to workspace/Generated/
+
+## Other Tools Available
+
+### Check Job Status
 ```javascript
-get_task_status({ jobId: "job_20241219_abc123" })
+get_task_status({
+  jobId: "job_20251222_abc123"
+})
 ```
 
-### Get Generated Files
+### Cancel Job
 ```javascript
-apply_task_files({
-  jobId: "job_20241219_abc123",
-  basePath: "E:\\MyProject"
+cancel_task({
+  jobId: "job_20251222_abc123"
 })
 ```
 
@@ -70,61 +97,153 @@ apply_task_files({
 list_tasks()
 ```
 
-### Cancel a Job
+### Apply Generated Files
 ```javascript
-cancel_task({ jobId: "job_20241219_abc123" })
-```
-
-## Design Tools
-
-### Create Brand System
-```javascript
-design_create_brand({
-  brand_name: "CloudSync",
-  industry: "SaaS",
-  personality_traits: ["Professional", "Trustworthy", "Modern"],
-  visual_style: "Minimal",
-  theme_preference: "Both",
-  platforms: ["Web"],
-  frameworks: ["React"]
+apply_task_files({
+  jobId: "job_20251222_abc123",
+  basePath: "E:\\GitHub\\MyProject"
 })
 ```
-
-### Validate Against Brand
-```javascript
-design_validate({
-  context: "cloudsync",
-  code: "<your HTML/CSS code>"
-})
-```
-
-### Get Existing Brand
-```javascript
-design_get_brand({ context: "cloudsync" })
-```
-
-## How It Works
-
-1. Your task goes **directly** to CodingOrchestrator (port 5003)
-2. CodingAgent generates code using LLM
-3. ValidationAgent reviews and scores (must be >= 8/10)
-4. If score < 8, iterate with feedback
-5. Return validated, quality-checked code
-
-## Why Direct?
-
-- **No routing overhead** - saves 3-5 seconds
-- **Faster response** - code generation already takes 60+ seconds
-- **Clearer flow** - you know exactly which service handles it
 
 ## When to Use
 
-✅ **Use code-generator for:**
+✅ **Use @code-agent for:**
 - Creating new code from scratch
 - Generating complete features
 - Building applications
-- Creating/validating design systems
-- Getting validated, quality-checked code
+- Multi-file projects
+- Complex implementations
 
-❌ **For searching/understanding code, use `memory-agent` instead**
-- See `ExecuteTask.md` for search and analysis
+❌ **For search/analysis, use @memory-agent:**
+- Finding existing code
+- Understanding patterns
+- Analyzing architecture
+- See `ExecuteTask.md`
+
+---
+
+## Response Format
+
+When you call `orchestrate_task`, you'll get:
+
+```
+🚀 Multi-Agent Coding Task Started
+
+Job ID: job_20251222_abc123
+Task: Create a Calculator class with Add, Subtract, Multiply, Divide methods
+Language: csharp
+Message: Job started successfully
+
+The CodingAgent is now working on your task.
+
+Progress:
+- Max iterations: 20
+
+To check status: Call get_task_status with jobId: job_20251222_abc123
+```
+
+Then use `get_task_status` to see progress and results:
+
+```
+📊 Task Status: ✅ COMPLETED
+
+Job ID: job_20251222_abc123
+Task: Create a Calculator class...
+Progress: 100%
+Started: 2025-12-22T00:00:00Z
+Completed: 2025-12-22T00:05:00Z
+
+✅ COMPLETED
+- Success: true
+- Model Used: gemma3-12b-it
+- Tokens Used: 2500
+- Files Generated: 3
+- Explanation: Created a Calculator class with full unit tests
+
+---
+### 📄 Calculator.cs
+**Type:** create
+**Reason:** Main calculator implementation
+
+​```csharp
+public class Calculator {
+    public double Add(double a, double b) => a + b;
+    public double Subtract(double a, double b) => a - b;
+    public double Multiply(double a, double b) => a * b;
+    public double Divide(double a, double b) => b != 0 ? a / b : throw new DivideByZeroException();
+}
+​```
+
+---
+### 📄 ICalculator.cs
+**Type:** create
+**Reason:** Interface for dependency injection
+
+​```csharp
+public interface ICalculator {
+    double Add(double a, double b);
+    double Subtract(double a, double b);
+    double Multiply(double a, double b);
+    double Divide(double a, double b);
+}
+​```
+
+---
+### 📄 CalculatorTests.cs
+**Type:** create
+**Reason:** Unit tests for all methods
+
+​```csharp
+[TestClass]
+public class CalculatorTests {
+    [TestMethod]
+    public void Add_TwoNumbers_ReturnsSum() {
+        var calc = new Calculator();
+        Assert.AreEqual(5, calc.Add(2, 3));
+    }
+    // ... more tests
+}
+​```
+
+Files written to: workspace/Generated/calculator_20251222/
+```
+
+---
+
+## Tips
+
+1. **Be specific** in your task description
+2. **Include language** for best results
+3. **Increase maxIterations** for complex tasks (30-50 for full apps)
+4. **Check status** periodically with `get_task_status`
+5. **Use apply_task_files** to write generated code to your workspace
+
+---
+
+## Complete Workflow Example
+
+```javascript
+// Step 1: Start code generation
+orchestrate_task({
+  task: "Create a Blazor chess game",
+  language: "csharp",
+  maxIterations: 30
+})
+
+// Returns: Job ID: job_20251222_abc123
+
+// Step 2: Check progress (call multiple times)
+get_task_status({ jobId: "job_20251222_abc123" })
+
+// Step 3: When complete, apply files
+apply_task_files({
+  jobId: "job_20251222_abc123",
+  basePath: "E:\\GitHub\\MyProject"
+})
+
+// Now files are written to your workspace!
+```
+
+---
+
+**🎯 Main tool: `orchestrate_task` - Starts multi-agent code generation!**

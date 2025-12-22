@@ -1,0 +1,16 @@
+@using ChessGame.Models
+
+<div class="piece">
+    @if (Piece.PieceType != PieceType.None)
+    {
+        <span>@(Piece.Color == Color.White ? "W" : "B")</span>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Square Piece { get; set; }
+}
+
+
+

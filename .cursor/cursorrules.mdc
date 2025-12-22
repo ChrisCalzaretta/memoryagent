@@ -2,216 +2,237 @@
 alwaysApply: true
 ---
 
-# MemoryAgent - Split Architecture MCP Servers
+# 🎯 **MCP SERVER ROUTING RULES**
 
-## 🚨 TWO MCP SERVERS - Choose the Right One!
+## 🚨 **YOUR ACTUAL MCP SERVERS**
 
-| Server | Use For | Entry Point |
-|--------|---------|-------------|
-| **🧠 memory-agent** | Search, analysis, understanding | `execute_task({ request: "..." })` |
-| **🚀 code-generator** | Code generation, design systems | `orchestrate_task({ task: "..." })` |
-
----
-
-## 🧠 Memory Agent - Search & Analysis
-
-**For finding, understanding, and analyzing existing code.**
-
-### When to Use
-- Searching for code patterns
-- Understanding how features work
-- Analyzing complexity or security
-- Storing/retrieving knowledge
-- Planning and task breakdown
-
-### How to Use
-
-```javascript
-// Natural language through execute_task
-execute_task({ request: "Find all authentication code" })
-execute_task({ request: "Explain how the payment system works" })
-execute_task({ request: "Analyze security vulnerabilities" })
-execute_task({ request: "Create a plan for implementing OAuth" })
-execute_task({ request: "Store this solution for future reference" })
-```
-
-### Tool Categories
-
-| Category | Examples |
-|----------|----------|
-| 🔍 **Discovery** | semantic_search, smart_search, graph_search |
-| 📊 **Analysis** | explain_code, impact_analysis, complexity |
-| 🧠 **Knowledge** | store_qa, get_insights, record_context |
-| 📋 **Planning** | create_plan, estimate_complexity |
-| 📚 **Indexing** | index_workspace, reindex_all |
+| Server | Tools Available | Use For |
+|--------|----------------|---------|
+| **@memory-agent** | 4 tools | Background workflows, monitoring |
+| **@code-agent** | 8 tools | **Everything else** (code generation, search, analysis) |
 
 ---
 
-## 🚀 Code Generator - Multi-Agent Generation
+## **@memory-agent Tools (4)**
 
-**For creating new code with automatic validation.**
+1. `execute_task` - Smart router for complex workflows
+2. `list_available_tools` - Show all available tools
+3. `get_workflow_status` - Track background job progress
+4. `list_workflows` - List active workflows
 
-### When to Use
-- Generating new features/applications
-- Creating REST APIs, services
-- Building UI components
-- Creating design systems/brands
-- Validating code against brand guidelines
-
-### How to Use
-
-```javascript
-// Direct tool calls - no routing overhead!
-orchestrate_task({ 
-  task: "Create a user authentication service with JWT",
-  language: "typescript",
-  maxIterations: 50
-})
-
-// Check job status
-get_task_status({ jobId: "job_20241219_abc123" })
-
-// Get generated files
-apply_task_files({ 
-  jobId: "job_20241219_abc123",
-  basePath: "E:\\MyProject"
-})
-
-// Design tools
-design_create_brand({
-  brand_name: "MyApp",
-  industry: "SaaS",
-  personality_traits: ["Modern", "Professional"]
-})
-```
-
-### Available Tools
-
-| Tool | Description |
-|------|-------------|
-| `orchestrate_task` | Start multi-agent code generation |
-| `get_task_status` | Check job progress |
-| `cancel_task` | Stop a running job |
-| `list_tasks` | See all active jobs |
-| `apply_task_files` | Get files ready for writing |
-| `design_create_brand` | Create brand system |
-| `design_validate` | Validate against brand |
-| `design_get_brand` | Get brand definition |
+**Use for:** Background workflows, multi-step orchestration
 
 ---
 
-## 🎯 Decision Guide
+## **@code-agent Tools (5)**
 
-### Use memory-agent when you want to:
-- ✅ Find existing code
-- ✅ Understand how something works
-- ✅ Search for patterns
-- ✅ Analyze code quality
-- ✅ Get project knowledge
-- ✅ Create plans
+1. **`orchestrate_task`** ⭐ - Start multi-agent code generation job (background)
+2. `get_task_status` - Check job progress and get generated files
+3. `cancel_task` - Stop a running job
+4. `list_tasks` - See all active jobs
+5. `apply_task_files` - Get generated files ready for writing to workspace
 
-### Use code-generator when you want to:
-- ✅ Create new code from scratch
-- ✅ Generate complete features
-- ✅ Build applications
-- ✅ Create/validate design systems
-- ✅ Get validated, quality-checked code
+**Use for:** Multi-agent code generation with validation
 
 ---
 
-## 📝 Examples
+## 🎯 **ROUTING DECISION TREE**
 
-### Search for Database Code (memory-agent)
-```javascript
-execute_task({ request: "Find all SQL queries in this codebase" })
 ```
-
-### Generate REST API (code-generator)
-```javascript
-orchestrate_task({ 
-  task: "Create a REST API for user management with CRUD operations",
-  language: "python"
-})
-```
-
-### Understand a Feature (memory-agent)
-```javascript
-execute_task({ request: "Explain how authentication works in this project" })
-```
-
-### Create a Brand System (code-generator)
-```javascript
-design_create_brand({
-  brand_name: "HealthTrack",
-  industry: "Health",
-  personality_traits: ["Trustworthy", "Calm", "Professional"],
-  visual_style: "Soft",
-  theme_preference: "Light mode"
-})
-```
-
-### Plan a Feature (memory-agent)
-```javascript
-execute_task({ request: "Create a plan for implementing real-time notifications" })
-```
-
-### Generate Full Application (code-generator)
-```javascript
-orchestrate_task({ 
-  task: "Create a Blazor chess game with standard rules, piece movement, check/checkmate detection",
-  language: "csharp",
-  maxIterations: 100
-})
+User Request
+     ↓
+Is it code generation?
+     ↓
+    YES → @code-agent orchestrate_task
+     ↓
+    NO → What is it?
+          ├─ Check job status → @code-agent get_task_status
+          ├─ Cancel job → @code-agent cancel_task
+          ├─ List jobs → @code-agent list_tasks
+          ├─ Apply generated files → @code-agent apply_task_files
+          └─ Complex search/analysis → @memory-agent execute_task
 ```
 
 ---
 
-## 🔄 Workflow Pattern
+## 📝 **EXAMPLES**
 
-**For complex tasks, use both servers:**
+### 🤖 Generate Code (Start Job)
+```javascript
+@code-agent orchestrate_task
+task: "Create a Calculator class with Add, Subtract, Multiply, Divide methods"
+language: "csharp"
+maxIterations: 10
+```
 
-1. **Search first** (memory-agent)
-   ```javascript
-   execute_task({ request: "Find existing user management code" })
-   ```
+### 📊 Check Job Status
+```javascript
+@code-agent get_task_status
+jobId: "job_20251222_abc123"
+```
 
-2. **Generate new code** (code-generator)
-   ```javascript
-   orchestrate_task({ task: "Create improved user service with caching" })
-   ```
+### ❌ Cancel Job
+```javascript
+@code-agent cancel_task
+jobId: "job_20251222_abc123"
+```
 
-3. **Validate result** (memory-agent)
-   ```javascript
-   execute_task({ request: "Analyze the generated code for security issues" })
-   ```
+### 📋 List All Jobs
+```javascript
+@code-agent list_tasks
+```
+
+### 📁 Apply Generated Files
+```javascript
+@code-agent apply_task_files
+jobId: "job_20251222_abc123"
+basePath: "E:\\GitHub\\MyProject"
+```
+
+### 🔄 Complex Workflow (Memory Agent)
+```javascript
+@memory-agent execute_task
+request: "Find all authentication code and create a security analysis report"
+```
 
 ---
 
-## ⚡ Why Split Architecture?
+## 🚦 **QUICK ROUTING GUIDE**
 
-| Aspect | Before (Single Router) | After (Split) |
-|--------|----------------------|---------------|
-| **Routing overhead** | 3-5 seconds | 0 for code-gen |
-| **Clarity** | AI decides | You choose |
-| **Speed** | Always routed | Direct calls |
-| **Debugging** | Complex | Clear |
-
-**Code generation is already slow (60+ seconds). Removing routing overhead makes it faster and more predictable.**
-
----
-
-## 📞 Service URLs
-
-| Service | Port | MCP Wrapper |
-|---------|------|-------------|
-| MemoryRouter | 5010 | memory-router-mcp-wrapper.js |
-| CodingOrchestrator | 5003 | orchestrator-mcp-wrapper.js |
+| User Intent | MCP Server | Tool |
+|-------------|------------|------|
+| "Create..." | `@code-agent` | `orchestrate_task` |
+| "Generate..." | `@code-agent` | `orchestrate_task` |
+| "Build..." | `@code-agent` | `orchestrate_task` |
+| "Check status..." | `@code-agent` | `get_task_status` |
+| "How's the job..." | `@code-agent` | `get_task_status` |
+| "Cancel..." | `@code-agent` | `cancel_task` |
+| "List jobs..." | `@code-agent` | `list_tasks` |
+| "Apply files..." | `@code-agent` | `apply_task_files` |
+| "Find/Search..." | `@memory-agent` | `execute_task` |
+| "Analyze..." | `@memory-agent` | `execute_task` |
+| "Complex workflow" | `@memory-agent` | `execute_task` |
 
 ---
 
-## 🚦 Quick Health Check
+## ⚡ **WORKFLOW PATTERNS**
+
+### Pattern 1: Generate and Monitor
+```javascript
+// 1. Start code generation
+@code-agent orchestrate_task
+task: "Create a UserService with CRUD operations"
+language: "csharp"
+maxIterations: 20
+
+// Returns: Job ID: job_20251222_abc123
+
+// 2. Check progress
+@code-agent get_task_status
+jobId: "job_20251222_abc123"
+
+// 3. When complete, apply files
+@code-agent apply_task_files
+jobId: "job_20251222_abc123"
+basePath: "E:\\GitHub\\MyProject"
+```
+
+### Pattern 2: Search then Generate
+```javascript
+// 1. Search for examples using memory agent
+@memory-agent execute_task
+request: "Find all authentication patterns in the codebase"
+
+// 2. Generate new code
+@code-agent orchestrate_task
+task: "Create improved authentication service following existing patterns"
+language: "csharp"
+```
+
+### Pattern 3: Multiple Jobs
+```javascript
+// 1. Start multiple jobs
+@code-agent orchestrate_task
+task: "Create UserService"
+
+@code-agent orchestrate_task
+task: "Create ProductService"
+
+// 2. List all jobs
+@code-agent list_tasks
+
+// 3. Check each job status
+@code-agent get_task_status
+jobId: "job_xxx"
+```
+
+---
+
+## 📞 **SERVICE INFORMATION**
+
+| Service | Port | MCP Wrapper | Config Name |
+|---------|------|-------------|-------------|
+| MemoryRouter | 5010 | memory-router-mcp-wrapper.js | `@memory-agent` |
+| CodingAgent | 5001 | orchestrator-mcp-wrapper.js | `@code-agent` |
+
+---
+
+## 🚦 **HEALTH CHECK**
 
 ```bash
-curl http://localhost:5010/health  # Memory services
-curl http://localhost:5003/health  # Code generation
+# Check if services are running
+curl http://localhost:5010/health  # Memory agent
+curl http://localhost:5001/health  # Code agent
+
+# Should return: {"status":"healthy"}
 ```
+
+---
+
+## 🎯 **KEY RULES**
+
+1. **Code generation?** → Use `@code-agent orchestrate_task`
+2. **Check job status?** → Use `@code-agent get_task_status`
+3. **Cancel job?** → Use `@code-agent cancel_task`
+4. **List jobs?** → Use `@code-agent list_tasks`
+5. **Apply files?** → Use `@code-agent apply_task_files`
+6. **Search/Analyze?** → Use `@memory-agent execute_task`
+
+---
+
+## ❌ **TOOLS THAT DON'T EXIST**
+
+**DO NOT USE THESE** (they are not available):
+- ❌ `generate_code` (use `orchestrate_task` instead)
+- ❌ `search_code` (use `@memory-agent execute_task` instead)
+- ❌ `ask_question` (use `@memory-agent execute_task` instead)
+- ❌ `validate_code` (automatic in code generation)
+- ❌ `analyze_project` (use `@memory-agent execute_task` instead)
+- ❌ `test_code` (automatic in code generation)
+- ❌ `refactor_code` (use `orchestrate_task` instead)
+- ❌ `get_context` (automatic in code generation)
+- ❌ `design_create_brand` (not available)
+- ❌ `design_validate` (not available)
+
+**ONLY USE THE 9 TOOLS LISTED ABOVE (4 + 5)**
+
+---
+
+## ✅ **SUMMARY**
+
+### Your Actual Setup:
+- **@memory-agent:** 4 tools (workflows, monitoring, search, analysis)
+- **@code-agent:** 5 tools (code generation job management)
+
+### Main Tool for Code Generation:
+**`@code-agent orchestrate_task`** ⭐
+
+### Workflow:
+1. Start job → `@code-agent orchestrate_task`
+2. Check status → `@code-agent get_task_status`
+3. Apply files → `@code-agent apply_task_files`
+
+### For Search/Analysis:
+**`@memory-agent execute_task`** - Smart router for complex queries
+
+**Always use the tools that actually exist in your MCP configuration!**

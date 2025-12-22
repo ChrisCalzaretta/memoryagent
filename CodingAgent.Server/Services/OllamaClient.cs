@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Polly;
+using Polly.Retry;
 using AgentContracts.Services;
 
 namespace CodingAgent.Server.Services;
@@ -23,11 +25,11 @@ public class OllamaClient : IOllamaClient
     // Default context sizes by model family (fallback if API query fails)
     private static readonly Dictionary<string, int> _knownModelContexts = new()
     {
-        ["deepseek-coder-v2"] = 65536,  // 64k (can go to 128k but uses lots of memory)
+        ["deepseek-coder-v2"] = 32768,  // 32k (testing - 64k hangs)
         ["deepseek-coder"] = 16384,
-        ["qwen2.5-coder"] = 32768,
+        ["qwen2.5-coder"] = 32768,      // 32k native
         ["qwen2.5"] = 32768,
-        ["phi4"] = 16384,
+        ["phi4"] = 32768,                // 32k (can handle up to 128k but being safe)
         ["phi3.5"] = 32768,
         ["phi3"] = 4096,
         ["llama3.1"] = 32768,
@@ -195,11 +197,27 @@ public class OllamaClient : IOllamaClient
         var actualPort = port ?? _defaultPort;
         var url = $"{_baseHost}:{actualPort}/api/generate";
         
-        // 📐 Smart context sizing: auto-detect model's max context and use 75%
-        var optimalContext = await GetOptimalContextSizeAsync(model, actualPort, cancellationToken);
+        // 📐 Smart context sizing: Get FULL max context (not reduced for prompt ratio)
+        var maxContext = await QueryModelContextSizeAsync(model, actualPort, cancellationToken);
+        if (maxContext <= 0)
+        {
+            maxContext = GetKnownContextSize(model);
+        }
         
-        _logger.LogInformation("Calling Ollama generate on port {Port} with model {Model} (context={Context})", 
-            actualPort, model, optimalContext);
+        // 🔒 Cap context for models known to crash with huge contexts (VRAM safety)
+        if (model.Contains("deepseek-coder-v2") && maxContext > 32768)
+        {
+            _logger.LogWarning("⚠️ Capping DeepSeek context from {Original} to 32768 (performance)", maxContext);
+            maxContext = 32768; // Cap at 32k (64k hangs)
+        }
+        else if (maxContext > 131072) // Cap ALL models at 128k max
+        {
+            _logger.LogWarning("⚠️ Capping {Model} context from {Original} to 131072 (VRAM safety)", model, maxContext);
+            maxContext = 131072;
+        }
+        
+        _logger.LogInformation("Calling Ollama generate on port {Port} with model {Model} (maxContext={Context})", 
+            actualPort, model, maxContext);
         
         var request = new OllamaGenerateRequest
         {
@@ -210,52 +228,100 @@ public class OllamaClient : IOllamaClient
             KeepAlive = -1, // Keep model loaded
             Options = new OllamaOptions
             {
-                NumCtx = optimalContext // Auto-detected optimal context size
+                NumCtx = maxContext // FULL context window (Ollama manages prompt/response split)
             }
         };
 
+        // 🔄 Polly retry policy for Ollama crashes and transient errors
+        // Retry intervals: 2s, 4s, 6s, 12s, 24s (5 retries total)
+        var retryPolicy = Policy
+            .HandleResult<OllamaResponse>(result => 
+                !result.Success && 
+                (result.Error?.Contains("llama runner process has terminated") == true ||
+                 result.Error?.Contains("InternalServerError") == true ||
+                 result.Error?.Contains("HTTP 500") == true))
+            .Or<HttpRequestException>(ex => 
+                !ex.Message.Contains("400") && // Don't retry Bad Request
+                !ex.Message.Contains("401") && // Don't retry Unauthorized
+                !ex.Message.Contains("404"))   // Don't retry Not Found
+            .WaitAndRetryAsync(
+                retryCount: 5,
+                sleepDurationProvider: (retryAttempt) =>
+                {
+                    var delays = new[] { 2, 4, 6, 12, 24 };
+                    return TimeSpan.FromSeconds(delays[retryAttempt - 1]);
+                },
+                onRetry: (outcome, delay, retryCount, context) =>
+                {
+                    if (outcome.Exception != null)
+                    {
+                        _logger.LogWarning("🔄 Ollama call failed (attempt {Retry}/5), retrying in {Delay}s: {Error}", 
+                            retryCount, delay.TotalSeconds, outcome.Exception.Message);
+                    }
+                    else if (outcome.Result != null)
+                    {
+                        _logger.LogWarning("🔄 Ollama returned error (attempt {Retry}/5), retrying in {Delay}s: {Error}", 
+                            retryCount, delay.TotalSeconds, outcome.Result.Error);
+                    }
+                });
+
         try
         {
-            var json = JsonSerializer.Serialize(request, JsonOptions);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            
-            var response = await _httpClient.PostAsync(url, content, cancellationToken);
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            
-            if (!response.IsSuccessStatusCode)
+            return await retryPolicy.ExecuteAsync(async () =>
             {
-                _logger.LogError("Ollama error: {StatusCode} - {Body}", response.StatusCode, responseBody);
-                return new OllamaResponse 
-                { 
-                    Response = "", 
-                    Success = false, 
-                    Error = $"HTTP {response.StatusCode}: {responseBody}" 
-                };
-            }
+                var json = JsonSerializer.Serialize(request, JsonOptions);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PostAsync(url, content, cancellationToken);
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("Ollama error: {StatusCode} - {Body}", response.StatusCode, responseBody);
+                    return new OllamaResponse 
+                    { 
+                        Response = "", 
+                        Success = false, 
+                        Error = $"HTTP {response.StatusCode}: {responseBody}" 
+                    };
+                }
 
-            var ollamaResponse = JsonSerializer.Deserialize<OllamaGenerateResponse>(responseBody, JsonOptions);
-            
-            return new OllamaResponse
-            {
-                Response = ollamaResponse?.Response ?? "",
-                Success = true,
-                TotalDurationMs = (int)((ollamaResponse?.TotalDuration ?? 0) / 1_000_000), // ns to ms
-                PromptTokens = ollamaResponse?.PromptEvalCount ?? 0,
-                ResponseTokens = ollamaResponse?.EvalCount ?? 0
-            };
+                _logger.LogInformation("🔍 Ollama raw JSON ({Length} chars): {Json}", 
+                    responseBody.Length, responseBody.Length > 300 ? responseBody.Substring(0, 300) + "..." : responseBody);
+
+                var ollamaResponse = JsonSerializer.Deserialize<OllamaGenerateResponse>(responseBody, JsonOptions);
+                
+                _logger.LogInformation("🔍 Ollama deserialized: Response={Response}, TotalDuration={Duration}, PromptTokens={PromptTokens}, ResponseTokens={ResponseTokens}",
+                    ollamaResponse?.Response?.Length ?? 0, ollamaResponse?.TotalDuration ?? 0, ollamaResponse?.PromptEvalCount ?? 0, ollamaResponse?.EvalCount ?? 0);
+                
+                if (string.IsNullOrEmpty(ollamaResponse?.Response))
+                {
+                    _logger.LogWarning("⚠️ Ollama returned empty response! Raw body ({Length} chars): {Body}",
+                        responseBody.Length, responseBody.Length > 500 ? responseBody.Substring(0, 500) + "..." : responseBody);
+                }
+                
+                return new OllamaResponse
+                {
+                    Response = ollamaResponse?.Response ?? "",
+                    Success = true,
+                    TotalDurationMs = (int)((ollamaResponse?.TotalDuration ?? 0) / 1_000_000), // ns to ms
+                    PromptTokens = ollamaResponse?.PromptEvalCount ?? 0,
+                    ResponseTokens = ollamaResponse?.EvalCount ?? 0
+                };
+            });
         }
         catch (TaskCanceledException)
         {
-            throw;
+            throw; // Don't retry user cancellation
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling Ollama on port {Port}", actualPort);
+            _logger.LogError(ex, "❌ Ollama call failed after all retries on port {Port}", actualPort);
             return new OllamaResponse 
             { 
                 Response = "", 
                 Success = false, 
-                Error = ex.Message 
+                Error = $"Failed after 5 retries: {ex.Message}" 
             };
         }
     }
@@ -284,35 +350,68 @@ public class OllamaClient : IOllamaClient
             KeepAlive = -1
         };
 
+        // 🔄 Polly retry policy (same as GenerateAsync)
+        var retryPolicy = Policy
+            .HandleResult<OllamaResponse>(result => 
+                !result.Success && 
+                (result.Error?.Contains("llama runner process has terminated") == true ||
+                 result.Error?.Contains("InternalServerError") == true ||
+                 result.Error?.Contains("HTTP 500") == true))
+            .Or<HttpRequestException>(ex => 
+                !ex.Message.Contains("400") && !ex.Message.Contains("401") && !ex.Message.Contains("404"))
+            .WaitAndRetryAsync(
+                retryCount: 5,
+                sleepDurationProvider: (retryAttempt) =>
+                {
+                    var delays = new[] { 2, 4, 6, 12, 24 };
+                    return TimeSpan.FromSeconds(delays[retryAttempt - 1]);
+                },
+                onRetry: (outcome, delay, retryCount, context) =>
+                {
+                    if (outcome.Exception != null)
+                    {
+                        _logger.LogWarning("🔄 Ollama vision call failed (attempt {Retry}/5), retrying in {Delay}s: {Error}", 
+                            retryCount, delay.TotalSeconds, outcome.Exception.Message);
+                    }
+                    else if (outcome.Result != null)
+                    {
+                        _logger.LogWarning("🔄 Ollama vision returned error (attempt {Retry}/5), retrying in {Delay}s: {Error}", 
+                            retryCount, delay.TotalSeconds, outcome.Result.Error);
+                    }
+                });
+
         try
         {
-            var json = JsonSerializer.Serialize(request, JsonOptions);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            
-            var response = await _httpClient.PostAsync(url, content, cancellationToken);
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            
-            if (!response.IsSuccessStatusCode)
+            return await retryPolicy.ExecuteAsync(async () =>
             {
-                _logger.LogError("Ollama vision error: {StatusCode} - {Body}", response.StatusCode, responseBody);
-                return new OllamaResponse 
-                { 
-                    Response = "", 
-                    Success = false, 
-                    Error = $"HTTP {response.StatusCode}: {responseBody}" 
-                };
-            }
+                var json = JsonSerializer.Serialize(request, JsonOptions);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PostAsync(url, content, cancellationToken);
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("Ollama vision error: {StatusCode} - {Body}", response.StatusCode, responseBody);
+                    return new OllamaResponse 
+                    { 
+                        Response = "", 
+                        Success = false, 
+                        Error = $"HTTP {response.StatusCode}: {responseBody}" 
+                    };
+                }
 
-            var ollamaResponse = JsonSerializer.Deserialize<OllamaGenerateResponse>(responseBody, JsonOptions);
-            
-            return new OllamaResponse
-            {
-                Response = ollamaResponse?.Response ?? "",
-                Success = true,
-                TotalDurationMs = (int)((ollamaResponse?.TotalDuration ?? 0) / 1_000_000),
-                PromptTokens = ollamaResponse?.PromptEvalCount ?? 0,
-                ResponseTokens = ollamaResponse?.EvalCount ?? 0
-            };
+                var ollamaResponse = JsonSerializer.Deserialize<OllamaGenerateResponse>(responseBody, JsonOptions);
+                
+                return new OllamaResponse
+                {
+                    Response = ollamaResponse?.Response ?? "",
+                    Success = true,
+                    TotalDurationMs = (int)((ollamaResponse?.TotalDuration ?? 0) / 1_000_000),
+                    PromptTokens = ollamaResponse?.PromptEvalCount ?? 0,
+                    ResponseTokens = ollamaResponse?.EvalCount ?? 0
+                };
+            });
         }
         catch (TaskCanceledException)
         {
@@ -320,12 +419,12 @@ public class OllamaClient : IOllamaClient
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling Ollama vision on port {Port}", actualPort);
+            _logger.LogError(ex, "❌ Ollama vision call failed after all retries on port {Port}", actualPort);
             return new OllamaResponse 
             { 
                 Response = "", 
                 Success = false, 
-                Error = ex.Message 
+                Error = $"Failed after 5 retries: {ex.Message}" 
             };
         }
     }
@@ -353,43 +452,76 @@ public class OllamaClient : IOllamaClient
             KeepAlive = -1
         };
 
+        // 🔄 Polly retry policy (same as GenerateAsync)
+        var retryPolicy = Policy
+            .HandleResult<OllamaResponse>(result => 
+                !result.Success && 
+                (result.Error?.Contains("llama runner process has terminated") == true ||
+                 result.Error?.Contains("InternalServerError") == true ||
+                 result.Error?.Contains("HTTP 500") == true))
+            .Or<HttpRequestException>(ex => 
+                !ex.Message.Contains("400") && !ex.Message.Contains("401") && !ex.Message.Contains("404"))
+            .WaitAndRetryAsync(
+                retryCount: 5,
+                sleepDurationProvider: (retryAttempt) =>
+                {
+                    var delays = new[] { 2, 4, 6, 12, 24 };
+                    return TimeSpan.FromSeconds(delays[retryAttempt - 1]);
+                },
+                onRetry: (outcome, delay, retryCount, context) =>
+                {
+                    if (outcome.Exception != null)
+                    {
+                        _logger.LogWarning("🔄 Ollama chat call failed (attempt {Retry}/5), retrying in {Delay}s: {Error}", 
+                            retryCount, delay.TotalSeconds, outcome.Exception.Message);
+                    }
+                    else if (outcome.Result != null)
+                    {
+                        _logger.LogWarning("🔄 Ollama chat returned error (attempt {Retry}/5), retrying in {Delay}s: {Error}", 
+                            retryCount, delay.TotalSeconds, outcome.Result.Error);
+                    }
+                });
+
         try
         {
-            var json = JsonSerializer.Serialize(request, JsonOptions);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            
-            var response = await _httpClient.PostAsync(url, content, cancellationToken);
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            
-            if (!response.IsSuccessStatusCode)
+            return await retryPolicy.ExecuteAsync(async () =>
             {
-                return new OllamaResponse 
-                { 
-                    Response = "", 
-                    Success = false, 
-                    Error = $"HTTP {response.StatusCode}" 
-                };
-            }
+                var json = JsonSerializer.Serialize(request, JsonOptions);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PostAsync(url, content, cancellationToken);
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new OllamaResponse 
+                    { 
+                        Response = "", 
+                        Success = false, 
+                        Error = $"HTTP {response.StatusCode}" 
+                    };
+                }
 
-            var ollamaResponse = JsonSerializer.Deserialize<OllamaChatResponse>(responseBody, JsonOptions);
-            
-            return new OllamaResponse
-            {
-                Response = ollamaResponse?.Message?.Content ?? "",
-                Success = true,
-                TotalDurationMs = (int)((ollamaResponse?.TotalDuration ?? 0) / 1_000_000),
-                PromptTokens = ollamaResponse?.PromptEvalCount ?? 0,
-                ResponseTokens = ollamaResponse?.EvalCount ?? 0
-            };
+                var ollamaResponse = JsonSerializer.Deserialize<OllamaChatResponse>(responseBody, JsonOptions);
+                
+                return new OllamaResponse
+                {
+                    Response = ollamaResponse?.Message?.Content ?? "",
+                    Success = true,
+                    TotalDurationMs = (int)((ollamaResponse?.TotalDuration ?? 0) / 1_000_000),
+                    PromptTokens = ollamaResponse?.PromptEvalCount ?? 0,
+                    ResponseTokens = ollamaResponse?.EvalCount ?? 0
+                };
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling Ollama chat");
+            _logger.LogError(ex, "❌ Ollama chat call failed after all retries");
             return new OllamaResponse 
             { 
                 Response = "", 
                 Success = false, 
-                Error = ex.Message 
+                Error = $"Failed after 5 retries: {ex.Message}" 
             };
         }
     }
